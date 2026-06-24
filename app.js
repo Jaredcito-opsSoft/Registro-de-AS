@@ -39,6 +39,8 @@ const state = {
   serverQr: null,
   serverClockOffset: 0,
   nextQrRefreshAt: 0,
+  activeSite: null,
+  adminLocation: null,
 };
 
 const $ = (selector) => document.querySelector(selector);
@@ -86,6 +88,31 @@ const els = {
   totalRecords: $("#totalRecords"),
   completedRecords: $("#completedRecords"),
   pendingRecords: $("#pendingRecords"),
+  siteStatusBadge: $("#siteStatusBadge"),
+  siteStatusSummary: $("#siteStatusSummary"),
+  siteNameLabel: $("#siteNameLabel"),
+  siteAddressLabel: $("#siteAddressLabel"),
+  siteCoordsLabel: $("#siteCoordsLabel"),
+  siteRadiusLabel: $("#siteRadiusLabel"),
+  siteEntryHoursLabel: $("#siteEntryHoursLabel"),
+  siteExitHoursLabel: $("#siteExitHoursLabel"),
+  siteTimezoneLabel: $("#siteTimezoneLabel"),
+  sitePrecisionLabel: $("#sitePrecisionLabel"),
+  siteTestResult: $("#siteTestResult"),
+  siteForm: $("#siteForm"),
+  siteName: $("#siteName"),
+  siteAddress: $("#siteAddress"),
+  siteLat: $("#siteLat"),
+  siteLng: $("#siteLng"),
+  siteRadius: $("#siteRadius"),
+  siteEntryStart: $("#siteEntryStart"),
+  siteEntryEnd: $("#siteEntryEnd"),
+  siteExitStart: $("#siteExitStart"),
+  siteExitEnd: $("#siteExitEnd"),
+  siteTimezone: $("#siteTimezone"),
+  siteActive: $("#siteActive"),
+  useAdminLocation: $("#useAdminLocation"),
+  testAdminLocation: $("#testAdminLocation"),
 };
 
 function loadLocalRecords() {
@@ -128,6 +155,9 @@ function normalizeRecord(record) {
     retoVidaObservacion: "",
     riesgo: "normal",
     alertas: [],
+    sitioId: "",
+    sitioNombre: "",
+    radioMetros: null,
     ...record,
   };
 }
@@ -291,7 +321,233 @@ function rowToRecord(row) {
     retoVidaObservacion: row.reto_vida_observacion || "",
     riesgo: row.riesgo || "normal",
     alertas: row.alertas || [],
+    sitioId: row.sitio_id || "",
+    sitioNombre: row.sitio_nombre || "",
+    radioMetros: row.radio_metros ?? null,
   });
+}
+function normalizeTimeInput(value, fallback) {
+  const text = String(value || "").trim();
+  if (/^\d{2}:\d{2}$/.test(text)) return text;
+  if (/^\d{2}:\d{2}:\d{2}$/.test(text)) return text.slice(0, 5);
+  return fallback;
+}
+
+function getRpcFirstRow(result) {
+  if (Array.isArray(result)) return result[0] || null;
+  return result || null;
+}
+
+function hasConfiguredSite(site = state.activeSite) {
+  return Boolean(site && site.configured !== false && site.id && site.latitud !== null && site.longitud !== null);
+}
+
+function siteTimeRange(start, end) {
+  const first = normalizeTimeInput(start, "--:--");
+  const last = normalizeTimeInput(end, "--:--");
+  return first + " - " + last;
+}
+
+function setSiteMessage(message, tone = "neutral") {
+  if (!els.siteTestResult) return;
+  els.siteTestResult.textContent = message;
+  els.siteTestResult.dataset.tone = tone;
+}
+
+function fillSiteForm(site) {
+  if (!els.siteForm) return;
+  const configured = hasConfiguredSite(site);
+  els.siteName.value = configured ? site.nombre || "" : "";
+  els.siteAddress.value = configured ? site.direccion || "" : "";
+  els.siteLat.value = configured && site.latitud !== null ? Number(site.latitud).toFixed(6) : "";
+  els.siteLng.value = configured && site.longitud !== null ? Number(site.longitud).toFixed(6) : "";
+  els.siteRadius.value = configured ? site.radio_metros || 150 : 150;
+  els.siteEntryStart.value = normalizeTimeInput(configured ? site.hora_entrada_inicio : "", "07:30");
+  els.siteEntryEnd.value = normalizeTimeInput(configured ? site.hora_entrada_fin : "", "08:15");
+  els.siteExitStart.value = normalizeTimeInput(configured ? site.hora_salida_inicio : "", "16:30");
+  els.siteExitEnd.value = normalizeTimeInput(configured ? site.hora_salida_fin : "", "17:10");
+  els.siteTimezone.value = configured ? site.zona_horaria || "America/Mexico_City" : "America/Mexico_City";
+  els.siteActive.checked = configured ? Boolean(site.activo) : true;
+}
+
+function renderActiveSite(site) {
+  state.activeSite = site || null;
+  const configured = hasConfiguredSite(site);
+  if (!els.siteStatusBadge) return;
+
+  els.siteStatusBadge.className = "badge " + (configured ? "success" : "warning");
+  els.siteStatusBadge.textContent = configured ? "Sitio activo" : "Sitio pendiente";
+  els.siteStatusSummary.textContent = configured
+    ? "La validacion de salidas usa esta ubicacion y horarios desde Supabase."
+    : "Configura el sitio oficial para activar la validacion global de ubicacion.";
+  els.siteNameLabel.textContent = configured ? site.nombre || "Sitio sin nombre" : "Sin sitio configurado";
+  els.siteAddressLabel.textContent = configured ? site.direccion || "Direccion no capturada" : "Pendiente de direccion";
+  els.siteCoordsLabel.textContent = configured
+    ? Number(site.latitud).toFixed(6) + ", " + Number(site.longitud).toFixed(6)
+    : "Pendiente";
+  els.siteRadiusLabel.textContent = configured ? formatMeters(site.radio_metros) : "Pendiente";
+  els.siteEntryHoursLabel.textContent = configured ? siteTimeRange(site.hora_entrada_inicio, site.hora_entrada_fin) : "07:30 - 08:15";
+  els.siteExitHoursLabel.textContent = configured ? siteTimeRange(site.hora_salida_inicio, site.hora_salida_fin) : "16:30 - 17:10";
+  els.siteTimezoneLabel.textContent = configured ? site.zona_horaria || "America/Mexico_City" : "America/Mexico_City";
+  els.sitePrecisionLabel.textContent = state.adminLocation
+    ? "Ultima precision: " + formatMeters(state.adminLocation.accuracy)
+    : "Sin prueba reciente";
+  fillSiteForm(site);
+  setSiteMessage(configured ? "Listo para validar ubicacion." : "Captura nombre, coordenadas, radio y horarios.", configured ? "success" : "warning");
+}
+
+async function loadActiveSite({ silent = false } = {}) {
+  if (!CLOUD_ENABLED) {
+    renderActiveSite(null);
+    if (!silent) setSiteMessage("Supabase no esta configurado en este entorno.", "danger");
+    return null;
+  }
+
+  try {
+    const result = await callAdminRpc("get_active_site", {});
+    const site = getRpcFirstRow(result);
+    renderActiveSite(site);
+    return site;
+  } catch (error) {
+    renderActiveSite(null);
+    if (!silent) setSiteMessage("No se pudo consultar el sitio activo.", "danger");
+    return null;
+  }
+}
+
+function getBrowserLocation() {
+  return new Promise((resolve, reject) => {
+    if (!navigator.geolocation) {
+      reject(new Error("Geolocalizacion no disponible"));
+      return;
+    }
+    navigator.geolocation.getCurrentPosition(
+      (position) => resolve(position),
+      (error) => reject(error),
+      { enableHighAccuracy: true, timeout: 12000, maximumAge: 0 },
+    );
+  });
+}
+
+async function useAdminLocation() {
+  if (!requestAdminAccess()) return;
+  setSiteMessage("Obteniendo ubicacion actual del administrador...", "warning");
+  try {
+    const position = await getBrowserLocation();
+    state.adminLocation = {
+      latitud: position.coords.latitude,
+      longitud: position.coords.longitude,
+      accuracy: position.coords.accuracy,
+    };
+    els.siteLat.value = position.coords.latitude.toFixed(6);
+    els.siteLng.value = position.coords.longitude.toFixed(6);
+    els.sitePrecisionLabel.textContent = "Ultima precision: " + formatMeters(position.coords.accuracy);
+    setSiteMessage("Ubicacion cargada en el formulario. Revisa el radio antes de guardar.", "success");
+  } catch (error) {
+    setSiteMessage("No se pudo obtener ubicacion. Revisa permisos del navegador.", "danger");
+  }
+}
+
+async function testAdminLocation() {
+  if (!requestAdminAccess()) return;
+  if (!CLOUD_ENABLED) {
+    setSiteMessage("La prueba requiere Supabase activo.", "danger");
+    return;
+  }
+
+  setSiteMessage("Validando ubicacion actual contra el sitio activo...", "warning");
+  try {
+    const position = await getBrowserLocation();
+    state.adminLocation = {
+      latitud: position.coords.latitude,
+      longitud: position.coords.longitude,
+      accuracy: position.coords.accuracy,
+    };
+    els.sitePrecisionLabel.textContent = "Ultima precision: " + formatMeters(position.coords.accuracy);
+    const result = await callAdminRpc("validate_location_for_site", {
+      p_latitud: position.coords.latitude,
+      p_longitud: position.coords.longitude,
+      p_precision: position.coords.accuracy,
+    });
+    const validation = getRpcFirstRow(result);
+    if (!validation || validation.configured === false) {
+      setSiteMessage("No hay sitio activo para comparar. Guarda primero la configuracion.", "warning");
+      return;
+    }
+    const distance = formatMeters(validation.distancia_metros);
+    const radius = formatMeters(validation.radio_metros);
+    setSiteMessage(
+      validation.validado
+        ? "Ubicacion dentro del radio: " + distance + " de " + radius + "."
+        : "Ubicacion fuera o imprecisa: " + distance + " de " + radius + ".",
+      validation.validado ? "success" : "danger",
+    );
+  } catch (error) {
+    setSiteMessage("No se pudo probar la ubicacion actual.", "danger");
+  }
+}
+
+function validateSiteForm(data) {
+  if (!data.nombre) return "Captura el nombre del sitio.";
+  if (Number.isNaN(data.latitud) || data.latitud < -90 || data.latitud > 90) return "Latitud invalida.";
+  if (Number.isNaN(data.longitud) || data.longitud < -180 || data.longitud > 180) return "Longitud invalida.";
+  if (!Number.isInteger(data.radio) || data.radio < 20 || data.radio > 1000) return "El radio debe estar entre 20 y 1000 metros.";
+  if (!data.zonaHoraria) return "Captura la zona horaria.";
+  if (data.horaEntradaInicio >= data.horaEntradaFin) return "El horario de entrada debe cerrar despues de iniciar.";
+  if (data.horaSalidaInicio >= data.horaSalidaFin) return "El horario de salida debe cerrar despues de iniciar.";
+  return "";
+}
+
+async function handleSiteSubmit(event) {
+  event.preventDefault();
+  if (!requestAdminAccess()) return;
+  if (!CLOUD_ENABLED) {
+    setSiteMessage("No se puede guardar sin Supabase configurado.", "danger");
+    return;
+  }
+
+  const data = {
+    nombre: els.siteName.value.trim(),
+    direccion: els.siteAddress.value.trim(),
+    latitud: Number(els.siteLat.value),
+    longitud: Number(els.siteLng.value),
+    radio: Number.parseInt(els.siteRadius.value, 10),
+    horaEntradaInicio: normalizeTimeInput(els.siteEntryStart.value, "07:30"),
+    horaEntradaFin: normalizeTimeInput(els.siteEntryEnd.value, "08:15"),
+    horaSalidaInicio: normalizeTimeInput(els.siteExitStart.value, "16:30"),
+    horaSalidaFin: normalizeTimeInput(els.siteExitEnd.value, "17:10"),
+    zonaHoraria: els.siteTimezone.value.trim() || "America/Mexico_City",
+    activo: els.siteActive.checked,
+  };
+  const error = validateSiteForm(data);
+  if (error) {
+    setSiteMessage(error, "danger");
+    return;
+  }
+
+  setSiteMessage("Guardando configuracion del sitio...", "warning");
+  try {
+    await callAdminRpc("upsert_site_config", {
+      p_admin_key: ADMIN_KEY,
+      p_nombre: data.nombre,
+      p_direccion: data.direccion,
+      p_latitud: data.latitud,
+      p_longitud: data.longitud,
+      p_radio_metros: data.radio,
+      p_hora_entrada_inicio: data.horaEntradaInicio,
+      p_hora_entrada_fin: data.horaEntradaFin,
+      p_hora_salida_inicio: data.horaSalidaInicio,
+      p_hora_salida_fin: data.horaSalidaFin,
+      p_zona_horaria: data.zonaHoraria,
+      p_activo: data.activo,
+    });
+    addAdminLog("Sitio actualizado", data.nombre + " (" + data.radio + " m)");
+    await loadActiveSite({ silent: true });
+    await updateClockAndQr({ force: true });
+    showToast("Configuracion del sitio guardada.");
+  } catch (error) {
+    setSiteMessage("No se pudo guardar. Verifica la clave, datos y permisos RLS.", "danger");
+  }
 }
 async function refreshRecords({ silent = false } = {}) {
   if (!CLOUD_ENABLED) {
@@ -987,6 +1243,8 @@ function renderRecords() {
       <td>${imageCell(record.fotoSalida, "Salida")}</td>
       <td>${escapeHtml(record.nombre)}</td>
       <td>${escapeHtml(record.matricula)}</td>
+      <td>${escapeHtml(record.sitioNombre || "Sin sitio")}</td>
+      <td>${escapeHtml(formatMeters(record.radioMetros))}</td>
       <td>${escapeHtml(displayDate(record.fecha))}</td>
       <td>${escapeHtml(record.horaEntrada)}</td>
       <td>${escapeHtml(record.horaSalida || "Pendiente")}</td>
@@ -1042,6 +1300,7 @@ function requestAdminAccess() {
     state.isAdmin = true;
     updateAdminControls();
     renderRecords();
+    loadActiveSite({ silent: true });
     addAdminLog("Desbloqueo admin", "Modo administrativo activado");
     showToast("Modo administrativo desbloqueado.");
     return true;
@@ -1098,6 +1357,9 @@ function exportCsv() {
     "Nombre",
     "Matricula",
     "Fecha",
+    "Sitio",
+    "Sitio ID",
+    "Radio metros",
     "Hora de entrada",
     "Hora de salida",
     "Server time entrada",
@@ -1130,6 +1392,9 @@ function exportCsv() {
     record.nombre,
     record.matricula,
     displayDate(record.fecha),
+    record.sitioNombre,
+    record.sitioId,
+    record.radioMetros,
     record.horaEntrada,
     record.horaSalida,
     record.serverTimeEntrada,
@@ -1279,6 +1544,7 @@ async function init() {
   syncCaptureControls();
   loadFaceModels();
   updateClockAndQr({ force: true });
+  loadActiveSite({ silent: true });
   renderRecords();
   renderAdminAudit();
   updateAdminControls();
@@ -1324,6 +1590,9 @@ async function init() {
   els.exportCsv.addEventListener("click", exportCsv);
   els.clearRecords.addEventListener("click", clearRecords);
   els.recordsBody.addEventListener("click", handleRecordAction);
+  els.siteForm?.addEventListener("submit", handleSiteSubmit);
+  els.useAdminLocation?.addEventListener("click", useAdminLocation);
+  els.testAdminLocation?.addEventListener("click", testAdminLocation);
 
   if (window.location.hash.startsWith("#salida")) {
     showView("exit");

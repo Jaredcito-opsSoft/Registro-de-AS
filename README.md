@@ -106,19 +106,17 @@ Los clientes anonimos ya no tienen permisos directos de `insert` o `update` sobr
 `public.asistencias`; solo pueden leer registros. Las escrituras pasan por RPCs
 con validaciones de servidor.
 
-### Configurar ubicacion real
+### Configurar sitio real
 
-Por seguridad, la base queda preparada con `public.app_config`, pero las
-coordenadas reales de la empresa/aula deben configurarse en Supabase:
+El HITO 1 agrega el panel administrativo **Configuracion del sitio** dentro de
+Registros. Al desbloquear admin se puede guardar el sitio oficial, direccion,
+coordenadas, radio permitido, horarios y zona horaria.
 
-```sql
-update public.app_config
-set company_lat = 19.000000,
-    company_lng = -99.000000,
-    max_distance_meters = 150,
-    updated_at = now()
-where id = true;
-```
+La fuente oficial ahora es `public.sitios`; `public.app_config` queda solo como
+compatibilidad de migracion. Solo debe existir un sitio activo para el MVP.
 
-Mientras esas coordenadas no esten configuradas, la salida conserva la evidencia
-GPS pero queda marcada para revision administrativa en lugar de `normal`.
+Mientras el sitio activo no este configurado, la salida conserva la evidencia GPS
+pero queda marcada para revision administrativa en lugar de `normal`.
+
+La migracion del HITO 1 queda documentada en
+`supabase-site-admin-migration.sql`.

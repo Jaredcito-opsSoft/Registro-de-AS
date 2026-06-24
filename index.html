@@ -220,6 +220,94 @@
             Modo lectura activo. No se pueden modificar horarios, fotos, estados ni eliminar registros.
           </div>
 
+
+          <section class="site-admin-panel admin-control is-hidden" aria-labelledby="siteConfigTitle">
+            <div class="site-admin-header">
+              <div>
+                <p class="section-kicker">Configuracion del sitio</p>
+                <h3 id="siteConfigTitle">Ubicacion oficial</h3>
+                <p id="siteStatusSummary">Configura el sitio oficial para activar la validacion global de ubicacion.</p>
+              </div>
+              <span id="siteStatusBadge" class="badge warning">Sitio pendiente</span>
+            </div>
+
+            <div class="site-dashboard-grid" aria-label="Estado del sitio activo">
+              <article class="site-config-card">
+                <small>Sitio</small>
+                <strong id="siteNameLabel">Sin sitio configurado</strong>
+                <span id="siteAddressLabel">Pendiente de direccion</span>
+              </article>
+              <article class="site-config-card">
+                <small>Coordenadas</small>
+                <strong id="siteCoordsLabel">Pendiente</strong>
+                <span>Radio: <b id="siteRadiusLabel">Pendiente</b></span>
+              </article>
+              <article class="site-config-card">
+                <small>Horarios</small>
+                <strong>Entrada <span id="siteEntryHoursLabel">07:30 - 08:15</span></strong>
+                <span>Salida <b id="siteExitHoursLabel">16:30 - 17:10</b></span>
+              </article>
+              <article class="site-config-card">
+                <small>Zona y prueba</small>
+                <strong id="siteTimezoneLabel">America/Mexico_City</strong>
+                <span id="sitePrecisionLabel">Sin prueba reciente</span>
+              </article>
+            </div>
+
+            <form id="siteForm" class="site-form-grid">
+              <label>
+                Nombre del sitio
+                <input id="siteName" autocomplete="organization" placeholder="Ej. Planta principal" required />
+              </label>
+              <label>
+                Direccion
+                <input id="siteAddress" autocomplete="street-address" placeholder="Calle, numero, colonia" />
+              </label>
+              <label>
+                Latitud
+                <input id="siteLat" inputmode="decimal" placeholder="19.432608" required />
+              </label>
+              <label>
+                Longitud
+                <input id="siteLng" inputmode="decimal" placeholder="-99.133209" required />
+              </label>
+              <label>
+                Radio permitido (m)
+                <input id="siteRadius" type="number" min="20" max="1000" step="1" value="150" required />
+              </label>
+              <label>
+                Zona horaria
+                <input id="siteTimezone" value="America/Mexico_City" required />
+              </label>
+              <label>
+                Entrada inicio
+                <input id="siteEntryStart" type="time" value="07:30" required />
+              </label>
+              <label>
+                Entrada fin
+                <input id="siteEntryEnd" type="time" value="08:15" required />
+              </label>
+              <label>
+                Salida inicio
+                <input id="siteExitStart" type="time" value="16:30" required />
+              </label>
+              <label>
+                Salida fin
+                <input id="siteExitEnd" type="time" value="17:10" required />
+              </label>
+              <label class="inline-check">
+                <input id="siteActive" type="checkbox" checked />
+                Mantener como sitio activo
+              </label>
+              <div class="site-actions">
+                <button id="useAdminLocation" class="ghost" type="button">Usar mi ubicacion</button>
+                <button id="testAdminLocation" class="secondary" type="button">Probar ubicacion</button>
+                <button class="primary" type="submit">Guardar sitio</button>
+              </div>
+              <p id="siteTestResult" class="site-test-result" data-tone="warning">Captura nombre, coordenadas, radio y horarios.</p>
+            </form>
+          </section>
+
           <div class="table-wrap">
             <table>
               <thead>
@@ -228,6 +316,8 @@
                   <th>Salida</th>
                   <th>Nombre</th>
                   <th>Matricula</th>
+                  <th>Sitio</th>
+                  <th>Radio</th>
                   <th>Fecha</th>
                   <th>Hora entrada</th>
                   <th>Hora salida</th>
