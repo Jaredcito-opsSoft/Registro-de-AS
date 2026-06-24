@@ -5,6 +5,18 @@ const ADMIN_KEY = "ADMIN123";
 const QR_START = { hour: 16, minute: 30 };
 const QR_END = { hour: 17, minute: 10 };
 const QR_VALID_MINUTES = 5;
+const FACE_MODEL_URL = "models";
+const FACE_DISTANCE_STRONG = 0.46;
+const FACE_DISTANCE_REVIEW = 0.62;
+const LIFE_CHALLENGES = [
+  "Mira a la izquierda",
+  "Mira a la derecha",
+  "Sonrie",
+  "Levanta la mano derecha",
+  "Levanta la mano izquierda",
+  "Toca tu oreja",
+  "Acercate ligeramente a la camara",
+];
 const SUPABASE = window.SUPABASE_CONFIG || {};
 const CLOUD_ENABLED = Boolean(SUPABASE.url && SUPABASE.publishableKey && SUPABASE.bucket);
 
@@ -19,6 +31,16 @@ const state = {
   exitStream: null,
   qrToken: "",
   loadingRecords: false,
+  facialModelsLoaded: false,
+  facialModelsError: false,
+  entryFace: null,
+  exitFace: null,
+  lifeChallenge: "",
+  serverQr: null,
+  serverClockOffset: 0,
+  nextQrRefreshAt: 0,
+  activeSite: null,
+  adminLocation: null,
 };
 
 const $ = (selector) => document.querySelector(selector);
@@ -34,6 +56,11 @@ const els = {
   qrTokenLabel: $("#qrTokenLabel"),
   demoMode: $("#demoMode"),
   toast: $("#toast"),
+  faceStatus: $("#faceStatus"),
+  entryFaceStatus: $("#entryFaceStatus"),
+  exitFaceStatus: $("#exitFaceStatus"),
+  lifeChallenge: $("#lifeChallenge"),
+  locationStatus: $("#locationStatus"),
   entryVideo: $("#entryVideo"),
   entryCanvas: $("#entryCanvas"),
   entryPreview: $("#entryPreview"),
@@ -61,6 +88,31 @@ const els = {
   totalRecords: $("#totalRecords"),
   completedRecords: $("#completedRecords"),
   pendingRecords: $("#pendingRecords"),
+  siteStatusBadge: $("#siteStatusBadge"),
+  siteStatusSummary: $("#siteStatusSummary"),
+  siteNameLabel: $("#siteNameLabel"),
+  siteAddressLabel: $("#siteAddressLabel"),
+  siteCoordsLabel: $("#siteCoordsLabel"),
+  siteRadiusLabel: $("#siteRadiusLabel"),
+  siteEntryHoursLabel: $("#siteEntryHoursLabel"),
+  siteExitHoursLabel: $("#siteExitHoursLabel"),
+  siteTimezoneLabel: $("#siteTimezoneLabel"),
+  sitePrecisionLabel: $("#sitePrecisionLabel"),
+  siteTestResult: $("#siteTestResult"),
+  siteForm: $("#siteForm"),
+  siteName: $("#siteName"),
+  siteAddress: $("#siteAddress"),
+  siteLat: $("#siteLat"),
+  siteLng: $("#siteLng"),
+  siteRadius: $("#siteRadius"),
+  siteEntryStart: $("#siteEntryStart"),
+  siteEntryEnd: $("#siteEntryEnd"),
+  siteExitStart: $("#siteExitStart"),
+  siteExitEnd: $("#siteExitEnd"),
+  siteTimezone: $("#siteTimezone"),
+  siteActive: $("#siteActive"),
+  useAdminLocation: $("#useAdminLocation"),
+  testAdminLocation: $("#testAdminLocation"),
 };
 
 function loadLocalRecords() {
@@ -74,13 +126,41 @@ function loadLocalRecords() {
 function normalizeRecord(record) {
   return {
     bloqueado: true,
+    observacion: "",
     observaciones: "",
     observacion_admin: "",
     modificado_por_admin: false,
+    descriptorEntrada: null,
+    descriptorSalida: null,
+    rostroEntradaDetectado: false,
+    rostroSalidaDetectado: false,
+    similitudFacial: null,
+    validacionIdentidad: "pendiente",
+    metodoSalida: "",
+    tokenQrUsado: "",
+    serverTimeEntrada: "",
+    serverTimeSalida: "",
+    horarioValidado: false,
+    horarioObservacion: "",
+    qrValidado: false,
+    qrObservacion: "",
+    ubicacionValidada: false,
+    latitudSalida: null,
+    longitudSalida: null,
+    precisionUbicacion: null,
+    distanciaEmpresaMetros: null,
+    ubicacionObservacion: "",
+    retoVida: "",
+    retoVidaCumplido: false,
+    retoVidaObservacion: "",
+    riesgo: "normal",
+    alertas: [],
+    sitioId: "",
+    sitioNombre: "",
+    radioMetros: null,
     ...record,
   };
 }
-
 function persistLocalSnapshot() {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state.records));
 }
@@ -103,6 +183,14 @@ function addAdminLog(action, detail) {
   state.adminLog = state.adminLog.slice(0, 8);
   saveAdminLog();
   renderAdminAudit();
+  if (CLOUD_ENABLED && state.isAdmin) {
+    callAdminRpc("admin_log_event", {
+      p_admin_key: ADMIN_KEY,
+      p_accion: action,
+      p_detalle: detail,
+      p_resultado: "ok",
+    }).catch(() => undefined);
+  }
 }
 
 function nowParts(date = new Date()) {
@@ -201,15 +289,266 @@ function rowToRecord(row) {
     fotoEntrada: row.foto_entrada_url,
     horaSalida: displayTime(row.hora_salida),
     fotoSalida: row.foto_salida_url || "",
-    qrSalida: row.qr_salida || "",
+    qrSalida: row.token_qr_usado || row.qr_salida || "",
     estado: row.estado,
     bloqueado: row.bloqueado,
-    observaciones: row.observaciones || "",
+    observacion: row.observacion || row.observaciones || "",
+    observaciones: row.observaciones || row.observacion || "",
     observacion_admin: row.observacion_admin || "",
     modificado_por_admin: Boolean(row.modificado_por_admin),
+    descriptorEntrada: row.descriptor_entrada || null,
+    descriptorSalida: row.descriptor_salida || null,
+    rostroEntradaDetectado: Boolean(row.rostro_entrada_detectado),
+    rostroSalidaDetectado: Boolean(row.rostro_salida_detectado),
+    similitudFacial: row.similitud_facial ?? null,
+    validacionIdentidad: row.validacion_identidad || "pendiente",
+    metodoSalida: row.metodo_salida || "",
+    tokenQrUsado: row.token_qr_usado || row.qr_salida || "",
+    serverTimeEntrada: row.server_time_entrada || "",
+    serverTimeSalida: row.server_time_salida || "",
+    horarioValidado: Boolean(row.horario_validado),
+    horarioObservacion: row.horario_observacion || "",
+    qrValidado: Boolean(row.qr_validado),
+    qrObservacion: row.qr_observacion || "",
+    ubicacionValidada: Boolean(row.ubicacion_validada),
+    latitudSalida: row.latitud_salida ?? null,
+    longitudSalida: row.longitud_salida ?? null,
+    precisionUbicacion: row.precision_ubicacion ?? null,
+    distanciaEmpresaMetros: row.distancia_empresa_metros ?? null,
+    ubicacionObservacion: row.ubicacion_observacion || "",
+    retoVida: row.reto_vida || "",
+    retoVidaCumplido: Boolean(row.reto_vida_cumplido),
+    retoVidaObservacion: row.reto_vida_observacion || "",
+    riesgo: row.riesgo || "normal",
+    alertas: row.alertas || [],
+    sitioId: row.sitio_id || "",
+    sitioNombre: row.sitio_nombre || "",
+    radioMetros: row.radio_metros ?? null,
+  });
+}
+function normalizeTimeInput(value, fallback) {
+  const text = String(value || "").trim();
+  if (/^\d{2}:\d{2}$/.test(text)) return text;
+  if (/^\d{2}:\d{2}:\d{2}$/.test(text)) return text.slice(0, 5);
+  return fallback;
+}
+
+function getRpcFirstRow(result) {
+  if (Array.isArray(result)) return result[0] || null;
+  return result || null;
+}
+
+function hasConfiguredSite(site = state.activeSite) {
+  return Boolean(site && site.configured !== false && site.id && site.latitud !== null && site.longitud !== null);
+}
+
+function siteTimeRange(start, end) {
+  const first = normalizeTimeInput(start, "--:--");
+  const last = normalizeTimeInput(end, "--:--");
+  return first + " - " + last;
+}
+
+function setSiteMessage(message, tone = "neutral") {
+  if (!els.siteTestResult) return;
+  els.siteTestResult.textContent = message;
+  els.siteTestResult.dataset.tone = tone;
+}
+
+function fillSiteForm(site) {
+  if (!els.siteForm) return;
+  const configured = hasConfiguredSite(site);
+  els.siteName.value = configured ? site.nombre || "" : "";
+  els.siteAddress.value = configured ? site.direccion || "" : "";
+  els.siteLat.value = configured && site.latitud !== null ? Number(site.latitud).toFixed(6) : "";
+  els.siteLng.value = configured && site.longitud !== null ? Number(site.longitud).toFixed(6) : "";
+  els.siteRadius.value = configured ? site.radio_metros || 150 : 150;
+  els.siteEntryStart.value = normalizeTimeInput(configured ? site.hora_entrada_inicio : "", "07:30");
+  els.siteEntryEnd.value = normalizeTimeInput(configured ? site.hora_entrada_fin : "", "08:15");
+  els.siteExitStart.value = normalizeTimeInput(configured ? site.hora_salida_inicio : "", "16:30");
+  els.siteExitEnd.value = normalizeTimeInput(configured ? site.hora_salida_fin : "", "17:10");
+  els.siteTimezone.value = configured ? site.zona_horaria || "America/Mexico_City" : "America/Mexico_City";
+  els.siteActive.checked = configured ? Boolean(site.activo) : true;
+}
+
+function renderActiveSite(site) {
+  state.activeSite = site || null;
+  const configured = hasConfiguredSite(site);
+  if (!els.siteStatusBadge) return;
+
+  els.siteStatusBadge.className = "badge " + (configured ? "success" : "warning");
+  els.siteStatusBadge.textContent = configured ? "Sitio activo" : "Sitio pendiente";
+  els.siteStatusSummary.textContent = configured
+    ? "La validacion de salidas usa esta ubicacion y horarios desde Supabase."
+    : "Configura el sitio oficial para activar la validacion global de ubicacion.";
+  els.siteNameLabel.textContent = configured ? site.nombre || "Sitio sin nombre" : "Sin sitio configurado";
+  els.siteAddressLabel.textContent = configured ? site.direccion || "Direccion no capturada" : "Pendiente de direccion";
+  els.siteCoordsLabel.textContent = configured
+    ? Number(site.latitud).toFixed(6) + ", " + Number(site.longitud).toFixed(6)
+    : "Pendiente";
+  els.siteRadiusLabel.textContent = configured ? formatMeters(site.radio_metros) : "Pendiente";
+  els.siteEntryHoursLabel.textContent = configured ? siteTimeRange(site.hora_entrada_inicio, site.hora_entrada_fin) : "07:30 - 08:15";
+  els.siteExitHoursLabel.textContent = configured ? siteTimeRange(site.hora_salida_inicio, site.hora_salida_fin) : "16:30 - 17:10";
+  els.siteTimezoneLabel.textContent = configured ? site.zona_horaria || "America/Mexico_City" : "America/Mexico_City";
+  els.sitePrecisionLabel.textContent = state.adminLocation
+    ? "Ultima precision: " + formatMeters(state.adminLocation.accuracy)
+    : "Sin prueba reciente";
+  fillSiteForm(site);
+  setSiteMessage(configured ? "Listo para validar ubicacion." : "Captura nombre, coordenadas, radio y horarios.", configured ? "success" : "warning");
+}
+
+async function loadActiveSite({ silent = false } = {}) {
+  if (!CLOUD_ENABLED) {
+    renderActiveSite(null);
+    if (!silent) setSiteMessage("Supabase no esta configurado en este entorno.", "danger");
+    return null;
+  }
+
+  try {
+    const result = await callAdminRpc("get_active_site", {});
+    const site = getRpcFirstRow(result);
+    renderActiveSite(site);
+    return site;
+  } catch (error) {
+    renderActiveSite(null);
+    if (!silent) setSiteMessage("No se pudo consultar el sitio activo.", "danger");
+    return null;
+  }
+}
+
+function getBrowserLocation() {
+  return new Promise((resolve, reject) => {
+    if (!navigator.geolocation) {
+      reject(new Error("Geolocalizacion no disponible"));
+      return;
+    }
+    navigator.geolocation.getCurrentPosition(
+      (position) => resolve(position),
+      (error) => reject(error),
+      { enableHighAccuracy: true, timeout: 12000, maximumAge: 0 },
+    );
   });
 }
 
+async function useAdminLocation() {
+  if (!requestAdminAccess()) return;
+  setSiteMessage("Obteniendo ubicacion actual del administrador...", "warning");
+  try {
+    const position = await getBrowserLocation();
+    state.adminLocation = {
+      latitud: position.coords.latitude,
+      longitud: position.coords.longitude,
+      accuracy: position.coords.accuracy,
+    };
+    els.siteLat.value = position.coords.latitude.toFixed(6);
+    els.siteLng.value = position.coords.longitude.toFixed(6);
+    els.sitePrecisionLabel.textContent = "Ultima precision: " + formatMeters(position.coords.accuracy);
+    setSiteMessage("Ubicacion cargada en el formulario. Revisa el radio antes de guardar.", "success");
+  } catch (error) {
+    setSiteMessage("No se pudo obtener ubicacion. Revisa permisos del navegador.", "danger");
+  }
+}
+
+async function testAdminLocation() {
+  if (!requestAdminAccess()) return;
+  if (!CLOUD_ENABLED) {
+    setSiteMessage("La prueba requiere Supabase activo.", "danger");
+    return;
+  }
+
+  setSiteMessage("Validando ubicacion actual contra el sitio activo...", "warning");
+  try {
+    const position = await getBrowserLocation();
+    state.adminLocation = {
+      latitud: position.coords.latitude,
+      longitud: position.coords.longitude,
+      accuracy: position.coords.accuracy,
+    };
+    els.sitePrecisionLabel.textContent = "Ultima precision: " + formatMeters(position.coords.accuracy);
+    const result = await callAdminRpc("validate_location_for_site", {
+      p_latitud: position.coords.latitude,
+      p_longitud: position.coords.longitude,
+      p_precision: position.coords.accuracy,
+    });
+    const validation = getRpcFirstRow(result);
+    if (!validation || validation.configured === false) {
+      setSiteMessage("No hay sitio activo para comparar. Guarda primero la configuracion.", "warning");
+      return;
+    }
+    const distance = formatMeters(validation.distancia_metros);
+    const radius = formatMeters(validation.radio_metros);
+    setSiteMessage(
+      validation.validado
+        ? "Ubicacion dentro del radio: " + distance + " de " + radius + "."
+        : "Ubicacion fuera o imprecisa: " + distance + " de " + radius + ".",
+      validation.validado ? "success" : "danger",
+    );
+  } catch (error) {
+    setSiteMessage("No se pudo probar la ubicacion actual.", "danger");
+  }
+}
+
+function validateSiteForm(data) {
+  if (!data.nombre) return "Captura el nombre del sitio.";
+  if (Number.isNaN(data.latitud) || data.latitud < -90 || data.latitud > 90) return "Latitud invalida.";
+  if (Number.isNaN(data.longitud) || data.longitud < -180 || data.longitud > 180) return "Longitud invalida.";
+  if (!Number.isInteger(data.radio) || data.radio < 20 || data.radio > 1000) return "El radio debe estar entre 20 y 1000 metros.";
+  if (!data.zonaHoraria) return "Captura la zona horaria.";
+  if (data.horaEntradaInicio >= data.horaEntradaFin) return "El horario de entrada debe cerrar despues de iniciar.";
+  if (data.horaSalidaInicio >= data.horaSalidaFin) return "El horario de salida debe cerrar despues de iniciar.";
+  return "";
+}
+
+async function handleSiteSubmit(event) {
+  event.preventDefault();
+  if (!requestAdminAccess()) return;
+  if (!CLOUD_ENABLED) {
+    setSiteMessage("No se puede guardar sin Supabase configurado.", "danger");
+    return;
+  }
+
+  const data = {
+    nombre: els.siteName.value.trim(),
+    direccion: els.siteAddress.value.trim(),
+    latitud: Number(els.siteLat.value),
+    longitud: Number(els.siteLng.value),
+    radio: Number.parseInt(els.siteRadius.value, 10),
+    horaEntradaInicio: normalizeTimeInput(els.siteEntryStart.value, "07:30"),
+    horaEntradaFin: normalizeTimeInput(els.siteEntryEnd.value, "08:15"),
+    horaSalidaInicio: normalizeTimeInput(els.siteExitStart.value, "16:30"),
+    horaSalidaFin: normalizeTimeInput(els.siteExitEnd.value, "17:10"),
+    zonaHoraria: els.siteTimezone.value.trim() || "America/Mexico_City",
+    activo: els.siteActive.checked,
+  };
+  const error = validateSiteForm(data);
+  if (error) {
+    setSiteMessage(error, "danger");
+    return;
+  }
+
+  setSiteMessage("Guardando configuracion del sitio...", "warning");
+  try {
+    await callAdminRpc("upsert_site_config", {
+      p_admin_key: ADMIN_KEY,
+      p_nombre: data.nombre,
+      p_direccion: data.direccion,
+      p_latitud: data.latitud,
+      p_longitud: data.longitud,
+      p_radio_metros: data.radio,
+      p_hora_entrada_inicio: data.horaEntradaInicio,
+      p_hora_entrada_fin: data.horaEntradaFin,
+      p_hora_salida_inicio: data.horaSalidaInicio,
+      p_hora_salida_fin: data.horaSalidaFin,
+      p_zona_horaria: data.zonaHoraria,
+      p_activo: data.activo,
+    });
+    addAdminLog("Sitio actualizado", data.nombre + " (" + data.radio + " m)");
+    await loadActiveSite({ silent: true });
+    await updateClockAndQr({ force: true });
+    showToast("Configuracion del sitio guardada.");
+  } catch (error) {
+    setSiteMessage("No se pudo guardar. Verifica la clave, datos y permisos RLS.", "danger");
+  }
+}
 async function refreshRecords({ silent = false } = {}) {
   if (!CLOUD_ENABLED) {
     renderRecords();
@@ -244,7 +583,7 @@ function dataUrlToBlob(dataUrl) {
 async function uploadEvidence(dataUrl, matricula, kind) {
   if (!CLOUD_ENABLED) return dataUrl;
   const cleanMatricula = normalizeMatricula(matricula).replace(/[^A-Z0-9_-]/g, "");
-  const path = `${todayIso()}/${cleanMatricula}-${kind}-${Date.now()}.jpg`;
+  const path = `${todayIso()}/${cleanMatricula}/${kind}.jpg`;
   const blob = dataUrlToBlob(dataUrl);
   const encodedPath = path.split("/").map(encodeURIComponent).join("/");
 
@@ -264,8 +603,7 @@ async function uploadEvidence(dataUrl, matricula, kind) {
 
   return `${SUPABASE.url}/storage/v1/object/public/${SUPABASE.bucket}/${encodedPath}`;
 }
-
-async function insertEntryRecord({ nombre, matricula, fotoEntrada }) {
+async function insertEntryRecord({ nombre, matricula, fotoEntrada, descriptorEntrada }) {
   if (!CLOUD_ENABLED) {
     const localRecord = normalizeRecord({
       id: globalThis.crypto?.randomUUID ? globalThis.crypto.randomUUID() : String(Date.now()),
@@ -277,7 +615,11 @@ async function insertEntryRecord({ nombre, matricula, fotoEntrada }) {
       horaSalida: "",
       fotoSalida: "",
       qrSalida: "",
-      estado: "Entrada registrada",
+      estado: "entrada_registrada",
+      validacionIdentidad: "pendiente",
+      descriptorEntrada,
+      rostroEntradaDetectado: true,
+      serverTimeEntrada: new Date().toISOString(),
     });
     state.records.unshift(localRecord);
     persistLocalSnapshot();
@@ -285,55 +627,54 @@ async function insertEntryRecord({ nombre, matricula, fotoEntrada }) {
   }
 
   const fotoUrl = await uploadEvidence(fotoEntrada, matricula, "entrada");
-  const [row] = await supabaseRequest("/rest/v1/asistencias?select=*", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Prefer: "return=representation",
-    },
-    body: JSON.stringify({
-      nombre,
-      matricula,
-      fecha: todayIso(),
-      hora_entrada: new Date().toISOString(),
-      foto_entrada_url: fotoUrl,
-      estado: "Entrada registrada",
-      bloqueado: true,
-    }),
+  const row = await callAdminRpc("registrar_entrada_segura", {
+    p_nombre: nombre,
+    p_matricula: matricula,
+    p_foto_entrada_url: fotoUrl,
+    p_descriptor_entrada: descriptorEntrada,
+    p_rostro_entrada_detectado: true,
   });
   return rowToRecord(row);
 }
-
-async function updateExitRecord(record, { fotoSalida, qrToken }) {
+async function updateExitRecord(record, { fotoSalida, qrToken, descriptorSalida, location, lifeChallenge }) {
   if (!CLOUD_ENABLED) {
+    const faceValidation = evaluateFaceMatch(record.descriptorEntrada, descriptorSalida);
     record.horaSalida = nowParts().time;
     record.fotoSalida = fotoSalida;
     record.qrSalida = qrToken;
-    record.estado = "Asistencia completa";
-    record.observaciones = "Salida validada por QR";
+    record.tokenQrUsado = qrToken;
+    record.descriptorSalida = descriptorSalida;
+    record.rostroSalidaDetectado = true;
+    record.similitudFacial = faceValidation.similarity;
+    record.validacionIdentidad = faceValidation.status;
+    record.estado = faceValidation.estado;
+    record.observacion = faceValidation.observacion;
+    record.observaciones = faceValidation.observacion;
+    record.metodoSalida = "qr_horario";
+    record.qrValidado = true;
+    record.ubicacionValidada = location.estado === "ubicacion_correcta";
+    record.precisionUbicacion = location.precision ?? null;
+    record.retoVida = lifeChallenge;
+    record.retoVidaCumplido = Boolean(lifeChallenge);
+    record.riesgo = record.ubicacionValidada && faceValidation.status === "identidad_validada" ? "normal" : "revision_multiple";
     persistLocalSnapshot();
     return record;
   }
 
   const fotoUrl = await uploadEvidence(fotoSalida, record.matricula, "salida");
-  const [row] = await supabaseRequest(`/rest/v1/asistencias?id=eq.${encodeURIComponent(record.id)}&select=*`, {
-    method: "PATCH",
-    headers: {
-      "Content-Type": "application/json",
-      Prefer: "return=representation",
-    },
-    body: JSON.stringify({
-      hora_salida: new Date().toISOString(),
-      foto_salida_url: fotoUrl,
-      qr_salida: qrToken,
-      estado: "Asistencia completa",
-      observaciones: "Salida validada por QR",
-      updated_at: new Date().toISOString(),
-    }),
+  const row = await callAdminRpc("registrar_salida_segura", {
+    p_matricula: record.matricula,
+    p_foto_salida_url: fotoUrl,
+    p_descriptor_salida: descriptorSalida,
+    p_token_qr: qrToken,
+    p_latitud: location.latitud ?? null,
+    p_longitud: location.longitud ?? null,
+    p_precision: location.precision ?? null,
+    p_ubicacion_estado: location.estado || "ubicacion_denegada",
+    p_reto_vida: lifeChallenge || "",
   });
   return rowToRecord(row);
 }
-
 async function callAdminRpc(functionName, payload) {
   return supabaseRequest(`/rest/v1/rpc/${functionName}`, {
     method: "POST",
@@ -344,35 +685,71 @@ async function callAdminRpc(functionName, payload) {
   });
 }
 
-function updateClockAndQr() {
-  const now = new Date();
-  const { time } = nowParts(now);
-  const isOpen = isQrWindowOpen(now);
-  const token = makeQrToken(now);
-  const exitUrl = getExitUrl(token);
-
-  state.qrToken = token;
-  els.clockLabel.textContent = time;
-  els.qrWindowLabel.textContent = isOpen ? "QR disponible" : "QR bloqueado";
-  els.qrMessage.textContent = isOpen
-    ? "El QR esta vigente. Puede abrir el registro de salida."
-    : "El QR de salida no esta disponible fuera del horario permitido.";
-
-  els.qrBox.classList.toggle("is-disabled", !isOpen);
-  els.qrImage.hidden = !isOpen;
-  els.qrDirectLink.hidden = !isOpen;
-  els.qrTokenLabel.textContent = isOpen ? `Token: ${token}` : "Token: no disponible";
-  els.qrDirectLink.href = exitUrl;
-  els.qrImage.src = isOpen
-    ? `https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(exitUrl)}`
-    : "";
-
-  els.exitGuard.textContent = isOpen
-    ? "QR vigente. Captura la foto de salida y escribe la matricula."
-    : "Salida bloqueada. El QR solo esta disponible de 4:30 p. m. a 5:10 p. m.";
-  els.exitGuard.classList.toggle("is-blocked", !isOpen);
+async function fetchServerQrToken() {
+  if (!CLOUD_ENABLED) {
+    const now = new Date();
+    const isOpen = isQrWindowOpen(now);
+    return {
+      token: isOpen ? makeQrToken(now) : null,
+      server_time: now.toISOString(),
+      expires_at: isOpen ? new Date(now.getTime() + QR_VALID_MINUTES * 60 * 1000).toISOString() : null,
+      is_open: isOpen,
+      message: isOpen ? "QR valido." : "Salida bloqueada por horario local de prueba.",
+    };
+  }
+  return callAdminRpc("get_current_qr_token", {});
 }
 
+async function updateClockAndQr({ force = false } = {}) {
+  const now = new Date();
+  if (!force && state.serverQr && Date.now() < state.nextQrRefreshAt) {
+    const serverNow = new Date(Date.now() + state.serverClockOffset);
+    els.clockLabel.textContent = displayTime(serverNow.toISOString());
+    return;
+  }
+
+  try {
+    const qr = await fetchServerQrToken();
+    state.serverQr = qr;
+    state.nextQrRefreshAt = Date.now() + 12000;
+    if (qr.server_time) state.serverClockOffset = new Date(qr.server_time).getTime() - Date.now();
+
+    const isOpen = Boolean(qr.is_open && qr.token);
+    const token = qr.token || "";
+    const exitUrl = token ? getExitUrl(token) : "#salida";
+
+    state.qrToken = token;
+    els.clockLabel.textContent = displayTime(qr.server_time || now.toISOString());
+    els.qrWindowLabel.textContent = isOpen ? "QR servidor disponible" : "QR servidor bloqueado";
+    els.qrMessage.textContent = isOpen
+      ? "QR valido. La vigencia y horario se validan con Supabase."
+      : (qr.message || "La salida aun no esta disponible.");
+
+    els.qrBox.classList.toggle("is-disabled", !isOpen);
+    els.qrImage.hidden = !isOpen;
+    els.qrDirectLink.hidden = !isOpen;
+    els.qrTokenLabel.textContent = isOpen
+      ? `Expira: ${displayTime(qr.expires_at)} | Token servidor`
+      : "Token: no disponible";
+    els.qrDirectLink.href = exitUrl;
+    els.qrImage.src = isOpen
+      ? `https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(exitUrl)}`
+      : "";
+
+    els.exitGuard.textContent = isOpen
+      ? "QR vigente. La hora se valida con el servidor; completa foto, reto y ubicacion."
+      : "Salida bloqueada. El QR solo esta disponible de 4:30 p. m. a 5:10 p. m. con hora de servidor.";
+    els.exitGuard.classList.toggle("is-blocked", !isOpen);
+  } catch (error) {
+    els.qrWindowLabel.textContent = "QR no disponible";
+    els.qrMessage.textContent = "No se pudo validar QR con servidor. Revisa la conexion.";
+    els.qrBox.classList.add("is-disabled");
+    els.qrImage.hidden = true;
+    els.qrDirectLink.hidden = true;
+    els.exitGuard.textContent = "Salida bloqueada hasta recuperar validacion de servidor.";
+    els.exitGuard.classList.add("is-blocked");
+  }
+}
 function showView(name) {
   $$('[data-view]').forEach((view) => {
     view.classList.toggle("is-hidden", view.dataset.view !== name);
@@ -381,6 +758,11 @@ function showView(name) {
   setActiveNavigation(name);
   if (name !== "entry") stopCamera("entry");
   if (name !== "exit") stopCamera("exit");
+  if (name === "exit") {
+    pickLifeChallenge();
+    setLocationStatus("La ubicacion se solicitara al guardar salida.");
+    updateClockAndQr({ force: true });
+  }
   if (name === "records" || name === "home") refreshRecords({ silent: true });
   window.scrollTo({ top: 0, behavior: "smooth" });
 }
@@ -400,9 +782,203 @@ function showToast(message) {
   }, 3600);
 }
 
+function setFaceStatus(element, message, tone = "neutral") {
+  if (!element) return;
+  element.textContent = message;
+  element.dataset.tone = tone;
+}
+
+function syncCaptureControls() {
+  const canUseFace = state.facialModelsLoaded && !state.facialModelsError;
+  els.startEntryCamera.disabled = !canUseFace;
+  els.startExitCamera.disabled = !canUseFace;
+  els.takeEntryPhoto.disabled = !canUseFace || !state.entryStream;
+  els.takeExitPhoto.disabled = !canUseFace || !state.exitStream;
+}
+
+async function loadFaceModels() {
+  if (!window.faceapi) {
+    state.facialModelsError = true;
+    setFaceStatus(els.faceStatus, "Error al cargar modelos faciales.", "danger");
+    syncCaptureControls();
+    return;
+  }
+
+  try {
+    setFaceStatus(els.faceStatus, "Cargando modelos de reconocimiento facial...", "pending");
+    syncCaptureControls();
+    await Promise.all([
+      faceapi.nets.tinyFaceDetector.loadFromUri(FACE_MODEL_URL),
+      faceapi.nets.faceLandmark68Net.loadFromUri(FACE_MODEL_URL),
+      faceapi.nets.faceRecognitionNet.loadFromUri(FACE_MODEL_URL),
+    ]);
+    state.facialModelsLoaded = true;
+    setFaceStatus(els.faceStatus, "Modelos cargados correctamente.", "success");
+  } catch (error) {
+    state.facialModelsError = true;
+    setFaceStatus(els.faceStatus, "Error al cargar modelos faciales.", "danger");
+  } finally {
+    syncCaptureControls();
+  }
+}
+
+function descriptorToArray(descriptor) {
+  return Array.from(descriptor).map((value) => Number(value.toFixed(6)));
+}
+
+function clearCapturedFace(kind) {
+  state[`${kind}Photo`] = "";
+  state[`${kind}Face`] = null;
+  const preview = kind === "entry" ? els.entryPreview : els.exitPreview;
+  preview.removeAttribute("src");
+  preview.classList.add("is-hidden");
+}
+
+async function detectSingleFace(canvas, kind) {
+  const status = kind === "entry" ? els.entryFaceStatus : els.exitFaceStatus;
+  setFaceStatus(status, "Analizando rostro...", "pending");
+  const detections = await faceapi
+    .detectAllFaces(canvas, new faceapi.TinyFaceDetectorOptions({ inputSize: 320, scoreThreshold: 0.5 }))
+    .withFaceLandmarks()
+    .withFaceDescriptors();
+
+  if (detections.length === 0) {
+    const message = "No se detecto un rostro. Vuelve a tomar la fotografia.";
+    setFaceStatus(status, message, "danger");
+    showToast(message);
+    return null;
+  }
+
+  if (detections.length > 1) {
+    const message = "Se detectaron varias personas. La foto debe mostrar solo al usuario.";
+    setFaceStatus(status, message, "danger");
+    showToast(message);
+    return null;
+  }
+
+  const descriptor = descriptorToArray(detections[0].descriptor);
+  const message = kind === "entry" ? "Rostro detectado correctamente." : "Rostro de salida detectado correctamente.";
+  setFaceStatus(status, message, "success");
+  showToast(message);
+  return { descriptor, detected: true };
+}
+
+function facialDistance(entryDescriptor, exitDescriptor) {
+  if (!Array.isArray(entryDescriptor) || !Array.isArray(exitDescriptor)) return null;
+  if (entryDescriptor.length !== exitDescriptor.length) return null;
+  const total = entryDescriptor.reduce((sum, value, index) => {
+    const diff = Number(value) - Number(exitDescriptor[index]);
+    return sum + diff * diff;
+  }, 0);
+  return Math.sqrt(total);
+}
+
+function evaluateFaceMatch(entryDescriptor, exitDescriptor) {
+  const distance = facialDistance(entryDescriptor, exitDescriptor);
+  if (distance === null) {
+    return {
+      status: "revision_administrativa",
+      estado: "revision_requerida",
+      similarity: null,
+      distance: null,
+      observacion: "No fue posible comparar la foto de salida con la entrada.",
+      toast: "Salida registrada, requiere revision administrativa.",
+    };
+  }
+
+  const similarity = Number(Math.max(0, 1 - distance).toFixed(4));
+  if (distance <= FACE_DISTANCE_STRONG) {
+    return {
+      status: "identidad_validada",
+      estado: "asistencia_completa",
+      similarity,
+      distance,
+      observacion: "La foto de salida coincide con la foto de entrada.",
+      toast: "Identidad validada.",
+    };
+  }
+
+  if (distance <= FACE_DISTANCE_REVIEW) {
+    return {
+      status: "revision_administrativa",
+      estado: "revision_requerida",
+      similarity,
+      distance,
+      observacion: "La salida fue registrada, pero la coincidencia facial requiere revision.",
+      toast: "Salida registrada, requiere revision administrativa.",
+    };
+  }
+
+  return {
+    status: "fallida",
+    estado: "revision_requerida",
+    similarity,
+    distance,
+    observacion: "La foto de salida no parece coincidir con la foto de entrada.",
+    toast: "La foto no coincide suficientemente con la entrada.",
+  };
+}
+
+function getIncomingQrToken() {
+  const [, query = ""] = window.location.hash.split("?");
+  return new URLSearchParams(query).get("token") || "";
+}
+
+function isCurrentQrToken(token) {
+  if (!CLOUD_ENABLED) return state.demoMode || (Boolean(token) && token === makeQrToken(new Date()));
+  return Boolean(token) && Boolean(state.serverQr?.is_open) && token === state.qrToken;
+}
+
+function pickLifeChallenge() {
+  state.lifeChallenge = LIFE_CHALLENGES[Math.floor(Math.random() * LIFE_CHALLENGES.length)];
+  if (els.lifeChallenge) els.lifeChallenge.textContent = state.lifeChallenge;
+}
+
+function setLocationStatus(message, tone = "neutral") {
+  if (!els.locationStatus) return;
+  els.locationStatus.textContent = message;
+  els.locationStatus.dataset.tone = tone;
+}
+
+function requestExitLocation() {
+  setLocationStatus("Solicitando ubicacion para validar presencia.", "pending");
+  if (!navigator.geolocation) {
+    setLocationStatus("No se pudo obtener tu ubicacion. El registro quedara en revision.", "danger");
+    return Promise.resolve({ estado: "ubicacion_denegada" });
+  }
+
+  return new Promise((resolve) => {
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        const location = {
+          estado: position.coords.accuracy > 200 ? "ubicacion_imprecisa" : "ubicacion_correcta",
+          latitud: Number(position.coords.latitude.toFixed(7)),
+          longitud: Number(position.coords.longitude.toFixed(7)),
+          precision: Math.round(position.coords.accuracy),
+        };
+        setLocationStatus(
+          location.estado === "ubicacion_correcta"
+            ? "Ubicacion recibida; el servidor validara el radio permitido."
+            : "Precision GPS baja; el servidor marcara revision si corresponde.",
+          location.estado === "ubicacion_correcta" ? "success" : "pending"
+        );
+        resolve(location);
+      },
+      () => {
+        setLocationStatus("No se pudo obtener tu ubicacion. El registro quedara en revision.", "danger");
+        resolve({ estado: "ubicacion_denegada" });
+      },
+      { enableHighAccuracy: true, timeout: 12000, maximumAge: 0 }
+    );
+  });
+}
 async function startCamera(kind) {
   const video = kind === "entry" ? els.entryVideo : els.exitVideo;
-  const button = kind === "entry" ? els.takeEntryPhoto : els.takeExitPhoto;
+
+  if (!state.facialModelsLoaded) {
+    showToast("Espera a que carguen los modelos faciales.");
+    return;
+  }
 
   try {
     stopCamera(kind);
@@ -412,44 +988,62 @@ async function startCamera(kind) {
     });
     video.srcObject = stream;
     state[`${kind}Stream`] = stream;
-    button.disabled = false;
+    syncCaptureControls();
     showToast("Camara activada. Ya puedes tomar la foto.");
   } catch (error) {
-    showToast("No se pudo acceder a la camara. Revisa permisos o usa localhost.");
+    showToast("No se pudo acceder a la camara. Revisa permisos o usa HTTPS.");
   }
 }
 
 function stopCamera(kind) {
   const stream = state[`${kind}Stream`];
   const video = kind === "entry" ? els.entryVideo : els.exitVideo;
-  const button = kind === "entry" ? els.takeEntryPhoto : els.takeExitPhoto;
 
   if (stream) {
     stream.getTracks().forEach((track) => track.stop());
   }
   state[`${kind}Stream`] = null;
   video.srcObject = null;
-  button.disabled = true;
+  syncCaptureControls();
 }
 
-function takePhoto(kind) {
+async function takePhoto(kind) {
   const video = kind === "entry" ? els.entryVideo : els.exitVideo;
   const canvas = kind === "entry" ? els.entryCanvas : els.exitCanvas;
   const preview = kind === "entry" ? els.entryPreview : els.exitPreview;
+
+  if (!state.facialModelsLoaded) {
+    showToast("Los modelos faciales aun no estan listos.");
+    return;
+  }
 
   if (!video.videoWidth) {
     showToast("Primero activa la camara.");
     return;
   }
 
-  canvas.width = video.videoWidth;
-  canvas.height = video.videoHeight;
+  const maxWidth = 960;
+  const scale = Math.min(1, maxWidth / video.videoWidth);
+  canvas.width = Math.round(video.videoWidth * scale);
+  canvas.height = Math.round(video.videoHeight * scale);
   canvas.getContext("2d").drawImage(video, 0, 0, canvas.width, canvas.height);
-  const image = canvas.toDataURL("image/jpeg", 0.78);
-  state[`${kind}Photo`] = image;
-  preview.src = image;
-  preview.classList.remove("is-hidden");
-  showToast("Foto capturada correctamente.");
+
+  try {
+    const face = await detectSingleFace(canvas, kind);
+    if (!face) {
+      clearCapturedFace(kind);
+      return;
+    }
+
+    const image = canvas.toDataURL("image/jpeg", 0.72);
+    state[`${kind}Photo`] = image;
+    state[`${kind}Face`] = face;
+    preview.src = image;
+    preview.classList.remove("is-hidden");
+  } catch (error) {
+    clearCapturedFace(kind);
+    showToast("No se pudo analizar el rostro. Vuelve a tomar la foto.");
+  }
 }
 
 function normalizeMatricula(value) {
@@ -469,8 +1063,8 @@ async function handleEntrySubmit(event) {
   const nombre = els.entryName.value.trim();
   const matricula = normalizeMatricula(els.entryMatricula.value);
 
-  if (!state.entryPhoto || !nombre || !matricula) {
-    showToast("Falta foto, nombre o matricula para guardar la entrada.");
+  if (!state.entryPhoto || !state.entryFace || !nombre || !matricula) {
+    showToast("Falta foto con rostro valido, nombre o matricula para guardar la entrada.");
     return;
   }
 
@@ -482,40 +1076,52 @@ async function handleEntrySubmit(event) {
   }
 
   try {
-    const record = await insertEntryRecord({ nombre, matricula, fotoEntrada: state.entryPhoto });
+    const record = await insertEntryRecord({
+      nombre,
+      matricula,
+      fotoEntrada: state.entryPhoto,
+      descriptorEntrada: state.entryFace.descriptor,
+    });
     state.records.unshift(record);
     persistLocalSnapshot();
     state.entryPhoto = "";
+    state.entryFace = null;
     els.entryForm.reset();
     els.entryPreview.classList.add("is-hidden");
+    setFaceStatus(els.entryFaceStatus, "Listo para nueva captura.");
     stopCamera("entry");
     await refreshRecords({ silent: true });
-    showToast(CLOUD_ENABLED ? "Entrada guardada en lista global." : "Entrada registrada localmente.");
+    showToast(CLOUD_ENABLED ? "Entrada registrada correctamente." : "Entrada registrada localmente.");
   } catch (error) {
     showToast("No se pudo guardar la entrada global. Intenta de nuevo.");
   }
 }
-
 async function handleExitSubmit(event) {
   event.preventDefault();
 
-  if (!isQrWindowOpen()) {
-    showToast("No se puede registrar salida fuera del horario permitido.");
+  await updateClockAndQr({ force: true });
+  const qrToken = getIncomingQrToken() || state.qrToken;
+  if (!isCurrentQrToken(qrToken)) {
+    showToast("El QR ha expirado. Escanea el codigo actual.");
     return;
   }
 
   const matricula = normalizeMatricula(els.exitMatricula.value);
 
-  if (!matricula || !state.exitPhoto) {
-    showToast("Falta matricula o foto de salida.");
+  if (!matricula || !state.exitPhoto || !state.exitFace) {
+    showToast("Falta matricula o foto de salida con rostro valido.");
     return;
   }
 
   await refreshRecords({ silent: true });
-  const record = todayRecordByMatricula(matricula);
+  let record = todayRecordByMatricula(matricula);
+
+  if (!record && CLOUD_ENABLED) {
+    record = normalizeRecord({ matricula });
+  }
 
   if (!record) {
-    showToast("No existe entrada registrada hoy para esa matricula.");
+    showToast("No existe una entrada registrada para esta matricula el dia de hoy.");
     return;
   }
 
@@ -524,19 +1130,103 @@ async function handleExitSubmit(event) {
     return;
   }
 
+  const location = await requestExitLocation();
+
   try {
-    await updateExitRecord(record, { fotoSalida: state.exitPhoto, qrToken: state.qrToken });
+    const updated = await updateExitRecord(record, {
+      fotoSalida: state.exitPhoto,
+      qrToken,
+      descriptorSalida: state.exitFace.descriptor,
+      location,
+      lifeChallenge: state.lifeChallenge,
+    });
     state.exitPhoto = "";
+    state.exitFace = null;
     els.exitForm.reset();
     els.exitPreview.classList.add("is-hidden");
+    setFaceStatus(els.exitFaceStatus, "Listo para nueva captura.");
+    pickLifeChallenge();
     stopCamera("exit");
     await refreshRecords({ silent: true });
-    showToast(CLOUD_ENABLED ? "Salida guardada en lista global." : "Salida registrada localmente.");
+    showToast(updated.riesgo === "normal" ? "Salida registrada y validada." : "Salida registrada, pero requiere revision administrativa.");
   } catch (error) {
-    showToast("No se pudo guardar la salida global. Intenta de nuevo.");
+    const message = error.message?.includes("QR") ? error.message : "No se pudo guardar la salida segura. Intenta de nuevo.";
+    showToast(message);
   }
 }
+function statusLabel(value) {
+  const labels = {
+    entrada_registrada: "Entrada registrada",
+    asistencia_completa: "Asistencia completa",
+    revision_requerida: "Revision requerida",
+    fallida: "Fallida",
+    "Entrada registrada": "Entrada registrada",
+    "Asistencia completa": "Asistencia completa",
+  };
+  return labels[value] || value || "Pendiente";
+}
 
+function statusBadgeClass(value) {
+  if (["asistencia_completa", "Asistencia completa"].includes(value)) return "success";
+  if (value === "revision_requerida") return "warning";
+  if (value === "fallida") return "danger";
+  return "pending";
+}
+
+function identityLabel(value) {
+  const labels = {
+    identidad_validada: "Identidad validada",
+    revision_administrativa: "Revision administrativa",
+    fallida: "Fallida",
+    pendiente: "Pendiente",
+  };
+  return labels[value] || "Pendiente";
+}
+
+function identityBadgeClass(value) {
+  if (value === "identidad_validada") return "success";
+  if (value === "revision_administrativa") return "warning";
+  if (value === "fallida") return "danger";
+  return "default";
+}
+
+function riskLabel(value) {
+  const labels = {
+    normal: "Normal",
+    revision_ubicacion: "Revision ubicacion",
+    revision_identidad: "Revision identidad",
+    revision_qr: "Revision QR",
+    revision_horario: "Revision horario",
+    revision_multiple: "Revision multiple",
+    sospechoso: "Sospechoso",
+  };
+  return labels[value] || "Normal";
+}
+
+function riskBadgeClass(value) {
+  if (value === "normal") return "success";
+  if (value === "sospechoso") return "danger";
+  if (String(value || "").startsWith("revision")) return "warning";
+  return "default";
+}
+
+function booleanBadge(value, trueText = "Si", falseText = "No") {
+  return `<span class="badge ${value ? "success" : "pending"}">${value ? trueText : falseText}</span>`;
+}
+
+function formatSimilarity(value) {
+  if (value === null || value === undefined || value === "") return "Pendiente";
+  const numeric = Number(value);
+  if (Number.isNaN(numeric)) return "Pendiente";
+  return `${Math.round(numeric * 100)}%`;
+}
+
+function formatMeters(value) {
+  if (value === null || value === undefined || value === "") return "Pendiente";
+  const numeric = Number(value);
+  if (Number.isNaN(numeric)) return "Pendiente";
+  return `${Math.round(numeric)} m`;
+}
 function renderRecords() {
   updateSummary();
   els.recordsBody.innerHTML = "";
@@ -544,29 +1234,30 @@ function renderRecords() {
 
   state.records.forEach((record) => {
     const row = document.createElement("tr");
-
-    // Clase semántica para el estado del registro
-    let statusClass = "pending";
-    if (record.estado === "Asistencia completa") statusClass = "success";
-    else if (
-      record.estado === "fallida" ||
-      record.estado === "sospechoso" ||
-      record.estado === "Fallida" ||
-      record.estado === "Sospechoso"
-    ) statusClass = "danger";
-
-    // Clase para columna de modificación admin
-    const adminClass = record.modificado_por_admin ? "admin" : "pending";
-
+    const statusClass = statusBadgeClass(record.estado);
+    const identityClass = identityBadgeClass(record.validacionIdentidad);
+    const riskClass = riskBadgeClass(record.riesgo);
+    const adminClass = record.modificado_por_admin ? "admin" : "default";
     row.innerHTML = `
       <td>${imageCell(record.fotoEntrada, "Entrada")}</td>
       <td>${imageCell(record.fotoSalida, "Salida")}</td>
       <td>${escapeHtml(record.nombre)}</td>
       <td>${escapeHtml(record.matricula)}</td>
+      <td>${escapeHtml(record.sitioNombre || "Sin sitio")}</td>
+      <td>${escapeHtml(formatMeters(record.radioMetros))}</td>
       <td>${escapeHtml(displayDate(record.fecha))}</td>
       <td>${escapeHtml(record.horaEntrada)}</td>
       <td>${escapeHtml(record.horaSalida || "Pendiente")}</td>
-      <td><span class="badge ${statusClass}">${escapeHtml(record.estado)}</span></td>
+      <td><span class="badge ${statusClass}">${escapeHtml(statusLabel(record.estado))}</span></td>
+      <td><span class="badge ${identityClass}">${escapeHtml(identityLabel(record.validacionIdentidad))}</span></td>
+      <td>${escapeHtml(formatSimilarity(record.similitudFacial))}</td>
+      <td>${booleanBadge(record.qrValidado, "Validado", "Pendiente")}</td>
+      <td>${booleanBadge(record.ubicacionValidada, "Correcta", "Revision")}</td>
+      <td>${escapeHtml(formatMeters(record.precisionUbicacion))}</td>
+      <td>${escapeHtml(formatMeters(record.distanciaEmpresaMetros))}</td>
+      <td>${escapeHtml(record.retoVida || "Pendiente")}</td>
+      <td><span class="badge ${riskClass}">${escapeHtml(riskLabel(record.riesgo))}</span></td>
+      <td>${escapeHtml(record.observacion || record.observaciones || "Sin observacion")}</td>
       <td>${escapeHtml(record.observacion_admin || "Sin observacion")}</td>
       <td><span class="badge ${adminClass}">${record.modificado_por_admin ? "Si" : "No"}</span></td>
       <td class="admin-only ${state.isAdmin ? "" : "is-hidden"}">
@@ -581,15 +1272,13 @@ function renderRecords() {
 
   updateAdminControls();
 }
-
 function updateSummary() {
-  const completed = state.records.filter((record) => record.estado === "Asistencia completa").length;
+  const completed = state.records.filter((record) => ["asistencia_completa", "Asistencia completa"].includes(record.estado)).length;
   const pending = state.records.length - completed;
   els.totalRecords.textContent = state.records.length;
   els.completedRecords.textContent = completed;
   els.pendingRecords.textContent = pending;
 }
-
 function imageCell(src, alt) {
   if (!src) return `<span class="muted">Sin foto</span>`;
   return `<a href="${src}" target="_blank" rel="noopener"><img class="thumb" src="${src}" alt="${alt}" /></a>`;
@@ -611,10 +1300,17 @@ function requestAdminAccess() {
     state.isAdmin = true;
     updateAdminControls();
     renderRecords();
+    loadActiveSite({ silent: true });
+    addAdminLog("Desbloqueo admin", "Modo administrativo activado");
     showToast("Modo administrativo desbloqueado.");
     return true;
   }
-  if (value !== null) showToast("Clave administrativa incorrecta.");
+  if (value !== null) {
+    state.adminLog.unshift({ ...nowParts(), action: "Intento admin fallido", detail: "Clave incorrecta" });
+    saveAdminLog();
+    renderAdminAudit();
+    showToast("Clave administrativa incorrecta.");
+  }
   return false;
 }
 
@@ -661,11 +1357,33 @@ function exportCsv() {
     "Nombre",
     "Matricula",
     "Fecha",
+    "Sitio",
+    "Sitio ID",
+    "Radio metros",
     "Hora de entrada",
     "Hora de salida",
+    "Server time entrada",
+    "Server time salida",
+    "Foto de entrada",
+    "Foto de salida",
     "Estado",
-    "QR usado",
-    "Observaciones",
+    "Validacion de identidad",
+    "Similitud facial",
+    "QR validado",
+    "Token QR usado",
+    "QR observacion",
+    "Horario validado",
+    "Horario observacion",
+    "Ubicacion validada",
+    "Distancia empresa metros",
+    "Precision ubicacion",
+    "Ubicacion observacion",
+    "Reto de vida",
+    "Reto cumplido",
+    "Riesgo",
+    "Alertas",
+    "Metodo de salida",
+    "Observacion",
     "Observacion administrativa",
     "Modificado por administrativo",
   ];
@@ -674,11 +1392,33 @@ function exportCsv() {
     record.nombre,
     record.matricula,
     displayDate(record.fecha),
+    record.sitioNombre,
+    record.sitioId,
+    record.radioMetros,
     record.horaEntrada,
     record.horaSalida,
-    record.estado,
-    record.qrSalida,
-    record.observaciones,
+    record.serverTimeEntrada,
+    record.serverTimeSalida,
+    record.fotoEntrada,
+    record.fotoSalida,
+    statusLabel(record.estado),
+    identityLabel(record.validacionIdentidad),
+    formatSimilarity(record.similitudFacial),
+    record.qrValidado ? "Si" : "No",
+    record.tokenQrUsado || record.qrSalida,
+    record.qrObservacion,
+    record.horarioValidado ? "Si" : "No",
+    record.horarioObservacion,
+    record.ubicacionValidada ? "Si" : "No",
+    record.distanciaEmpresaMetros,
+    record.precisionUbicacion,
+    record.ubicacionObservacion,
+    record.retoVida,
+    record.retoVidaCumplido ? "Si" : "No",
+    riskLabel(record.riesgo),
+    Array.isArray(record.alertas) ? record.alertas.join(" | ") : JSON.stringify(record.alertas || []),
+    record.metodoSalida,
+    record.observacion || record.observaciones,
     record.observacion_admin,
     record.modificado_por_admin ? "Si" : "No",
   ]);
@@ -697,7 +1437,6 @@ function exportCsv() {
   addAdminLog("Exportacion CSV", `${state.records.length} registros exportados`);
   showToast("CSV exportado correctamente.");
 }
-
 function csvCell(value) {
   const text = String(value ?? "").replaceAll('"', '""');
   return `"${text}"`;
@@ -800,7 +1539,12 @@ function handleRecordAction(event) {
 
 async function init() {
   els.demoMode.checked = state.demoMode;
-  updateClockAndQr();
+  setFaceStatus(els.entryFaceStatus, "Espera a que carguen los modelos faciales.", "pending");
+  setFaceStatus(els.exitFaceStatus, "Espera a que carguen los modelos faciales.", "pending");
+  syncCaptureControls();
+  loadFaceModels();
+  updateClockAndQr({ force: true });
+  loadActiveSite({ silent: true });
   renderRecords();
   renderAdminAudit();
   updateAdminControls();
@@ -813,7 +1557,7 @@ async function init() {
     showToast("Modo local: falta configurar Supabase.");
   }
 
-  setInterval(updateClockAndQr, 1000);
+  setInterval(() => updateClockAndQr(), 1000);
   setInterval(() => refreshRecords({ silent: true }), 30000);
 
   $$('[data-target]').forEach((button) => {
@@ -829,8 +1573,8 @@ async function init() {
   els.demoMode.addEventListener("change", () => {
     state.demoMode = els.demoMode.checked;
     localStorage.setItem(DEMO_KEY, String(state.demoMode));
-    updateClockAndQr();
-    showToast(state.demoMode ? "Modo prueba activado." : "Modo prueba desactivado.");
+    updateClockAndQr({ force: true });
+    showToast(state.demoMode ? "Modo prueba local activado. En Supabase la salida sigue validando hora de servidor." : "Modo prueba desactivado.");
   });
 
   els.startEntryCamera.addEventListener("click", () => startCamera("entry"));
@@ -846,6 +1590,9 @@ async function init() {
   els.exportCsv.addEventListener("click", exportCsv);
   els.clearRecords.addEventListener("click", clearRecords);
   els.recordsBody.addEventListener("click", handleRecordAction);
+  els.siteForm?.addEventListener("submit", handleSiteSubmit);
+  els.useAdminLocation?.addEventListener("click", useAdminLocation);
+  els.testAdminLocation?.addEventListener("click", testAdminLocation);
 
   if (window.location.hash.startsWith("#salida")) {
     showView("exit");

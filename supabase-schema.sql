@@ -1,4 +1,4 @@
-﻿-- Supabase schema for Registro-de-AS MVP.
+-- Supabase schema for Registro-de-AS MVP with lightweight facial validation.
 -- Project table: global attendance records.
 
 create table if not exists public.asistencias (
@@ -11,8 +11,17 @@ create table if not exists public.asistencias (
   hora_salida timestamptz,
   foto_salida_url text,
   qr_salida text,
-  estado text not null default 'Entrada registrada' check (estado in ('Entrada registrada', 'Asistencia completa', 'Salida fuera de horario', 'Pendiente de salida')),
+  descriptor_entrada jsonb,
+  descriptor_salida jsonb,
+  rostro_entrada_detectado boolean not null default false,
+  rostro_salida_detectado boolean not null default false,
+  similitud_facial numeric,
+  validacion_identidad text not null default 'pendiente' check (validacion_identidad in ('identidad_validada', 'revision_administrativa', 'fallida', 'pendiente')),
+  metodo_salida text,
+  token_qr_usado text,
+  estado text not null default 'entrada_registrada' check (estado in ('entrada_registrada', 'asistencia_completa', 'revision_requerida', 'fallida', 'Entrada registrada', 'Asistencia completa', 'Salida fuera de horario', 'Pendiente de salida')),
   bloqueado boolean not null default true,
+  observacion text not null default '',
   observaciones text not null default '',
   observacion_admin text not null default '',
   modificado_por_admin boolean not null default false,
@@ -21,14 +30,33 @@ create table if not exists public.asistencias (
   constraint asistencias_matricula_fecha_unique unique (matricula, fecha)
 );
 
+alter table public.asistencias add column if not exists descriptor_entrada jsonb;
+alter table public.asistencias add column if not exists descriptor_salida jsonb;
+alter table public.asistencias add column if not exists rostro_entrada_detectado boolean not null default false;
+alter table public.asistencias add column if not exists rostro_salida_detectado boolean not null default false;
+alter table public.asistencias add column if not exists similitud_facial numeric;
+alter table public.asistencias add column if not exists validacion_identidad text not null default 'pendiente';
+alter table public.asistencias add column if not exists metodo_salida text;
+alter table public.asistencias add column if not exists token_qr_usado text;
+alter table public.asistencias add column if not exists observacion text not null default '';
+
+alter table public.asistencias drop constraint if exists asistencias_estado_check;
+alter table public.asistencias add constraint asistencias_estado_check
+check (estado in ('entrada_registrada', 'asistencia_completa', 'revision_requerida', 'fallida', 'Entrada registrada', 'Asistencia completa', 'Salida fuera de horario', 'Pendiente de salida'));
+
+alter table public.asistencias drop constraint if exists asistencias_validacion_identidad_check;
+alter table public.asistencias add constraint asistencias_validacion_identidad_check
+check (validacion_identidad in ('identidad_validada', 'revision_administrativa', 'fallida', 'pendiente'));
+
 create index if not exists asistencias_fecha_idx on public.asistencias (fecha desc);
 create index if not exists asistencias_matricula_fecha_idx on public.asistencias (matricula, fecha desc);
 
 alter table public.asistencias enable row level security;
 
 revoke all on public.asistencias from anon, authenticated;
-grant select, insert on public.asistencias to anon, authenticated;
-grant update (hora_salida, foto_salida_url, qr_salida, estado, observaciones, updated_at) on public.asistencias to anon, authenticated;
+grant select on public.asistencias to anon, authenticated;
+grant insert (nombre, matricula, fecha, foto_entrada_url, descriptor_entrada, rostro_entrada_detectado, estado, validacion_identidad) on public.asistencias to anon, authenticated;
+grant update (hora_salida, foto_salida_url, qr_salida, descriptor_salida, rostro_salida_detectado, similitud_facial, validacion_identidad, metodo_salida, token_qr_usado, estado, observacion, observaciones, updated_at) on public.asistencias to anon, authenticated;
 
 drop policy if exists "asistencias_select_global" on public.asistencias;
 create policy "asistencias_select_global"
@@ -46,7 +74,10 @@ with check (
   nombre <> ''
   and matricula <> ''
   and foto_entrada_url <> ''
-  and estado = 'Entrada registrada'
+  and estado = 'entrada_registrada'
+  and validacion_identidad = 'pendiente'
+  and rostro_entrada_detectado = true
+  and descriptor_entrada is not null
   and hora_salida is null
 );
 
@@ -55,8 +86,16 @@ create policy "asistencias_update_exit"
 on public.asistencias
 for update
 to anon, authenticated
-using (estado = 'Entrada registrada' and hora_salida is null)
-with check (estado = 'Asistencia completa' and hora_salida is not null and foto_salida_url is not null);
+using (estado in ('entrada_registrada', 'Entrada registrada') and hora_salida is null)
+with check (
+  estado in ('asistencia_completa', 'revision_requerida', 'fallida')
+  and hora_salida is not null
+  and foto_salida_url is not null
+  and rostro_salida_detectado = true
+  and descriptor_salida is not null
+  and metodo_salida = 'qr_horario'
+  and token_qr_usado is not null
+);
 
 create or replace function public.admin_update_observacion_asistencia(
   p_id uuid,
@@ -132,15 +171,30 @@ grant execute on function public.admin_delete_asistencia(uuid, text) to anon, au
 grant execute on function public.admin_clear_asistencias(text) to anon, authenticated;
 
 insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
-values ('evidencias-asistencia', 'evidencias-asistencia', true, 5242880, array['image/jpeg', 'image/png', 'image/webp'])
+values ('attendance-photos', 'attendance-photos', true, 5242880, array['image/jpeg', 'image/png', 'image/webp'])
 on conflict (id) do update
 set public = excluded.public,
     file_size_limit = excluded.file_size_limit,
     allowed_mime_types = excluded.allowed_mime_types;
 
-drop policy if exists "evidencias_insert_global" on storage.objects;
-create policy "evidencias_insert_global"
+drop policy if exists "attendance_photos_insert" on storage.objects;
+create policy "attendance_photos_insert"
 on storage.objects
 for insert
 to anon, authenticated
-with check (bucket_id = 'evidencias-asistencia');
+with check (bucket_id = 'attendance-photos');
+
+drop policy if exists "attendance_photos_update" on storage.objects;
+create policy "attendance_photos_update"
+on storage.objects
+for update
+to anon, authenticated
+using (bucket_id = 'attendance-photos')
+with check (bucket_id = 'attendance-photos');
+
+drop policy if exists "attendance_photos_select_for_upsert" on storage.objects;
+create policy "attendance_photos_select_for_upsert"
+on storage.objects
+for select
+to anon, authenticated
+using (bucket_id = 'attendance-photos');
