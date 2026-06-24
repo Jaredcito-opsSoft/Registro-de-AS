@@ -3,7 +3,17 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Sistema de Asistencia QR</title>
+    <meta
+      name="description"
+      content="Sistema de control de asistencia con registro fotografico, codigo QR dinamico y validacion de ubicacion."
+    />
+    <title>Asistencia QR - Control Institucional</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap"
+    />
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
@@ -338,7 +348,11 @@
               </thead>
               <tbody id="recordsBody"></tbody>
             </table>
-            <p id="emptyRecords" class="empty-state">Todavia no hay registros guardados.</p>
+            <div id="emptyRecords" class="empty-state">
+              <div class="empty-state-icon" aria-hidden="true">AS</div>
+              <p>Todavia no hay registros guardados.</p>
+              <p>Usa <strong>Registrar entrada</strong> para agregar el primero.</p>
+            </div>
           </div>
 
           <div class="audit-box">

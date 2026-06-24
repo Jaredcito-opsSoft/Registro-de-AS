@@ -1187,7 +1187,7 @@ function identityBadgeClass(value) {
   if (value === "identidad_validada") return "success";
   if (value === "revision_administrativa") return "warning";
   if (value === "fallida") return "danger";
-  return "neutral";
+  return "default";
 }
 
 function riskLabel(value) {
@@ -1207,11 +1207,11 @@ function riskBadgeClass(value) {
   if (value === "normal") return "success";
   if (value === "sospechoso") return "danger";
   if (String(value || "").startsWith("revision")) return "warning";
-  return "neutral";
+  return "default";
 }
 
 function booleanBadge(value, trueText = "Si", falseText = "No") {
-  return `<span class="badge ${value ? "success" : "warning"}">${value ? trueText : falseText}</span>`;
+  return `<span class="badge ${value ? "success" : "pending"}">${value ? trueText : falseText}</span>`;
 }
 
 function formatSimilarity(value) {
@@ -1237,7 +1237,7 @@ function renderRecords() {
     const statusClass = statusBadgeClass(record.estado);
     const identityClass = identityBadgeClass(record.validacionIdentidad);
     const riskClass = riskBadgeClass(record.riesgo);
-    const adminClass = record.modificado_por_admin ? "success" : "neutral";
+    const adminClass = record.modificado_por_admin ? "admin" : "default";
     row.innerHTML = `
       <td>${imageCell(record.fotoEntrada, "Entrada")}</td>
       <td>${imageCell(record.fotoSalida, "Salida")}</td>
