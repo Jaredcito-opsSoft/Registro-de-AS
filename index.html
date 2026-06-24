@@ -1,0 +1,242 @@
+﻿<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Sistema de Asistencia QR</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="topbar">
+        <div class="brand-block">
+          <div class="brand-mark" aria-hidden="true">AS</div>
+          <div>
+            <p class="eyebrow">Control de Asistencia</p>
+            <h1>Asistencia QR</h1>
+          </div>
+        </div>
+
+        <nav class="top-nav" aria-label="Navegacion principal">
+          <button class="nav-button is-active" data-target="home">Inicio</button>
+          <button class="nav-button" data-target="entry">Entrada</button>
+          <button class="nav-button" data-target="exit">Salida</button>
+          <button class="nav-button" data-target="records">Registros</button>
+        </nav>
+
+        <div class="status-card" aria-live="polite">
+          <small>Hora del sistema</small>
+          <span id="clockLabel">--:--</span>
+          <em id="qrWindowLabel">Validando horario...</em>
+        </div>
+      </header>
+
+      <main>
+        <section class="dashboard-grid" data-view="home">
+          <section class="panel hero-panel">
+            <div class="hero-copy">
+              <p class="section-kicker">Prototipo funcional</p>
+              <h2>Registro rapido, evidencia visual y salida protegida.</h2>
+              <p>
+                Captura entrada con foto, valida salida por QR y conserva el historial
+                en modo lectura para evitar cambios no autorizados.
+              </p>
+            </div>
+
+            <div class="summary-grid" aria-label="Resumen de asistencia">
+              <div class="summary-tile">
+                <span id="totalRecords">0</span>
+                <small>Registros</small>
+              </div>
+              <div class="summary-tile">
+                <span id="completedRecords">0</span>
+                <small>Completos</small>
+              </div>
+              <div class="summary-tile attention">
+                <span id="pendingRecords">0</span>
+                <small>Pendientes</small>
+              </div>
+            </div>
+
+            <div class="operation-strip" aria-label="Resumen del flujo">
+              <div>
+                <strong>01</strong>
+                <span>Entrada con foto</span>
+              </div>
+              <div>
+                <strong>02</strong>
+                <span>QR por horario</span>
+              </div>
+              <div>
+                <strong>03</strong>
+                <span>Historial protegido</span>
+              </div>
+            </div>
+
+            <div class="action-grid">
+              <button class="primary action-card" data-target="entry">
+                <span>Registrar entrada</span>
+                <small>Foto, nombre y matricula</small>
+              </button>
+              <button class="secondary action-card" data-target="exit">
+                <span>Registrar salida</span>
+                <small>QR vigente y foto final</small>
+              </button>
+              <button class="neutral action-card" data-target="records">
+                <span>Ver registros</span>
+                <small>Historial de solo lectura</small>
+              </button>
+            </div>
+          </section>
+
+          <section class="panel qr-panel">
+            <div>
+              <p class="section-kicker">QR de salida</p>
+              <h2>4:30 p. m. - 5:10 p. m.</h2>
+              <p id="qrMessage">El sistema revisara si el QR puede mostrarse.</p>
+            </div>
+
+            <div class="qr-box" id="qrBox">
+              <img id="qrImage" alt="QR de salida" />
+              <a id="qrDirectLink" href="#salida">Abrir salida</a>
+              <small id="qrTokenLabel">Token: --</small>
+            </div>
+
+            <label class="toggle-row">
+              <input id="demoMode" type="checkbox" />
+              <span>Modo prueba</span>
+            </label>
+          </section>
+        </section>
+
+        <section class="panel form-panel is-hidden" data-view="entry">
+          <div class="panel-heading">
+            <div>
+              <p class="section-kicker">Entrada</p>
+              <h2>Registrar entrada</h2>
+            </div>
+            <button class="back-button" data-target="home" type="button">Volver al inicio</button>
+          </div>
+
+          <div class="capture-layout">
+            <div class="camera-card">
+              <video id="entryVideo" playsinline autoplay muted></video>
+              <canvas id="entryCanvas" class="is-hidden"></canvas>
+              <img id="entryPreview" class="photo-preview is-hidden" alt="Foto de entrada" />
+              <div class="camera-actions">
+                <button id="startEntryCamera" class="secondary">Activar camara</button>
+                <button id="takeEntryPhoto" class="primary" disabled>Tomar foto</button>
+              </div>
+            </div>
+
+            <form id="entryForm" class="data-form">
+              <label>
+                Nombre completo
+                <input id="entryName" autocomplete="name" placeholder="Ej. Ana Lopez Perez" />
+              </label>
+              <label>
+                Matricula
+                <input id="entryMatricula" autocomplete="off" placeholder="Ej. A00125" />
+              </label>
+              <div class="form-actions">
+                <button class="primary wide" type="submit">Guardar entrada</button>
+                <button class="back-button wide" data-target="home" type="button">Cancelar y volver</button>
+              </div>
+            </form>
+          </div>
+        </section>
+
+        <section class="panel form-panel is-hidden" data-view="exit">
+          <div class="panel-heading">
+            <div>
+              <p class="section-kicker">Salida</p>
+              <h2>Registrar salida</h2>
+            </div>
+            <button class="back-button" data-target="home" type="button">Volver al inicio</button>
+          </div>
+
+          <div class="notice" id="exitGuard">
+            La salida solo puede registrarse cuando el QR esta vigente.
+          </div>
+
+          <div class="capture-layout">
+            <div class="camera-card">
+              <video id="exitVideo" playsinline autoplay muted></video>
+              <canvas id="exitCanvas" class="is-hidden"></canvas>
+              <img id="exitPreview" class="photo-preview is-hidden" alt="Foto de salida" />
+              <div class="camera-actions">
+                <button id="startExitCamera" class="secondary">Activar camara</button>
+                <button id="takeExitPhoto" class="primary" disabled>Tomar foto</button>
+              </div>
+            </div>
+
+            <form id="exitForm" class="data-form">
+              <label>
+                Matricula
+                <input id="exitMatricula" autocomplete="off" placeholder="Ej. A00125" />
+              </label>
+              <div class="form-actions">
+                <button class="primary wide" type="submit">Guardar salida</button>
+                <button class="back-button wide" data-target="home" type="button">Cancelar y volver</button>
+              </div>
+            </form>
+          </div>
+        </section>
+
+        <section class="panel records-panel is-hidden" data-view="records">
+          <div class="panel-heading">
+            <div>
+              <p class="section-kicker">Registros</p>
+              <h2>Tabla de asistencia</h2>
+              <p class="read-only-note">
+                Vista general en modo solo lectura. Las acciones sensibles requieren clave administrativa.
+              </p>
+            </div>
+            <div class="button-row toolbar-actions">
+              <button class="back-button" data-target="home" type="button">Volver al inicio</button>
+              <button id="unlockAdmin" class="secondary">Desbloquear admin</button>
+              <button id="lockAdmin" class="ghost is-hidden">Bloquear admin</button>
+              <button id="exportCsv" class="secondary admin-control is-hidden">Exportar CSV</button>
+              <button id="clearRecords" class="danger admin-control is-hidden">Limpiar datos</button>
+            </div>
+          </div>
+
+          <div id="adminStatus" class="notice is-blocked">
+            Modo lectura activo. No se pueden modificar horarios, fotos, estados ni eliminar registros.
+          </div>
+
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Entrada</th>
+                  <th>Salida</th>
+                  <th>Nombre</th>
+                  <th>Matricula</th>
+                  <th>Fecha</th>
+                  <th>Hora entrada</th>
+                  <th>Hora salida</th>
+                  <th>Estado</th>
+                  <th>Obs. admin</th>
+                  <th>Admin</th>
+                  <th class="admin-only is-hidden">Acciones</th>
+                </tr>
+              </thead>
+              <tbody id="recordsBody"></tbody>
+            </table>
+            <p id="emptyRecords" class="empty-state">Todavia no hay registros guardados.</p>
+          </div>
+
+          <div class="audit-box">
+            <h3>Auditoria administrativa</h3>
+            <p id="adminAudit">No hay acciones administrativas registradas.</p>
+          </div>
+        </section>
+      </main>
+
+      <div id="toast" class="toast" role="status" aria-live="polite"></div>
+    </div>
+
+    <script src="app.js"></script>
+  </body>
+</html>
