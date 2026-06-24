@@ -1,4 +1,4 @@
-﻿:root {
+:root {
   --ink: #17211f;
   --ink-strong: #0c1513;
   --muted: #64716e;
@@ -790,4 +790,52 @@ tbody tr:hover {
     width: 100%;
     order: -1;
   }
+}
+
+.model-status,
+.face-status {
+  margin: 0 0 16px;
+  padding: 11px 13px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: #fff;
+  color: var(--muted);
+  font-size: 0.9rem;
+  font-weight: 900;
+}
+
+.face-status {
+  margin-bottom: 0;
+}
+
+.model-status[data-tone="success"],
+.face-status[data-tone="success"],
+.badge.success {
+  color: var(--brand-dark);
+  background: var(--brand-soft);
+}
+
+.model-status[data-tone="pending"],
+.face-status[data-tone="pending"],
+.badge.warning,
+.badge.pending {
+  color: #744207;
+  background: var(--amber-soft);
+}
+
+.model-status[data-tone="danger"],
+.face-status[data-tone="danger"],
+.badge.danger {
+  color: var(--danger);
+  background: var(--danger-soft);
+}
+
+.badge.neutral {
+  color: var(--muted);
+  background: #edf2ef;
+}
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
 }

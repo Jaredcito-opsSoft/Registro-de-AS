@@ -1,10 +1,13 @@
-﻿const STORAGE_KEY = "registro_asistencia_qr_v1";
+const STORAGE_KEY = "registro_asistencia_qr_v1";
 const DEMO_KEY = "registro_asistencia_demo_mode";
 const ADMIN_LOG_KEY = "registro_asistencia_admin_log_v1";
 const ADMIN_KEY = "ADMIN123";
 const QR_START = { hour: 16, minute: 30 };
 const QR_END = { hour: 17, minute: 10 };
 const QR_VALID_MINUTES = 5;
+const FACE_MODEL_URL = "models";
+const FACE_DISTANCE_STRONG = 0.46;
+const FACE_DISTANCE_REVIEW = 0.62;
 const SUPABASE = window.SUPABASE_CONFIG || {};
 const CLOUD_ENABLED = Boolean(SUPABASE.url && SUPABASE.publishableKey && SUPABASE.bucket);
 
@@ -19,6 +22,10 @@ const state = {
   exitStream: null,
   qrToken: "",
   loadingRecords: false,
+  facialModelsLoaded: false,
+  facialModelsError: false,
+  entryFace: null,
+  exitFace: null,
 };
 
 const $ = (selector) => document.querySelector(selector);
@@ -34,6 +41,9 @@ const els = {
   qrTokenLabel: $("#qrTokenLabel"),
   demoMode: $("#demoMode"),
   toast: $("#toast"),
+  faceStatus: $("#faceStatus"),
+  entryFaceStatus: $("#entryFaceStatus"),
+  exitFaceStatus: $("#exitFaceStatus"),
   entryVideo: $("#entryVideo"),
   entryCanvas: $("#entryCanvas"),
   entryPreview: $("#entryPreview"),
@@ -74,10 +84,18 @@ function loadLocalRecords() {
 function normalizeRecord(record) {
   return {
     bloqueado: true,
+    observacion: "",
     observaciones: "",
     observacion_admin: "",
     modificado_por_admin: false,
-    ...record,
+    descriptorEntrada: null,
+    descriptorSalida: null,
+    rostroEntradaDetectado: false,
+    rostroSalidaDetectado: false,
+    similitudFacial: null,
+    validacionIdentidad: "pendiente",
+    metodoSalida: "",
+    tokenQrUsado: "",    ...record,
   };
 }
 
@@ -201,15 +219,23 @@ function rowToRecord(row) {
     fotoEntrada: row.foto_entrada_url,
     horaSalida: displayTime(row.hora_salida),
     fotoSalida: row.foto_salida_url || "",
-    qrSalida: row.qr_salida || "",
+    qrSalida: row.token_qr_usado || row.qr_salida || "",
     estado: row.estado,
     bloqueado: row.bloqueado,
-    observaciones: row.observaciones || "",
+    observacion: row.observacion || row.observaciones || "",
+    observaciones: row.observaciones || row.observacion || "",
     observacion_admin: row.observacion_admin || "",
     modificado_por_admin: Boolean(row.modificado_por_admin),
+    descriptorEntrada: row.descriptor_entrada || null,
+    descriptorSalida: row.descriptor_salida || null,
+    rostroEntradaDetectado: Boolean(row.rostro_entrada_detectado),
+    rostroSalidaDetectado: Boolean(row.rostro_salida_detectado),
+    similitudFacial: row.similitud_facial ?? null,
+    validacionIdentidad: row.validacion_identidad || "pendiente",
+    metodoSalida: row.metodo_salida || "",
+    tokenQrUsado: row.token_qr_usado || row.qr_salida || "",
   });
 }
-
 async function refreshRecords({ silent = false } = {}) {
   if (!CLOUD_ENABLED) {
     renderRecords();
@@ -244,7 +270,7 @@ function dataUrlToBlob(dataUrl) {
 async function uploadEvidence(dataUrl, matricula, kind) {
   if (!CLOUD_ENABLED) return dataUrl;
   const cleanMatricula = normalizeMatricula(matricula).replace(/[^A-Z0-9_-]/g, "");
-  const path = `${todayIso()}/${cleanMatricula}-${kind}-${Date.now()}.jpg`;
+  const path = `${todayIso()}/${cleanMatricula}/${kind}.jpg`;
   const blob = dataUrlToBlob(dataUrl);
   const encodedPath = path.split("/").map(encodeURIComponent).join("/");
 
@@ -264,8 +290,7 @@ async function uploadEvidence(dataUrl, matricula, kind) {
 
   return `${SUPABASE.url}/storage/v1/object/public/${SUPABASE.bucket}/${encodedPath}`;
 }
-
-async function insertEntryRecord({ nombre, matricula, fotoEntrada }) {
+async function insertEntryRecord({ nombre, matricula, fotoEntrada, descriptorEntrada }) {
   if (!CLOUD_ENABLED) {
     const localRecord = normalizeRecord({
       id: globalThis.crypto?.randomUUID ? globalThis.crypto.randomUUID() : String(Date.now()),
@@ -277,7 +302,10 @@ async function insertEntryRecord({ nombre, matricula, fotoEntrada }) {
       horaSalida: "",
       fotoSalida: "",
       qrSalida: "",
-      estado: "Entrada registrada",
+      estado: "entrada_registrada",
+      validacionIdentidad: "pendiente",
+      descriptorEntrada,
+      rostroEntradaDetectado: true,
     });
     state.records.unshift(localRecord);
     persistLocalSnapshot();
@@ -295,22 +323,29 @@ async function insertEntryRecord({ nombre, matricula, fotoEntrada }) {
       nombre,
       matricula,
       fecha: todayIso(),
-      hora_entrada: new Date().toISOString(),
       foto_entrada_url: fotoUrl,
-      estado: "Entrada registrada",
-      bloqueado: true,
+      descriptor_entrada: descriptorEntrada,
+      rostro_entrada_detectado: true,
+      estado: "entrada_registrada",
+      validacion_identidad: "pendiente",
     }),
   });
   return rowToRecord(row);
 }
-
-async function updateExitRecord(record, { fotoSalida, qrToken }) {
+async function updateExitRecord(record, { fotoSalida, qrToken, descriptorSalida, faceValidation }) {
   if (!CLOUD_ENABLED) {
     record.horaSalida = nowParts().time;
     record.fotoSalida = fotoSalida;
     record.qrSalida = qrToken;
-    record.estado = "Asistencia completa";
-    record.observaciones = "Salida validada por QR";
+    record.tokenQrUsado = qrToken;
+    record.descriptorSalida = descriptorSalida;
+    record.rostroSalidaDetectado = true;
+    record.similitudFacial = faceValidation.similarity;
+    record.validacionIdentidad = faceValidation.status;
+    record.estado = faceValidation.estado;
+    record.observacion = faceValidation.observacion;
+    record.observaciones = faceValidation.observacion;
+    record.metodoSalida = "qr_horario";
     persistLocalSnapshot();
     return record;
   }
@@ -325,15 +360,21 @@ async function updateExitRecord(record, { fotoSalida, qrToken }) {
     body: JSON.stringify({
       hora_salida: new Date().toISOString(),
       foto_salida_url: fotoUrl,
+      descriptor_salida: descriptorSalida,
+      rostro_salida_detectado: true,
+      similitud_facial: faceValidation.similarity,
+      validacion_identidad: faceValidation.status,
+      metodo_salida: "qr_horario",
+      token_qr_usado: qrToken,
       qr_salida: qrToken,
-      estado: "Asistencia completa",
-      observaciones: "Salida validada por QR",
+      estado: faceValidation.estado,
+      observacion: faceValidation.observacion,
+      observaciones: faceValidation.observacion,
       updated_at: new Date().toISOString(),
     }),
   });
   return rowToRecord(row);
 }
-
 async function callAdminRpc(functionName, payload) {
   return supabaseRequest(`/rest/v1/rpc/${functionName}`, {
     method: "POST",
@@ -400,9 +441,159 @@ function showToast(message) {
   }, 3600);
 }
 
+function setFaceStatus(element, message, tone = "neutral") {
+  if (!element) return;
+  element.textContent = message;
+  element.dataset.tone = tone;
+}
+
+function syncCaptureControls() {
+  const canUseFace = state.facialModelsLoaded && !state.facialModelsError;
+  els.startEntryCamera.disabled = !canUseFace;
+  els.startExitCamera.disabled = !canUseFace;
+  els.takeEntryPhoto.disabled = !canUseFace || !state.entryStream;
+  els.takeExitPhoto.disabled = !canUseFace || !state.exitStream;
+}
+
+async function loadFaceModels() {
+  if (!window.faceapi) {
+    state.facialModelsError = true;
+    setFaceStatus(els.faceStatus, "Error al cargar modelos faciales.", "danger");
+    syncCaptureControls();
+    return;
+  }
+
+  try {
+    setFaceStatus(els.faceStatus, "Cargando modelos de reconocimiento facial...", "pending");
+    syncCaptureControls();
+    await Promise.all([
+      faceapi.nets.tinyFaceDetector.loadFromUri(FACE_MODEL_URL),
+      faceapi.nets.faceLandmark68Net.loadFromUri(FACE_MODEL_URL),
+      faceapi.nets.faceRecognitionNet.loadFromUri(FACE_MODEL_URL),
+    ]);
+    state.facialModelsLoaded = true;
+    setFaceStatus(els.faceStatus, "Modelos cargados correctamente.", "success");
+  } catch (error) {
+    state.facialModelsError = true;
+    setFaceStatus(els.faceStatus, "Error al cargar modelos faciales.", "danger");
+  } finally {
+    syncCaptureControls();
+  }
+}
+
+function descriptorToArray(descriptor) {
+  return Array.from(descriptor).map((value) => Number(value.toFixed(6)));
+}
+
+function clearCapturedFace(kind) {
+  state[`${kind}Photo`] = "";
+  state[`${kind}Face`] = null;
+  const preview = kind === "entry" ? els.entryPreview : els.exitPreview;
+  preview.removeAttribute("src");
+  preview.classList.add("is-hidden");
+}
+
+async function detectSingleFace(canvas, kind) {
+  const status = kind === "entry" ? els.entryFaceStatus : els.exitFaceStatus;
+  setFaceStatus(status, "Analizando rostro...", "pending");
+  const detections = await faceapi
+    .detectAllFaces(canvas, new faceapi.TinyFaceDetectorOptions({ inputSize: 320, scoreThreshold: 0.5 }))
+    .withFaceLandmarks()
+    .withFaceDescriptors();
+
+  if (detections.length === 0) {
+    const message = "No se detecto un rostro. Vuelve a tomar la fotografia.";
+    setFaceStatus(status, message, "danger");
+    showToast(message);
+    return null;
+  }
+
+  if (detections.length > 1) {
+    const message = "Se detectaron varias personas. La foto debe mostrar solo al usuario.";
+    setFaceStatus(status, message, "danger");
+    showToast(message);
+    return null;
+  }
+
+  const descriptor = descriptorToArray(detections[0].descriptor);
+  const message = kind === "entry" ? "Rostro detectado correctamente." : "Rostro de salida detectado correctamente.";
+  setFaceStatus(status, message, "success");
+  showToast(message);
+  return { descriptor, detected: true };
+}
+
+function facialDistance(entryDescriptor, exitDescriptor) {
+  if (!Array.isArray(entryDescriptor) || !Array.isArray(exitDescriptor)) return null;
+  if (entryDescriptor.length !== exitDescriptor.length) return null;
+  const total = entryDescriptor.reduce((sum, value, index) => {
+    const diff = Number(value) - Number(exitDescriptor[index]);
+    return sum + diff * diff;
+  }, 0);
+  return Math.sqrt(total);
+}
+
+function evaluateFaceMatch(entryDescriptor, exitDescriptor) {
+  const distance = facialDistance(entryDescriptor, exitDescriptor);
+  if (distance === null) {
+    return {
+      status: "revision_administrativa",
+      estado: "revision_requerida",
+      similarity: null,
+      distance: null,
+      observacion: "No fue posible comparar la foto de salida con la entrada.",
+      toast: "Salida registrada, requiere revision administrativa.",
+    };
+  }
+
+  const similarity = Number(Math.max(0, 1 - distance).toFixed(4));
+  if (distance <= FACE_DISTANCE_STRONG) {
+    return {
+      status: "identidad_validada",
+      estado: "asistencia_completa",
+      similarity,
+      distance,
+      observacion: "La foto de salida coincide con la foto de entrada.",
+      toast: "Identidad validada.",
+    };
+  }
+
+  if (distance <= FACE_DISTANCE_REVIEW) {
+    return {
+      status: "revision_administrativa",
+      estado: "revision_requerida",
+      similarity,
+      distance,
+      observacion: "La salida fue registrada, pero la coincidencia facial requiere revision.",
+      toast: "Salida registrada, requiere revision administrativa.",
+    };
+  }
+
+  return {
+    status: "fallida",
+    estado: "revision_requerida",
+    similarity,
+    distance,
+    observacion: "La foto de salida no parece coincidir con la foto de entrada.",
+    toast: "La foto no coincide suficientemente con la entrada.",
+  };
+}
+
+function getIncomingQrToken() {
+  const [, query = ""] = window.location.hash.split("?");
+  return new URLSearchParams(query).get("token") || "";
+}
+
+function isCurrentQrToken(token) {
+  if (state.demoMode) return true;
+  return Boolean(token) && token === makeQrToken(new Date());
+}
 async function startCamera(kind) {
   const video = kind === "entry" ? els.entryVideo : els.exitVideo;
-  const button = kind === "entry" ? els.takeEntryPhoto : els.takeExitPhoto;
+
+  if (!state.facialModelsLoaded) {
+    showToast("Espera a que carguen los modelos faciales.");
+    return;
+  }
 
   try {
     stopCamera(kind);
@@ -412,44 +603,62 @@ async function startCamera(kind) {
     });
     video.srcObject = stream;
     state[`${kind}Stream`] = stream;
-    button.disabled = false;
+    syncCaptureControls();
     showToast("Camara activada. Ya puedes tomar la foto.");
   } catch (error) {
-    showToast("No se pudo acceder a la camara. Revisa permisos o usa localhost.");
+    showToast("No se pudo acceder a la camara. Revisa permisos o usa HTTPS.");
   }
 }
 
 function stopCamera(kind) {
   const stream = state[`${kind}Stream`];
   const video = kind === "entry" ? els.entryVideo : els.exitVideo;
-  const button = kind === "entry" ? els.takeEntryPhoto : els.takeExitPhoto;
 
   if (stream) {
     stream.getTracks().forEach((track) => track.stop());
   }
   state[`${kind}Stream`] = null;
   video.srcObject = null;
-  button.disabled = true;
+  syncCaptureControls();
 }
 
-function takePhoto(kind) {
+async function takePhoto(kind) {
   const video = kind === "entry" ? els.entryVideo : els.exitVideo;
   const canvas = kind === "entry" ? els.entryCanvas : els.exitCanvas;
   const preview = kind === "entry" ? els.entryPreview : els.exitPreview;
+
+  if (!state.facialModelsLoaded) {
+    showToast("Los modelos faciales aun no estan listos.");
+    return;
+  }
 
   if (!video.videoWidth) {
     showToast("Primero activa la camara.");
     return;
   }
 
-  canvas.width = video.videoWidth;
-  canvas.height = video.videoHeight;
+  const maxWidth = 960;
+  const scale = Math.min(1, maxWidth / video.videoWidth);
+  canvas.width = Math.round(video.videoWidth * scale);
+  canvas.height = Math.round(video.videoHeight * scale);
   canvas.getContext("2d").drawImage(video, 0, 0, canvas.width, canvas.height);
-  const image = canvas.toDataURL("image/jpeg", 0.78);
-  state[`${kind}Photo`] = image;
-  preview.src = image;
-  preview.classList.remove("is-hidden");
-  showToast("Foto capturada correctamente.");
+
+  try {
+    const face = await detectSingleFace(canvas, kind);
+    if (!face) {
+      clearCapturedFace(kind);
+      return;
+    }
+
+    const image = canvas.toDataURL("image/jpeg", 0.72);
+    state[`${kind}Photo`] = image;
+    state[`${kind}Face`] = face;
+    preview.src = image;
+    preview.classList.remove("is-hidden");
+  } catch (error) {
+    clearCapturedFace(kind);
+    showToast("No se pudo analizar el rostro. Vuelve a tomar la foto.");
+  }
 }
 
 function normalizeMatricula(value) {
@@ -469,8 +678,8 @@ async function handleEntrySubmit(event) {
   const nombre = els.entryName.value.trim();
   const matricula = normalizeMatricula(els.entryMatricula.value);
 
-  if (!state.entryPhoto || !nombre || !matricula) {
-    showToast("Falta foto, nombre o matricula para guardar la entrada.");
+  if (!state.entryPhoto || !state.entryFace || !nombre || !matricula) {
+    showToast("Falta foto con rostro valido, nombre o matricula para guardar la entrada.");
     return;
   }
 
@@ -482,32 +691,39 @@ async function handleEntrySubmit(event) {
   }
 
   try {
-    const record = await insertEntryRecord({ nombre, matricula, fotoEntrada: state.entryPhoto });
+    const record = await insertEntryRecord({
+      nombre,
+      matricula,
+      fotoEntrada: state.entryPhoto,
+      descriptorEntrada: state.entryFace.descriptor,
+    });
     state.records.unshift(record);
     persistLocalSnapshot();
     state.entryPhoto = "";
+    state.entryFace = null;
     els.entryForm.reset();
     els.entryPreview.classList.add("is-hidden");
+    setFaceStatus(els.entryFaceStatus, "Listo para nueva captura.");
     stopCamera("entry");
     await refreshRecords({ silent: true });
-    showToast(CLOUD_ENABLED ? "Entrada guardada en lista global." : "Entrada registrada localmente.");
+    showToast(CLOUD_ENABLED ? "Entrada registrada correctamente." : "Entrada registrada localmente.");
   } catch (error) {
     showToast("No se pudo guardar la entrada global. Intenta de nuevo.");
   }
 }
-
 async function handleExitSubmit(event) {
   event.preventDefault();
 
-  if (!isQrWindowOpen()) {
-    showToast("No se puede registrar salida fuera del horario permitido.");
+  const qrToken = getIncomingQrToken() || state.qrToken;
+  if (!isQrWindowOpen() || !isCurrentQrToken(qrToken)) {
+    showToast("No se puede registrar salida fuera del horario permitido o con QR vencido.");
     return;
   }
 
   const matricula = normalizeMatricula(els.exitMatricula.value);
 
-  if (!matricula || !state.exitPhoto) {
-    showToast("Falta matricula o foto de salida.");
+  if (!matricula || !state.exitPhoto || !state.exitFace) {
+    showToast("Falta matricula o foto de salida con rostro valido.");
     return;
   }
 
@@ -515,7 +731,7 @@ async function handleExitSubmit(event) {
   const record = todayRecordByMatricula(matricula);
 
   if (!record) {
-    showToast("No existe entrada registrada hoy para esa matricula.");
+    showToast("No existe una entrada registrada para esta matricula el dia de hoy.");
     return;
   }
 
@@ -524,19 +740,69 @@ async function handleExitSubmit(event) {
     return;
   }
 
+  const faceValidation = evaluateFaceMatch(record.descriptorEntrada, state.exitFace.descriptor);
+
   try {
-    await updateExitRecord(record, { fotoSalida: state.exitPhoto, qrToken: state.qrToken });
+    await updateExitRecord(record, {
+      fotoSalida: state.exitPhoto,
+      qrToken,
+      descriptorSalida: state.exitFace.descriptor,
+      faceValidation,
+    });
     state.exitPhoto = "";
+    state.exitFace = null;
     els.exitForm.reset();
     els.exitPreview.classList.add("is-hidden");
+    setFaceStatus(els.exitFaceStatus, "Listo para nueva captura.");
     stopCamera("exit");
     await refreshRecords({ silent: true });
-    showToast(CLOUD_ENABLED ? "Salida guardada en lista global." : "Salida registrada localmente.");
+    showToast(faceValidation.toast);
   } catch (error) {
     showToast("No se pudo guardar la salida global. Intenta de nuevo.");
   }
 }
+function statusLabel(value) {
+  const labels = {
+    entrada_registrada: "Entrada registrada",
+    asistencia_completa: "Asistencia completa",
+    revision_requerida: "Revision requerida",
+    fallida: "Fallida",
+    "Entrada registrada": "Entrada registrada",
+    "Asistencia completa": "Asistencia completa",
+  };
+  return labels[value] || value || "Pendiente";
+}
 
+function statusBadgeClass(value) {
+  if (["asistencia_completa", "Asistencia completa"].includes(value)) return "success";
+  if (value === "revision_requerida") return "warning";
+  if (value === "fallida") return "danger";
+  return "pending";
+}
+
+function identityLabel(value) {
+  const labels = {
+    identidad_validada: "Identidad validada",
+    revision_administrativa: "Revision administrativa",
+    fallida: "Fallida",
+    pendiente: "Pendiente",
+  };
+  return labels[value] || "Pendiente";
+}
+
+function identityBadgeClass(value) {
+  if (value === "identidad_validada") return "success";
+  if (value === "revision_administrativa") return "warning";
+  if (value === "fallida") return "danger";
+  return "neutral";
+}
+
+function formatSimilarity(value) {
+  if (value === null || value === undefined || value === "") return "Pendiente";
+  const numeric = Number(value);
+  if (Number.isNaN(numeric)) return "Pendiente";
+  return `${Math.round(numeric * 100)}%`;
+}
 function renderRecords() {
   updateSummary();
   els.recordsBody.innerHTML = "";
@@ -544,8 +810,9 @@ function renderRecords() {
 
   state.records.forEach((record) => {
     const row = document.createElement("tr");
-    const statusClass = record.estado === "Asistencia completa" ? "" : "pending";
-    const adminClass = record.modificado_por_admin ? "" : "pending";
+    const statusClass = statusBadgeClass(record.estado);
+    const identityClass = identityBadgeClass(record.validacionIdentidad);
+    const adminClass = record.modificado_por_admin ? "success" : "neutral";
     row.innerHTML = `
       <td>${imageCell(record.fotoEntrada, "Entrada")}</td>
       <td>${imageCell(record.fotoSalida, "Salida")}</td>
@@ -554,7 +821,10 @@ function renderRecords() {
       <td>${escapeHtml(displayDate(record.fecha))}</td>
       <td>${escapeHtml(record.horaEntrada)}</td>
       <td>${escapeHtml(record.horaSalida || "Pendiente")}</td>
-      <td><span class="badge ${statusClass}">${escapeHtml(record.estado)}</span></td>
+      <td><span class="badge ${statusClass}">${escapeHtml(statusLabel(record.estado))}</span></td>
+      <td><span class="badge ${identityClass}">${escapeHtml(identityLabel(record.validacionIdentidad))}</span></td>
+      <td>${escapeHtml(formatSimilarity(record.similitudFacial))}</td>
+      <td>${escapeHtml(record.observacion || record.observaciones || "Sin observacion")}</td>
       <td>${escapeHtml(record.observacion_admin || "Sin observacion")}</td>
       <td><span class="badge ${adminClass}">${record.modificado_por_admin ? "Si" : "No"}</span></td>
       <td class="admin-only ${state.isAdmin ? "" : "is-hidden"}">
@@ -569,15 +839,13 @@ function renderRecords() {
 
   updateAdminControls();
 }
-
 function updateSummary() {
-  const completed = state.records.filter((record) => record.estado === "Asistencia completa").length;
+  const completed = state.records.filter((record) => ["asistencia_completa", "Asistencia completa"].includes(record.estado)).length;
   const pending = state.records.length - completed;
   els.totalRecords.textContent = state.records.length;
   els.completedRecords.textContent = completed;
   els.pendingRecords.textContent = pending;
 }
-
 function imageCell(src, alt) {
   if (!src) return `<span class="muted">Sin foto</span>`;
   return `<a href="${src}" target="_blank" rel="noopener"><img class="thumb" src="${src}" alt="${alt}" /></a>`;
@@ -651,9 +919,14 @@ function exportCsv() {
     "Fecha",
     "Hora de entrada",
     "Hora de salida",
+    "Foto de entrada",
+    "Foto de salida",
     "Estado",
+    "Validacion de identidad",
+    "Similitud facial",
+    "Metodo de salida",
     "QR usado",
-    "Observaciones",
+    "Observacion",
     "Observacion administrativa",
     "Modificado por administrativo",
   ];
@@ -664,9 +937,14 @@ function exportCsv() {
     displayDate(record.fecha),
     record.horaEntrada,
     record.horaSalida,
-    record.estado,
-    record.qrSalida,
-    record.observaciones,
+    record.fotoEntrada,
+    record.fotoSalida,
+    statusLabel(record.estado),
+    identityLabel(record.validacionIdentidad),
+    formatSimilarity(record.similitudFacial),
+    record.metodoSalida,
+    record.tokenQrUsado || record.qrSalida,
+    record.observacion || record.observaciones,
     record.observacion_admin,
     record.modificado_por_admin ? "Si" : "No",
   ]);
@@ -685,7 +963,6 @@ function exportCsv() {
   addAdminLog("Exportacion CSV", `${state.records.length} registros exportados`);
   showToast("CSV exportado correctamente.");
 }
-
 function csvCell(value) {
   const text = String(value ?? "").replaceAll('"', '""');
   return `"${text}"`;
@@ -788,6 +1065,10 @@ function handleRecordAction(event) {
 
 async function init() {
   els.demoMode.checked = state.demoMode;
+  setFaceStatus(els.entryFaceStatus, "Espera a que carguen los modelos faciales.", "pending");
+  setFaceStatus(els.exitFaceStatus, "Espera a que carguen los modelos faciales.", "pending");
+  syncCaptureControls();
+  loadFaceModels();
   updateClockAndQr();
   renderRecords();
   renderAdminAudit();

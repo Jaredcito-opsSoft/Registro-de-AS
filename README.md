@@ -1,7 +1,11 @@
-﻿# Sistema Web de Asistencia con Foto y QR de Salida
+# Sistema Web de Asistencia con Foto, QR y Validacion Facial Ligera
 
 Prototipo web para registrar entrada y salida con evidencia fotografica, QR de
 salida por horario, historial global y acciones administrativas protegidas.
+
+Esta version agrega una validacion facial ligera: compara la foto de entrada con
+la foto de salida de la misma matricula y fecha. No es biometria empresarial ni
+login avanzado; es una ayuda de auditoria para detectar salidas dudosas.
 
 ## Como ejecutarlo
 
@@ -12,27 +16,52 @@ Opcion recomendada:
 3. Abre la URL local en Chrome, Edge o Firefox.
 4. Permite el acceso a la camara.
 
-Tambien puede desplegarse como sitio estatico en Vercel.
+Tambien puede desplegarse como sitio estatico en Vercel. En produccion, Vercel
+entrega HTTPS, requerido por los navegadores para activar camara.
 
 ## Lista global con Supabase
 
-La app ya no depende solo de LocalStorage. Usa Supabase para compartir la lista
-entre dispositivos:
+La app usa Supabase para compartir la lista entre dispositivos:
 
 - Tabla: `public.asistencias`
-- Bucket: `evidencias-asistencia`
+- Bucket: `attendance-photos`
 - Configuracion frontend: `supabase-config.js`
 
-Las fotos se suben al bucket y la tabla guarda las URLs publicas.
+Las fotos se guardan con estructura:
+
+```text
+attendance-photos/YYYY-MM-DD/MATRICULA/entrada.jpg
+attendance-photos/YYYY-MM-DD/MATRICULA/salida.jpg
+```
+
+## Validacion facial
+
+La app carga `face-api.js` por CDN y sirve los modelos desde `models/`:
+
+- `tiny_face_detector_model`
+- `face_landmark_68_model`
+- `face_recognition_model`
+
+Reglas principales:
+
+- Si no hay rostro, no se guarda la foto.
+- Si hay mas de un rostro, no se guarda la foto.
+- Si hay un rostro, se guarda el descriptor facial.
+- En salida se compara descriptor de salida contra descriptor de entrada.
+- Si la coincidencia es buena, queda `identidad_validada`.
+- Si es dudosa, queda `revision_administrativa` y se guarda la salida.
+- Si es mala, queda `fallida` y se marca para revision.
 
 ## Funciones incluidas
 
 - Registro de entrada con foto, nombre, matricula, fecha y hora automatica.
+- Deteccion de exactamente un rostro en entrada y salida.
 - Registro de salida con matricula, foto de salida y QR vigente.
+- Comparacion facial entre foto de entrada y foto de salida.
 - QR disponible de 4:30 p. m. a 5:10 p. m.
 - Modo prueba para habilitar la salida fuera del horario real.
 - Evita duplicar registros por matricula y fecha.
-- Tabla global con miniaturas de evidencia.
+- Tabla global con miniaturas, identidad, similitud y observaciones.
 - Exportacion a CSV compatible con Excel.
 - Clave administrativa simple para acciones sensibles.
 - Auditoria local basica de exportaciones, limpiezas, eliminaciones y observaciones.
@@ -49,6 +78,10 @@ ADMIN123
 
 Esta clave sigue siendo una proteccion de MVP. Para produccion real conviene
 mover administracion a Supabase Auth, roles y funciones Edge.
+
+No se usa `service_role_key` en frontend. La app usa una publishable key y RLS
+con permisos por columnas para limitar inserciones de entrada y actualizaciones
+de salida.
 
 ## Nota tecnica
 

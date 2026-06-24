@@ -31,6 +31,8 @@
         </div>
       </header>
 
+      <div id="faceStatus" class="model-status" data-tone="pending">Cargando modelos de reconocimiento facial...</div>
+
       <main>
         <section class="dashboard-grid" data-view="home">
           <section class="panel hero-panel">
@@ -123,6 +125,7 @@
               <video id="entryVideo" playsinline autoplay muted></video>
               <canvas id="entryCanvas" class="is-hidden"></canvas>
               <img id="entryPreview" class="photo-preview is-hidden" alt="Foto de entrada" />
+              <p id="entryFaceStatus" class="face-status" data-tone="pending">Espera a que carguen los modelos faciales.</p>
               <div class="camera-actions">
                 <button id="startEntryCamera" class="secondary">Activar camara</button>
                 <button id="takeEntryPhoto" class="primary" disabled>Tomar foto</button>
@@ -164,6 +167,7 @@
               <video id="exitVideo" playsinline autoplay muted></video>
               <canvas id="exitCanvas" class="is-hidden"></canvas>
               <img id="exitPreview" class="photo-preview is-hidden" alt="Foto de salida" />
+              <p id="exitFaceStatus" class="face-status" data-tone="pending">Espera a que carguen los modelos faciales.</p>
               <div class="camera-actions">
                 <button id="startExitCamera" class="secondary">Activar camara</button>
                 <button id="takeExitPhoto" class="primary" disabled>Tomar foto</button>
@@ -217,6 +221,9 @@
                   <th>Hora entrada</th>
                   <th>Hora salida</th>
                   <th>Estado</th>
+                  <th>Identidad</th>
+                  <th>Similitud</th>
+                  <th>Observacion</th>
                   <th>Obs. admin</th>
                   <th>Admin</th>
                   <th class="admin-only is-hidden">Acciones</th>
@@ -237,6 +244,7 @@
       <div id="toast" class="toast" role="status" aria-live="polite"></div>
     </div>
 
+    <script src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
     <script src="supabase-config.js"></script>
     <script src="app.js"></script>
   </body>
