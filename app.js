@@ -5,9 +5,11 @@ const ADMIN_KEY = "ADMIN123";
 const QR_START = { hour: 16, minute: 30 };
 const QR_END = { hour: 17, minute: 10 };
 const QR_VALID_MINUTES = 5;
+const SUPABASE = window.SUPABASE_CONFIG || {};
+const CLOUD_ENABLED = Boolean(SUPABASE.url && SUPABASE.publishableKey && SUPABASE.bucket);
 
 const state = {
-  records: loadRecords(),
+  records: loadLocalRecords(),
   adminLog: loadAdminLog(),
   demoMode: localStorage.getItem(DEMO_KEY) === "true",
   isAdmin: false,
@@ -16,6 +18,7 @@ const state = {
   entryStream: null,
   exitStream: null,
   qrToken: "",
+  loadingRecords: false,
 };
 
 const $ = (selector) => document.querySelector(selector);
@@ -60,7 +63,7 @@ const els = {
   pendingRecords: $("#pendingRecords"),
 };
 
-function loadRecords() {
+function loadLocalRecords() {
   try {
     return (JSON.parse(localStorage.getItem(STORAGE_KEY)) || []).map(normalizeRecord);
   } catch {
@@ -78,7 +81,7 @@ function normalizeRecord(record) {
   };
 }
 
-function saveRecords() {
+function persistLocalSnapshot() {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state.records));
 }
 
@@ -117,6 +120,30 @@ function nowParts(date = new Date()) {
   };
 }
 
+function todayIso(date = new Date()) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function displayDate(isoDate) {
+  if (!isoDate || !isoDate.includes("-")) return isoDate || "";
+  const [year, month, day] = isoDate.split("-");
+  return `${day}/${month}/${year}`;
+}
+
+function displayTime(value) {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleTimeString("es-MX", {
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  });
+}
+
 function minutesFromStart(date = new Date()) {
   return date.getHours() * 60 + date.getMinutes();
 }
@@ -131,13 +158,190 @@ function isQrWindowOpen(date = new Date()) {
 
 function makeQrToken(date = new Date()) {
   const bucket = Math.floor(date.getTime() / (QR_VALID_MINUTES * 60 * 1000));
-  const day = date.toISOString().slice(0, 10).replaceAll("-", "");
+  const day = todayIso(date).replaceAll("-", "");
   return `SALIDA-${day}-${bucket}`;
 }
 
 function getExitUrl(token) {
   const base = window.location.href.split("#")[0];
   return `${base}#salida?token=${encodeURIComponent(token)}`;
+}
+
+function cloudHeaders(extra = {}) {
+  return {
+    apikey: SUPABASE.publishableKey,
+    Authorization: `Bearer ${SUPABASE.publishableKey}`,
+    ...extra,
+  };
+}
+
+async function supabaseRequest(path, options = {}) {
+  const response = await fetch(`${SUPABASE.url}${path}`, {
+    ...options,
+    headers: cloudHeaders(options.headers || {}),
+  });
+
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(text || `Supabase error ${response.status}`);
+  }
+
+  if (response.status === 204) return null;
+  const text = await response.text();
+  return text ? JSON.parse(text) : null;
+}
+
+function rowToRecord(row) {
+  return normalizeRecord({
+    id: row.id,
+    nombre: row.nombre,
+    matricula: row.matricula,
+    fecha: row.fecha,
+    horaEntrada: displayTime(row.hora_entrada),
+    fotoEntrada: row.foto_entrada_url,
+    horaSalida: displayTime(row.hora_salida),
+    fotoSalida: row.foto_salida_url || "",
+    qrSalida: row.qr_salida || "",
+    estado: row.estado,
+    bloqueado: row.bloqueado,
+    observaciones: row.observaciones || "",
+    observacion_admin: row.observacion_admin || "",
+    modificado_por_admin: Boolean(row.modificado_por_admin),
+  });
+}
+
+async function refreshRecords({ silent = false } = {}) {
+  if (!CLOUD_ENABLED) {
+    renderRecords();
+    return;
+  }
+
+  try {
+    state.loadingRecords = true;
+    const rows = await supabaseRequest("/rest/v1/asistencias?select=*&order=fecha.desc,hora_entrada.desc");
+    state.records = (rows || []).map(rowToRecord);
+    persistLocalSnapshot();
+    renderRecords();
+  } catch (error) {
+    if (!silent) showToast("No se pudo cargar la lista global. Revisa la conexion.");
+    renderRecords();
+  } finally {
+    state.loadingRecords = false;
+  }
+}
+
+function dataUrlToBlob(dataUrl) {
+  const [meta, base64] = dataUrl.split(",");
+  const mime = meta.match(/data:(.*?);base64/)?.[1] || "image/jpeg";
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index += 1) {
+    bytes[index] = binary.charCodeAt(index);
+  }
+  return new Blob([bytes], { type: mime });
+}
+
+async function uploadEvidence(dataUrl, matricula, kind) {
+  if (!CLOUD_ENABLED) return dataUrl;
+  const cleanMatricula = normalizeMatricula(matricula).replace(/[^A-Z0-9_-]/g, "");
+  const path = `${todayIso()}/${cleanMatricula}-${kind}-${Date.now()}.jpg`;
+  const blob = dataUrlToBlob(dataUrl);
+  const encodedPath = path.split("/").map(encodeURIComponent).join("/");
+
+  const response = await fetch(`${SUPABASE.url}/storage/v1/object/${SUPABASE.bucket}/${encodedPath}`, {
+    method: "POST",
+    headers: cloudHeaders({
+      "Content-Type": blob.type || "image/jpeg",
+      "x-upsert": "false",
+    }),
+    body: blob,
+  });
+
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(text || "No se pudo subir la evidencia");
+  }
+
+  return `${SUPABASE.url}/storage/v1/object/public/${SUPABASE.bucket}/${encodedPath}`;
+}
+
+async function insertEntryRecord({ nombre, matricula, fotoEntrada }) {
+  if (!CLOUD_ENABLED) {
+    const localRecord = normalizeRecord({
+      id: globalThis.crypto?.randomUUID ? globalThis.crypto.randomUUID() : String(Date.now()),
+      nombre,
+      matricula,
+      fecha: todayIso(),
+      horaEntrada: nowParts().time,
+      fotoEntrada,
+      horaSalida: "",
+      fotoSalida: "",
+      qrSalida: "",
+      estado: "Entrada registrada",
+    });
+    state.records.unshift(localRecord);
+    persistLocalSnapshot();
+    return localRecord;
+  }
+
+  const fotoUrl = await uploadEvidence(fotoEntrada, matricula, "entrada");
+  const [row] = await supabaseRequest("/rest/v1/asistencias?select=*", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Prefer: "return=representation",
+    },
+    body: JSON.stringify({
+      nombre,
+      matricula,
+      fecha: todayIso(),
+      hora_entrada: new Date().toISOString(),
+      foto_entrada_url: fotoUrl,
+      estado: "Entrada registrada",
+      bloqueado: true,
+    }),
+  });
+  return rowToRecord(row);
+}
+
+async function updateExitRecord(record, { fotoSalida, qrToken }) {
+  if (!CLOUD_ENABLED) {
+    record.horaSalida = nowParts().time;
+    record.fotoSalida = fotoSalida;
+    record.qrSalida = qrToken;
+    record.estado = "Asistencia completa";
+    record.observaciones = "Salida validada por QR";
+    persistLocalSnapshot();
+    return record;
+  }
+
+  const fotoUrl = await uploadEvidence(fotoSalida, record.matricula, "salida");
+  const [row] = await supabaseRequest(`/rest/v1/asistencias?id=eq.${encodeURIComponent(record.id)}&select=*`, {
+    method: "PATCH",
+    headers: {
+      "Content-Type": "application/json",
+      Prefer: "return=representation",
+    },
+    body: JSON.stringify({
+      hora_salida: new Date().toISOString(),
+      foto_salida_url: fotoUrl,
+      qr_salida: qrToken,
+      estado: "Asistencia completa",
+      observaciones: "Salida validada por QR",
+      updated_at: new Date().toISOString(),
+    }),
+  });
+  return rowToRecord(row);
+}
+
+async function callAdminRpc(functionName, payload) {
+  return supabaseRequest(`/rest/v1/rpc/${functionName}`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(payload),
+  });
 }
 
 function updateClockAndQr() {
@@ -177,7 +381,7 @@ function showView(name) {
   setActiveNavigation(name);
   if (name !== "entry") stopCamera("entry");
   if (name !== "exit") stopCamera("exit");
-  if (name === "records") renderRecords();
+  if (name === "records" || name === "home") refreshRecords({ silent: true });
   window.scrollTo({ top: 0, behavior: "smooth" });
 }
 
@@ -193,7 +397,7 @@ function showToast(message) {
   window.clearTimeout(showToast.timer);
   showToast.timer = window.setTimeout(() => {
     els.toast.classList.remove("is-visible");
-  }, 3200);
+  }, 3600);
 }
 
 async function startCamera(kind) {
@@ -253,56 +457,46 @@ function normalizeMatricula(value) {
 }
 
 function todayRecordByMatricula(matricula) {
-  const { date } = nowParts();
+  const today = todayIso();
   return state.records.find(
-    (record) => record.fecha === date && record.matricula === matricula
+    (record) => record.fecha === today && record.matricula === matricula
   );
 }
 
-function handleEntrySubmit(event) {
+async function handleEntrySubmit(event) {
   event.preventDefault();
 
   const nombre = els.entryName.value.trim();
   const matricula = normalizeMatricula(els.entryMatricula.value);
-  const { date, time } = nowParts();
 
   if (!state.entryPhoto || !nombre || !matricula) {
     showToast("Falta foto, nombre o matricula para guardar la entrada.");
     return;
   }
 
+  await refreshRecords({ silent: true });
+
   if (todayRecordByMatricula(matricula)) {
     showToast("Ya existe un registro para esa matricula el dia de hoy.");
     return;
   }
 
-  state.records.unshift({
-    id: globalThis.crypto?.randomUUID ? globalThis.crypto.randomUUID() : String(Date.now()),
-    nombre,
-    matricula,
-    fecha: date,
-    horaEntrada: time,
-    fotoEntrada: state.entryPhoto,
-    horaSalida: "",
-    fotoSalida: "",
-    qrSalida: "",
-    estado: "Entrada registrada",
-    bloqueado: true,
-    observaciones: "",
-    observacion_admin: "",
-    modificado_por_admin: false,
-  });
-
-  saveRecords();
-  state.entryPhoto = "";
-  els.entryForm.reset();
-  els.entryPreview.classList.add("is-hidden");
-  stopCamera("entry");
-  showToast("Entrada registrada correctamente.");
-  renderRecords();
+  try {
+    const record = await insertEntryRecord({ nombre, matricula, fotoEntrada: state.entryPhoto });
+    state.records.unshift(record);
+    persistLocalSnapshot();
+    state.entryPhoto = "";
+    els.entryForm.reset();
+    els.entryPreview.classList.add("is-hidden");
+    stopCamera("entry");
+    await refreshRecords({ silent: true });
+    showToast(CLOUD_ENABLED ? "Entrada guardada en lista global." : "Entrada registrada localmente.");
+  } catch (error) {
+    showToast("No se pudo guardar la entrada global. Intenta de nuevo.");
+  }
 }
 
-function handleExitSubmit(event) {
+async function handleExitSubmit(event) {
   event.preventDefault();
 
   if (!isQrWindowOpen()) {
@@ -311,13 +505,14 @@ function handleExitSubmit(event) {
   }
 
   const matricula = normalizeMatricula(els.exitMatricula.value);
-  const record = todayRecordByMatricula(matricula);
-  const { time } = nowParts();
 
   if (!matricula || !state.exitPhoto) {
     showToast("Falta matricula o foto de salida.");
     return;
   }
+
+  await refreshRecords({ silent: true });
+  const record = todayRecordByMatricula(matricula);
 
   if (!record) {
     showToast("No existe entrada registrada hoy para esa matricula.");
@@ -329,20 +524,17 @@ function handleExitSubmit(event) {
     return;
   }
 
-  record.horaSalida = time;
-  record.fotoSalida = state.exitPhoto;
-  record.qrSalida = state.qrToken;
-  record.estado = "Asistencia completa";
-  record.observaciones = "Salida validada por QR";
-  record.bloqueado = true;
-
-  saveRecords();
-  state.exitPhoto = "";
-  els.exitForm.reset();
-  els.exitPreview.classList.add("is-hidden");
-  stopCamera("exit");
-  showToast("Salida registrada correctamente.");
-  renderRecords();
+  try {
+    await updateExitRecord(record, { fotoSalida: state.exitPhoto, qrToken: state.qrToken });
+    state.exitPhoto = "";
+    els.exitForm.reset();
+    els.exitPreview.classList.add("is-hidden");
+    stopCamera("exit");
+    await refreshRecords({ silent: true });
+    showToast(CLOUD_ENABLED ? "Salida guardada en lista global." : "Salida registrada localmente.");
+  } catch (error) {
+    showToast("No se pudo guardar la salida global. Intenta de nuevo.");
+  }
 }
 
 function renderRecords() {
@@ -359,7 +551,7 @@ function renderRecords() {
       <td>${imageCell(record.fotoSalida, "Salida")}</td>
       <td>${escapeHtml(record.nombre)}</td>
       <td>${escapeHtml(record.matricula)}</td>
-      <td>${escapeHtml(record.fecha)}</td>
+      <td>${escapeHtml(displayDate(record.fecha))}</td>
       <td>${escapeHtml(record.horaEntrada)}</td>
       <td>${escapeHtml(record.horaSalida || "Pendiente")}</td>
       <td><span class="badge ${statusClass}">${escapeHtml(record.estado)}</span></td>
@@ -388,7 +580,7 @@ function updateSummary() {
 
 function imageCell(src, alt) {
   if (!src) return `<span class="muted">Sin foto</span>`;
-  return `<img class="thumb" src="${src}" alt="${alt}" />`;
+  return `<a href="${src}" target="_blank" rel="noopener"><img class="thumb" src="${src}" alt="${alt}" /></a>`;
 }
 
 function escapeHtml(value) {
@@ -430,7 +622,9 @@ function updateAdminControls() {
   els.adminStatus.classList.toggle("is-blocked", !state.isAdmin);
   els.adminStatus.textContent = state.isAdmin
     ? "Modo administrativo activo. Las acciones sensibles quedaran registradas en auditoria."
-    : "Modo lectura activo. No se pueden modificar horarios, fotos, estados ni eliminar registros.";
+    : CLOUD_ENABLED
+      ? "Lista global activa. Los usuarios pueden consultar registros; las acciones sensibles requieren clave."
+      : "Modo local activo. Configura Supabase para lista global.";
 }
 
 function renderAdminAudit() {
@@ -467,7 +661,7 @@ function exportCsv() {
   const rows = state.records.map((record) => [
     record.nombre,
     record.matricula,
-    record.fecha,
+    displayDate(record.fecha),
     record.horaEntrada,
     record.horaSalida,
     record.estado,
@@ -485,7 +679,7 @@ function exportCsv() {
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;
-  link.download = `asistencia-${new Date().toISOString().slice(0, 10)}.csv`;
+  link.download = `asistencia-${todayIso()}.csv`;
   link.click();
   URL.revokeObjectURL(url);
   addAdminLog("Exportacion CSV", `${state.records.length} registros exportados`);
@@ -497,24 +691,34 @@ function csvCell(value) {
   return `"${text}"`;
 }
 
-function clearRecords() {
+async function clearRecords() {
   if (!requestAdminAccess()) return;
   if (!state.records.length) {
     showToast("No hay datos para limpiar.");
     return;
   }
 
-  if (confirm("Deseas eliminar todos los registros guardados en este navegador?")) {
-    const total = state.records.length;
-    state.records = [];
-    saveRecords();
-    addAdminLog("Limpieza de datos", `${total} registros eliminados`);
-    renderRecords();
+  if (!confirm("Deseas eliminar todos los registros globales?")) return;
+
+  try {
+    if (CLOUD_ENABLED) {
+      const deleted = await callAdminRpc("admin_clear_asistencias", { p_admin_key: ADMIN_KEY });
+      addAdminLog("Limpieza global", `${deleted || state.records.length} registros eliminados`);
+      await refreshRecords({ silent: true });
+    } else {
+      const total = state.records.length;
+      state.records = [];
+      persistLocalSnapshot();
+      addAdminLog("Limpieza local", `${total} registros eliminados`);
+      renderRecords();
+    }
     showToast("Registros eliminados por administrativo.");
+  } catch (error) {
+    showToast("No se pudo limpiar la lista global.");
   }
 }
 
-function editAdminObservation(id) {
+async function editAdminObservation(id) {
   if (!requestAdminAccess()) return;
   const record = state.records.find((item) => item.id === id);
   if (!record) return;
@@ -525,25 +729,47 @@ function editAdminObservation(id) {
   );
   if (value === null) return;
 
-  record.observacion_admin = value.trim();
-  record.modificado_por_admin = true;
-  saveRecords();
-  addAdminLog("Observacion editada", `${record.matricula} - ${record.observacion_admin || "Sin texto"}`);
-  renderRecords();
-  showToast("Observacion administrativa guardada.");
+  try {
+    if (CLOUD_ENABLED) {
+      await callAdminRpc("admin_update_observacion_asistencia", {
+        p_id: id,
+        p_admin_key: ADMIN_KEY,
+        p_observacion: value.trim(),
+      });
+      await refreshRecords({ silent: true });
+    } else {
+      record.observacion_admin = value.trim();
+      record.modificado_por_admin = true;
+      persistLocalSnapshot();
+      renderRecords();
+    }
+    addAdminLog("Observacion editada", `${record.matricula} - ${value.trim() || "Sin texto"}`);
+    showToast("Observacion administrativa guardada.");
+  } catch (error) {
+    showToast("No se pudo guardar la observacion global.");
+  }
 }
 
-function deleteRecord(id) {
+async function deleteRecord(id) {
   if (!requestAdminAccess()) return;
   const record = state.records.find((item) => item.id === id);
   if (!record) return;
 
-  if (confirm(`Deseas eliminar el registro de ${record.matricula}?`)) {
-    state.records = state.records.filter((item) => item.id !== id);
-    saveRecords();
-    addAdminLog("Registro eliminado", `${record.matricula} del ${record.fecha}`);
-    renderRecords();
+  if (!confirm(`Deseas eliminar el registro de ${record.matricula}?`)) return;
+
+  try {
+    if (CLOUD_ENABLED) {
+      await callAdminRpc("admin_delete_asistencia", { p_id: id, p_admin_key: ADMIN_KEY });
+      await refreshRecords({ silent: true });
+    } else {
+      state.records = state.records.filter((item) => item.id !== id);
+      persistLocalSnapshot();
+      renderRecords();
+    }
+    addAdminLog("Registro eliminado", `${record.matricula} del ${displayDate(record.fecha)}`);
     showToast("Registro eliminado por administrativo.");
+  } catch (error) {
+    showToast("No se pudo eliminar el registro global.");
   }
 }
 
@@ -560,7 +786,7 @@ function handleRecordAction(event) {
   }
 }
 
-function init() {
+async function init() {
   els.demoMode.checked = state.demoMode;
   updateClockAndQr();
   renderRecords();
@@ -568,7 +794,15 @@ function init() {
   updateAdminControls();
   setActiveNavigation("home");
 
+  if (CLOUD_ENABLED) {
+    await refreshRecords({ silent: true });
+    showToast("Lista global conectada a Supabase.");
+  } else {
+    showToast("Modo local: falta configurar Supabase.");
+  }
+
   setInterval(updateClockAndQr, 1000);
+  setInterval(() => refreshRecords({ silent: true }), 30000);
 
   $$('[data-target]').forEach((button) => {
     button.addEventListener("click", () => showView(button.dataset.target));
@@ -607,5 +841,3 @@ function init() {
 }
 
 init();
-
-
