@@ -1,4 +1,4 @@
-﻿const STORAGE_KEY = "registro_asistencia_qr_v1";
+const STORAGE_KEY = "registro_asistencia_qr_v1";
 const DEMO_KEY = "registro_asistencia_demo_mode";
 const ADMIN_LOG_KEY = "registro_asistencia_admin_log_v1";
 const ADMIN_KEY = "ADMIN123";
@@ -544,8 +544,20 @@ function renderRecords() {
 
   state.records.forEach((record) => {
     const row = document.createElement("tr");
-    const statusClass = record.estado === "Asistencia completa" ? "" : "pending";
-    const adminClass = record.modificado_por_admin ? "" : "pending";
+
+    // Clase semántica para el estado del registro
+    let statusClass = "pending";
+    if (record.estado === "Asistencia completa") statusClass = "success";
+    else if (
+      record.estado === "fallida" ||
+      record.estado === "sospechoso" ||
+      record.estado === "Fallida" ||
+      record.estado === "Sospechoso"
+    ) statusClass = "danger";
+
+    // Clase para columna de modificación admin
+    const adminClass = record.modificado_por_admin ? "admin" : "pending";
+
     row.innerHTML = `
       <td>${imageCell(record.fotoEntrada, "Entrada")}</td>
       <td>${imageCell(record.fotoSalida, "Salida")}</td>
