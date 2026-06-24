@@ -8,6 +8,15 @@ const QR_VALID_MINUTES = 5;
 const FACE_MODEL_URL = "models";
 const FACE_DISTANCE_STRONG = 0.46;
 const FACE_DISTANCE_REVIEW = 0.62;
+const LIFE_CHALLENGES = [
+  "Mira a la izquierda",
+  "Mira a la derecha",
+  "Sonrie",
+  "Levanta la mano derecha",
+  "Levanta la mano izquierda",
+  "Toca tu oreja",
+  "Acercate ligeramente a la camara",
+];
 const SUPABASE = window.SUPABASE_CONFIG || {};
 const CLOUD_ENABLED = Boolean(SUPABASE.url && SUPABASE.publishableKey && SUPABASE.bucket);
 
@@ -26,6 +35,10 @@ const state = {
   facialModelsError: false,
   entryFace: null,
   exitFace: null,
+  lifeChallenge: "",
+  serverQr: null,
+  serverClockOffset: 0,
+  nextQrRefreshAt: 0,
 };
 
 const $ = (selector) => document.querySelector(selector);
@@ -44,6 +57,8 @@ const els = {
   faceStatus: $("#faceStatus"),
   entryFaceStatus: $("#entryFaceStatus"),
   exitFaceStatus: $("#exitFaceStatus"),
+  lifeChallenge: $("#lifeChallenge"),
+  locationStatus: $("#locationStatus"),
   entryVideo: $("#entryVideo"),
   entryCanvas: $("#entryCanvas"),
   entryPreview: $("#entryPreview"),
@@ -95,10 +110,27 @@ function normalizeRecord(record) {
     similitudFacial: null,
     validacionIdentidad: "pendiente",
     metodoSalida: "",
-    tokenQrUsado: "",    ...record,
+    tokenQrUsado: "",
+    serverTimeEntrada: "",
+    serverTimeSalida: "",
+    horarioValidado: false,
+    horarioObservacion: "",
+    qrValidado: false,
+    qrObservacion: "",
+    ubicacionValidada: false,
+    latitudSalida: null,
+    longitudSalida: null,
+    precisionUbicacion: null,
+    distanciaEmpresaMetros: null,
+    ubicacionObservacion: "",
+    retoVida: "",
+    retoVidaCumplido: false,
+    retoVidaObservacion: "",
+    riesgo: "normal",
+    alertas: [],
+    ...record,
   };
 }
-
 function persistLocalSnapshot() {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state.records));
 }
@@ -121,6 +153,14 @@ function addAdminLog(action, detail) {
   state.adminLog = state.adminLog.slice(0, 8);
   saveAdminLog();
   renderAdminAudit();
+  if (CLOUD_ENABLED && state.isAdmin) {
+    callAdminRpc("admin_log_event", {
+      p_admin_key: ADMIN_KEY,
+      p_accion: action,
+      p_detalle: detail,
+      p_resultado: "ok",
+    }).catch(() => undefined);
+  }
 }
 
 function nowParts(date = new Date()) {
@@ -234,6 +274,23 @@ function rowToRecord(row) {
     validacionIdentidad: row.validacion_identidad || "pendiente",
     metodoSalida: row.metodo_salida || "",
     tokenQrUsado: row.token_qr_usado || row.qr_salida || "",
+    serverTimeEntrada: row.server_time_entrada || "",
+    serverTimeSalida: row.server_time_salida || "",
+    horarioValidado: Boolean(row.horario_validado),
+    horarioObservacion: row.horario_observacion || "",
+    qrValidado: Boolean(row.qr_validado),
+    qrObservacion: row.qr_observacion || "",
+    ubicacionValidada: Boolean(row.ubicacion_validada),
+    latitudSalida: row.latitud_salida ?? null,
+    longitudSalida: row.longitud_salida ?? null,
+    precisionUbicacion: row.precision_ubicacion ?? null,
+    distanciaEmpresaMetros: row.distancia_empresa_metros ?? null,
+    ubicacionObservacion: row.ubicacion_observacion || "",
+    retoVida: row.reto_vida || "",
+    retoVidaCumplido: Boolean(row.reto_vida_cumplido),
+    retoVidaObservacion: row.reto_vida_observacion || "",
+    riesgo: row.riesgo || "normal",
+    alertas: row.alertas || [],
   });
 }
 async function refreshRecords({ silent = false } = {}) {
@@ -306,6 +363,7 @@ async function insertEntryRecord({ nombre, matricula, fotoEntrada, descriptorEnt
       validacionIdentidad: "pendiente",
       descriptorEntrada,
       rostroEntradaDetectado: true,
+      serverTimeEntrada: new Date().toISOString(),
     });
     state.records.unshift(localRecord);
     persistLocalSnapshot();
@@ -313,27 +371,18 @@ async function insertEntryRecord({ nombre, matricula, fotoEntrada, descriptorEnt
   }
 
   const fotoUrl = await uploadEvidence(fotoEntrada, matricula, "entrada");
-  const [row] = await supabaseRequest("/rest/v1/asistencias?select=*", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Prefer: "return=representation",
-    },
-    body: JSON.stringify({
-      nombre,
-      matricula,
-      fecha: todayIso(),
-      foto_entrada_url: fotoUrl,
-      descriptor_entrada: descriptorEntrada,
-      rostro_entrada_detectado: true,
-      estado: "entrada_registrada",
-      validacion_identidad: "pendiente",
-    }),
+  const row = await callAdminRpc("registrar_entrada_segura", {
+    p_nombre: nombre,
+    p_matricula: matricula,
+    p_foto_entrada_url: fotoUrl,
+    p_descriptor_entrada: descriptorEntrada,
+    p_rostro_entrada_detectado: true,
   });
   return rowToRecord(row);
 }
-async function updateExitRecord(record, { fotoSalida, qrToken, descriptorSalida, faceValidation }) {
+async function updateExitRecord(record, { fotoSalida, qrToken, descriptorSalida, location, lifeChallenge }) {
   if (!CLOUD_ENABLED) {
+    const faceValidation = evaluateFaceMatch(record.descriptorEntrada, descriptorSalida);
     record.horaSalida = nowParts().time;
     record.fotoSalida = fotoSalida;
     record.qrSalida = qrToken;
@@ -346,32 +395,27 @@ async function updateExitRecord(record, { fotoSalida, qrToken, descriptorSalida,
     record.observacion = faceValidation.observacion;
     record.observaciones = faceValidation.observacion;
     record.metodoSalida = "qr_horario";
+    record.qrValidado = true;
+    record.ubicacionValidada = location.estado === "ubicacion_correcta";
+    record.precisionUbicacion = location.precision ?? null;
+    record.retoVida = lifeChallenge;
+    record.retoVidaCumplido = Boolean(lifeChallenge);
+    record.riesgo = record.ubicacionValidada && faceValidation.status === "identidad_validada" ? "normal" : "revision_multiple";
     persistLocalSnapshot();
     return record;
   }
 
   const fotoUrl = await uploadEvidence(fotoSalida, record.matricula, "salida");
-  const [row] = await supabaseRequest(`/rest/v1/asistencias?id=eq.${encodeURIComponent(record.id)}&select=*`, {
-    method: "PATCH",
-    headers: {
-      "Content-Type": "application/json",
-      Prefer: "return=representation",
-    },
-    body: JSON.stringify({
-      hora_salida: new Date().toISOString(),
-      foto_salida_url: fotoUrl,
-      descriptor_salida: descriptorSalida,
-      rostro_salida_detectado: true,
-      similitud_facial: faceValidation.similarity,
-      validacion_identidad: faceValidation.status,
-      metodo_salida: "qr_horario",
-      token_qr_usado: qrToken,
-      qr_salida: qrToken,
-      estado: faceValidation.estado,
-      observacion: faceValidation.observacion,
-      observaciones: faceValidation.observacion,
-      updated_at: new Date().toISOString(),
-    }),
+  const row = await callAdminRpc("registrar_salida_segura", {
+    p_matricula: record.matricula,
+    p_foto_salida_url: fotoUrl,
+    p_descriptor_salida: descriptorSalida,
+    p_token_qr: qrToken,
+    p_latitud: location.latitud ?? null,
+    p_longitud: location.longitud ?? null,
+    p_precision: location.precision ?? null,
+    p_ubicacion_estado: location.estado || "ubicacion_denegada",
+    p_reto_vida: lifeChallenge || "",
   });
   return rowToRecord(row);
 }
@@ -385,35 +429,71 @@ async function callAdminRpc(functionName, payload) {
   });
 }
 
-function updateClockAndQr() {
-  const now = new Date();
-  const { time } = nowParts(now);
-  const isOpen = isQrWindowOpen(now);
-  const token = makeQrToken(now);
-  const exitUrl = getExitUrl(token);
-
-  state.qrToken = token;
-  els.clockLabel.textContent = time;
-  els.qrWindowLabel.textContent = isOpen ? "QR disponible" : "QR bloqueado";
-  els.qrMessage.textContent = isOpen
-    ? "El QR esta vigente. Puede abrir el registro de salida."
-    : "El QR de salida no esta disponible fuera del horario permitido.";
-
-  els.qrBox.classList.toggle("is-disabled", !isOpen);
-  els.qrImage.hidden = !isOpen;
-  els.qrDirectLink.hidden = !isOpen;
-  els.qrTokenLabel.textContent = isOpen ? `Token: ${token}` : "Token: no disponible";
-  els.qrDirectLink.href = exitUrl;
-  els.qrImage.src = isOpen
-    ? `https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(exitUrl)}`
-    : "";
-
-  els.exitGuard.textContent = isOpen
-    ? "QR vigente. Captura la foto de salida y escribe la matricula."
-    : "Salida bloqueada. El QR solo esta disponible de 4:30 p. m. a 5:10 p. m.";
-  els.exitGuard.classList.toggle("is-blocked", !isOpen);
+async function fetchServerQrToken() {
+  if (!CLOUD_ENABLED) {
+    const now = new Date();
+    const isOpen = isQrWindowOpen(now);
+    return {
+      token: isOpen ? makeQrToken(now) : null,
+      server_time: now.toISOString(),
+      expires_at: isOpen ? new Date(now.getTime() + QR_VALID_MINUTES * 60 * 1000).toISOString() : null,
+      is_open: isOpen,
+      message: isOpen ? "QR valido." : "Salida bloqueada por horario local de prueba.",
+    };
+  }
+  return callAdminRpc("get_current_qr_token", {});
 }
 
+async function updateClockAndQr({ force = false } = {}) {
+  const now = new Date();
+  if (!force && state.serverQr && Date.now() < state.nextQrRefreshAt) {
+    const serverNow = new Date(Date.now() + state.serverClockOffset);
+    els.clockLabel.textContent = displayTime(serverNow.toISOString());
+    return;
+  }
+
+  try {
+    const qr = await fetchServerQrToken();
+    state.serverQr = qr;
+    state.nextQrRefreshAt = Date.now() + 12000;
+    if (qr.server_time) state.serverClockOffset = new Date(qr.server_time).getTime() - Date.now();
+
+    const isOpen = Boolean(qr.is_open && qr.token);
+    const token = qr.token || "";
+    const exitUrl = token ? getExitUrl(token) : "#salida";
+
+    state.qrToken = token;
+    els.clockLabel.textContent = displayTime(qr.server_time || now.toISOString());
+    els.qrWindowLabel.textContent = isOpen ? "QR servidor disponible" : "QR servidor bloqueado";
+    els.qrMessage.textContent = isOpen
+      ? "QR valido. La vigencia y horario se validan con Supabase."
+      : (qr.message || "La salida aun no esta disponible.");
+
+    els.qrBox.classList.toggle("is-disabled", !isOpen);
+    els.qrImage.hidden = !isOpen;
+    els.qrDirectLink.hidden = !isOpen;
+    els.qrTokenLabel.textContent = isOpen
+      ? `Expira: ${displayTime(qr.expires_at)} | Token servidor`
+      : "Token: no disponible";
+    els.qrDirectLink.href = exitUrl;
+    els.qrImage.src = isOpen
+      ? `https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(exitUrl)}`
+      : "";
+
+    els.exitGuard.textContent = isOpen
+      ? "QR vigente. La hora se valida con el servidor; completa foto, reto y ubicacion."
+      : "Salida bloqueada. El QR solo esta disponible de 4:30 p. m. a 5:10 p. m. con hora de servidor.";
+    els.exitGuard.classList.toggle("is-blocked", !isOpen);
+  } catch (error) {
+    els.qrWindowLabel.textContent = "QR no disponible";
+    els.qrMessage.textContent = "No se pudo validar QR con servidor. Revisa la conexion.";
+    els.qrBox.classList.add("is-disabled");
+    els.qrImage.hidden = true;
+    els.qrDirectLink.hidden = true;
+    els.exitGuard.textContent = "Salida bloqueada hasta recuperar validacion de servidor.";
+    els.exitGuard.classList.add("is-blocked");
+  }
+}
 function showView(name) {
   $$('[data-view]').forEach((view) => {
     view.classList.toggle("is-hidden", view.dataset.view !== name);
@@ -422,6 +502,11 @@ function showView(name) {
   setActiveNavigation(name);
   if (name !== "entry") stopCamera("entry");
   if (name !== "exit") stopCamera("exit");
+  if (name === "exit") {
+    pickLifeChallenge();
+    setLocationStatus("La ubicacion se solicitara al guardar salida.");
+    updateClockAndQr({ force: true });
+  }
   if (name === "records" || name === "home") refreshRecords({ silent: true });
   window.scrollTo({ top: 0, behavior: "smooth" });
 }
@@ -584,8 +669,52 @@ function getIncomingQrToken() {
 }
 
 function isCurrentQrToken(token) {
-  if (state.demoMode) return true;
-  return Boolean(token) && token === makeQrToken(new Date());
+  if (!CLOUD_ENABLED) return state.demoMode || (Boolean(token) && token === makeQrToken(new Date()));
+  return Boolean(token) && Boolean(state.serverQr?.is_open) && token === state.qrToken;
+}
+
+function pickLifeChallenge() {
+  state.lifeChallenge = LIFE_CHALLENGES[Math.floor(Math.random() * LIFE_CHALLENGES.length)];
+  if (els.lifeChallenge) els.lifeChallenge.textContent = state.lifeChallenge;
+}
+
+function setLocationStatus(message, tone = "neutral") {
+  if (!els.locationStatus) return;
+  els.locationStatus.textContent = message;
+  els.locationStatus.dataset.tone = tone;
+}
+
+function requestExitLocation() {
+  setLocationStatus("Solicitando ubicacion para validar presencia.", "pending");
+  if (!navigator.geolocation) {
+    setLocationStatus("No se pudo obtener tu ubicacion. El registro quedara en revision.", "danger");
+    return Promise.resolve({ estado: "ubicacion_denegada" });
+  }
+
+  return new Promise((resolve) => {
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        const location = {
+          estado: position.coords.accuracy > 200 ? "ubicacion_imprecisa" : "ubicacion_correcta",
+          latitud: Number(position.coords.latitude.toFixed(7)),
+          longitud: Number(position.coords.longitude.toFixed(7)),
+          precision: Math.round(position.coords.accuracy),
+        };
+        setLocationStatus(
+          location.estado === "ubicacion_correcta"
+            ? "Ubicacion recibida; el servidor validara el radio permitido."
+            : "Precision GPS baja; el servidor marcara revision si corresponde.",
+          location.estado === "ubicacion_correcta" ? "success" : "pending"
+        );
+        resolve(location);
+      },
+      () => {
+        setLocationStatus("No se pudo obtener tu ubicacion. El registro quedara en revision.", "danger");
+        resolve({ estado: "ubicacion_denegada" });
+      },
+      { enableHighAccuracy: true, timeout: 12000, maximumAge: 0 }
+    );
+  });
 }
 async function startCamera(kind) {
   const video = kind === "entry" ? els.entryVideo : els.exitVideo;
@@ -714,9 +843,10 @@ async function handleEntrySubmit(event) {
 async function handleExitSubmit(event) {
   event.preventDefault();
 
+  await updateClockAndQr({ force: true });
   const qrToken = getIncomingQrToken() || state.qrToken;
-  if (!isQrWindowOpen() || !isCurrentQrToken(qrToken)) {
-    showToast("No se puede registrar salida fuera del horario permitido o con QR vencido.");
+  if (!isCurrentQrToken(qrToken)) {
+    showToast("El QR ha expirado. Escanea el codigo actual.");
     return;
   }
 
@@ -728,7 +858,11 @@ async function handleExitSubmit(event) {
   }
 
   await refreshRecords({ silent: true });
-  const record = todayRecordByMatricula(matricula);
+  let record = todayRecordByMatricula(matricula);
+
+  if (!record && CLOUD_ENABLED) {
+    record = normalizeRecord({ matricula });
+  }
 
   if (!record) {
     showToast("No existe una entrada registrada para esta matricula el dia de hoy.");
@@ -740,25 +874,28 @@ async function handleExitSubmit(event) {
     return;
   }
 
-  const faceValidation = evaluateFaceMatch(record.descriptorEntrada, state.exitFace.descriptor);
+  const location = await requestExitLocation();
 
   try {
-    await updateExitRecord(record, {
+    const updated = await updateExitRecord(record, {
       fotoSalida: state.exitPhoto,
       qrToken,
       descriptorSalida: state.exitFace.descriptor,
-      faceValidation,
+      location,
+      lifeChallenge: state.lifeChallenge,
     });
     state.exitPhoto = "";
     state.exitFace = null;
     els.exitForm.reset();
     els.exitPreview.classList.add("is-hidden");
     setFaceStatus(els.exitFaceStatus, "Listo para nueva captura.");
+    pickLifeChallenge();
     stopCamera("exit");
     await refreshRecords({ silent: true });
-    showToast(faceValidation.toast);
+    showToast(updated.riesgo === "normal" ? "Salida registrada y validada." : "Salida registrada, pero requiere revision administrativa.");
   } catch (error) {
-    showToast("No se pudo guardar la salida global. Intenta de nuevo.");
+    const message = error.message?.includes("QR") ? error.message : "No se pudo guardar la salida segura. Intenta de nuevo.";
+    showToast(message);
   }
 }
 function statusLabel(value) {
@@ -797,11 +934,42 @@ function identityBadgeClass(value) {
   return "neutral";
 }
 
+function riskLabel(value) {
+  const labels = {
+    normal: "Normal",
+    revision_ubicacion: "Revision ubicacion",
+    revision_identidad: "Revision identidad",
+    revision_qr: "Revision QR",
+    revision_horario: "Revision horario",
+    revision_multiple: "Revision multiple",
+    sospechoso: "Sospechoso",
+  };
+  return labels[value] || "Normal";
+}
+
+function riskBadgeClass(value) {
+  if (value === "normal") return "success";
+  if (value === "sospechoso") return "danger";
+  if (String(value || "").startsWith("revision")) return "warning";
+  return "neutral";
+}
+
+function booleanBadge(value, trueText = "Si", falseText = "No") {
+  return `<span class="badge ${value ? "success" : "warning"}">${value ? trueText : falseText}</span>`;
+}
+
 function formatSimilarity(value) {
   if (value === null || value === undefined || value === "") return "Pendiente";
   const numeric = Number(value);
   if (Number.isNaN(numeric)) return "Pendiente";
   return `${Math.round(numeric * 100)}%`;
+}
+
+function formatMeters(value) {
+  if (value === null || value === undefined || value === "") return "Pendiente";
+  const numeric = Number(value);
+  if (Number.isNaN(numeric)) return "Pendiente";
+  return `${Math.round(numeric)} m`;
 }
 function renderRecords() {
   updateSummary();
@@ -812,6 +980,7 @@ function renderRecords() {
     const row = document.createElement("tr");
     const statusClass = statusBadgeClass(record.estado);
     const identityClass = identityBadgeClass(record.validacionIdentidad);
+    const riskClass = riskBadgeClass(record.riesgo);
     const adminClass = record.modificado_por_admin ? "success" : "neutral";
     row.innerHTML = `
       <td>${imageCell(record.fotoEntrada, "Entrada")}</td>
@@ -824,6 +993,12 @@ function renderRecords() {
       <td><span class="badge ${statusClass}">${escapeHtml(statusLabel(record.estado))}</span></td>
       <td><span class="badge ${identityClass}">${escapeHtml(identityLabel(record.validacionIdentidad))}</span></td>
       <td>${escapeHtml(formatSimilarity(record.similitudFacial))}</td>
+      <td>${booleanBadge(record.qrValidado, "Validado", "Pendiente")}</td>
+      <td>${booleanBadge(record.ubicacionValidada, "Correcta", "Revision")}</td>
+      <td>${escapeHtml(formatMeters(record.precisionUbicacion))}</td>
+      <td>${escapeHtml(formatMeters(record.distanciaEmpresaMetros))}</td>
+      <td>${escapeHtml(record.retoVida || "Pendiente")}</td>
+      <td><span class="badge ${riskClass}">${escapeHtml(riskLabel(record.riesgo))}</span></td>
       <td>${escapeHtml(record.observacion || record.observaciones || "Sin observacion")}</td>
       <td>${escapeHtml(record.observacion_admin || "Sin observacion")}</td>
       <td><span class="badge ${adminClass}">${record.modificado_por_admin ? "Si" : "No"}</span></td>
@@ -867,10 +1042,16 @@ function requestAdminAccess() {
     state.isAdmin = true;
     updateAdminControls();
     renderRecords();
+    addAdminLog("Desbloqueo admin", "Modo administrativo activado");
     showToast("Modo administrativo desbloqueado.");
     return true;
   }
-  if (value !== null) showToast("Clave administrativa incorrecta.");
+  if (value !== null) {
+    state.adminLog.unshift({ ...nowParts(), action: "Intento admin fallido", detail: "Clave incorrecta" });
+    saveAdminLog();
+    renderAdminAudit();
+    showToast("Clave administrativa incorrecta.");
+  }
   return false;
 }
 
@@ -919,13 +1100,27 @@ function exportCsv() {
     "Fecha",
     "Hora de entrada",
     "Hora de salida",
+    "Server time entrada",
+    "Server time salida",
     "Foto de entrada",
     "Foto de salida",
     "Estado",
     "Validacion de identidad",
     "Similitud facial",
+    "QR validado",
+    "Token QR usado",
+    "QR observacion",
+    "Horario validado",
+    "Horario observacion",
+    "Ubicacion validada",
+    "Distancia empresa metros",
+    "Precision ubicacion",
+    "Ubicacion observacion",
+    "Reto de vida",
+    "Reto cumplido",
+    "Riesgo",
+    "Alertas",
     "Metodo de salida",
-    "QR usado",
     "Observacion",
     "Observacion administrativa",
     "Modificado por administrativo",
@@ -937,13 +1132,27 @@ function exportCsv() {
     displayDate(record.fecha),
     record.horaEntrada,
     record.horaSalida,
+    record.serverTimeEntrada,
+    record.serverTimeSalida,
     record.fotoEntrada,
     record.fotoSalida,
     statusLabel(record.estado),
     identityLabel(record.validacionIdentidad),
     formatSimilarity(record.similitudFacial),
-    record.metodoSalida,
+    record.qrValidado ? "Si" : "No",
     record.tokenQrUsado || record.qrSalida,
+    record.qrObservacion,
+    record.horarioValidado ? "Si" : "No",
+    record.horarioObservacion,
+    record.ubicacionValidada ? "Si" : "No",
+    record.distanciaEmpresaMetros,
+    record.precisionUbicacion,
+    record.ubicacionObservacion,
+    record.retoVida,
+    record.retoVidaCumplido ? "Si" : "No",
+    riskLabel(record.riesgo),
+    Array.isArray(record.alertas) ? record.alertas.join(" | ") : JSON.stringify(record.alertas || []),
+    record.metodoSalida,
     record.observacion || record.observaciones,
     record.observacion_admin,
     record.modificado_por_admin ? "Si" : "No",
@@ -1069,7 +1278,7 @@ async function init() {
   setFaceStatus(els.exitFaceStatus, "Espera a que carguen los modelos faciales.", "pending");
   syncCaptureControls();
   loadFaceModels();
-  updateClockAndQr();
+  updateClockAndQr({ force: true });
   renderRecords();
   renderAdminAudit();
   updateAdminControls();
@@ -1082,7 +1291,7 @@ async function init() {
     showToast("Modo local: falta configurar Supabase.");
   }
 
-  setInterval(updateClockAndQr, 1000);
+  setInterval(() => updateClockAndQr(), 1000);
   setInterval(() => refreshRecords({ silent: true }), 30000);
 
   $$('[data-target]').forEach((button) => {
@@ -1098,8 +1307,8 @@ async function init() {
   els.demoMode.addEventListener("change", () => {
     state.demoMode = els.demoMode.checked;
     localStorage.setItem(DEMO_KEY, String(state.demoMode));
-    updateClockAndQr();
-    showToast(state.demoMode ? "Modo prueba activado." : "Modo prueba desactivado.");
+    updateClockAndQr({ force: true });
+    showToast(state.demoMode ? "Modo prueba local activado. En Supabase la salida sigue validando hora de servidor." : "Modo prueba desactivado.");
   });
 
   els.startEntryCamera.addEventListener("click", () => startCamera("entry"));

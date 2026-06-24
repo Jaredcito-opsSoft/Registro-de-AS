@@ -1,4 +1,4 @@
-﻿<!doctype html>
+<!doctype html>
 <html lang="es">
   <head>
     <meta charset="utf-8" />
@@ -162,6 +162,17 @@
             La salida solo puede registrarse cuando el QR esta vigente.
           </div>
 
+          <div class="anti-fraud-strip">
+            <div>
+              <strong>Reto de vida</strong>
+              <span id="lifeChallenge">Preparando reto...</span>
+            </div>
+            <div>
+              <strong>Ubicacion</strong>
+              <span id="locationStatus" data-tone="neutral">La ubicacion se solicitara al guardar salida.</span>
+            </div>
+          </div>
+
           <div class="capture-layout">
             <div class="camera-card">
               <video id="exitVideo" playsinline autoplay muted></video>
@@ -223,6 +234,12 @@
                   <th>Estado</th>
                   <th>Identidad</th>
                   <th>Similitud</th>
+                  <th>QR</th>
+                  <th>Ubicacion</th>
+                  <th>Precision</th>
+                  <th>Distancia</th>
+                  <th>Reto</th>
+                  <th>Riesgo</th>
                   <th>Observacion</th>
                   <th>Obs. admin</th>
                   <th>Admin</th>

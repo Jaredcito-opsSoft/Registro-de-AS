@@ -88,3 +88,37 @@ de salida.
 El archivo `supabase-schema.sql` documenta la estructura aplicada en Supabase.
 La app conserva una copia local de lectura como respaldo, pero el flujo normal
 usa Supabase como fuente global.
+
+## Refuerzo antifraude
+
+La salida ahora se valida con varias capas desde Supabase, no desde la hora del navegador:
+
+- Hora de servidor con zona `America/Mexico_City`.
+- QR dinamico generado por RPC y con expiracion de servidor.
+- Registro de entrada mediante `registrar_entrada_segura`.
+- Registro de salida mediante `registrar_salida_segura`.
+- GPS capturado en salida y evaluado en Supabase.
+- Reto de vida sencillo antes de la foto de salida.
+- Riesgo automatico: `normal`, `revision_ubicacion`, `revision_identidad`, `revision_qr`, `revision_horario`, `revision_multiple`, `sospechoso`.
+- Historial y CSV con QR, ubicacion, precision, distancia, reto y alertas.
+
+Los clientes anonimos ya no tienen permisos directos de `insert` o `update` sobre
+`public.asistencias`; solo pueden leer registros. Las escrituras pasan por RPCs
+con validaciones de servidor.
+
+### Configurar ubicacion real
+
+Por seguridad, la base queda preparada con `public.app_config`, pero las
+coordenadas reales de la empresa/aula deben configurarse en Supabase:
+
+```sql
+update public.app_config
+set company_lat = 19.000000,
+    company_lng = -99.000000,
+    max_distance_meters = 150,
+    updated_at = now()
+where id = true;
+```
+
+Mientras esas coordenadas no esten configuradas, la salida conserva la evidencia
+GPS pero queda marcada para revision administrativa en lugar de `normal`.
