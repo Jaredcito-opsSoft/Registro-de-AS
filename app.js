@@ -6,6 +6,7 @@ const QR_START = { hour: 16, minute: 30 };
 const QR_END = { hour: 17, minute: 10 };
 const QR_VALID_MINUTES = 5;
 const FACE_MODEL_URL = "models";
+const DEFAULT_TIMEZONE = "America/Mexico_City";
 const FACE_DISTANCE_STRONG = 0.46;
 const FACE_DISTANCE_REVIEW = 0.62;
 const LIFE_CHALLENGES = [
@@ -19,6 +20,7 @@ const LIFE_CHALLENGES = [
 ];
 const SUPABASE = window.SUPABASE_CONFIG || {};
 const CLOUD_ENABLED = Boolean(SUPABASE.url && SUPABASE.publishableKey && SUPABASE.bucket);
+const PHOTO_BUCKET = SUPABASE.bucket || "attendance-photos";
 
 const state = {
   records: loadLocalRecords(),
@@ -113,6 +115,9 @@ const els = {
   siteActive: $("#siteActive"),
   useAdminLocation: $("#useAdminLocation"),
   testAdminLocation: $("#testAdminLocation"),
+  evidenceModal: $("#evidenceModal"),
+  evidenceBody: $("#evidenceBody"),
+  closeEvidence: $("#closeEvidence"),
 };
 
 function loadLocalRecords() {
@@ -158,6 +163,30 @@ function normalizeRecord(record) {
     sitioId: "",
     sitioNombre: "",
     radioMetros: null,
+    fotoEntradaMetadata: null,
+    fotoSalidaMetadata: null,
+    fotoEntradaHash: "",
+    fotoSalidaHash: "",
+    fotoEntradaStoragePath: "",
+    fotoSalidaStoragePath: "",
+    fotoEntradaMime: "",
+    fotoSalidaMime: "",
+    fotoEntradaSizeBytes: null,
+    fotoSalidaSizeBytes: null,
+    fotoEntradaWidth: null,
+    fotoEntradaHeight: null,
+    fotoSalidaWidth: null,
+    fotoSalidaHeight: null,
+    fotoEntradaCapturedAt: "",
+    fotoSalidaCapturedAt: "",
+    fotoEntradaUserAgent: "",
+    fotoSalidaUserAgent: "",
+    fotoEntradaDeviceLabel: "",
+    fotoSalidaDeviceLabel: "",
+    fotosPrivadas: true,
+    evidenciaEntradaCompleta: false,
+    evidenciaSalidaCompleta: false,
+    evidenciaObservacion: "",
     ...record,
   };
 }
@@ -193,25 +222,37 @@ function addAdminLog(action, detail) {
   }
 }
 
+function getOperationalTimezone() {
+  return state.activeSite?.zona_horaria || DEFAULT_TIMEZONE;
+}
+
 function nowParts(date = new Date()) {
   return {
     date: date.toLocaleDateString("es-MX", {
       year: "numeric",
       month: "2-digit",
       day: "2-digit",
+      timeZone: getOperationalTimezone(),
     }),
     time: date.toLocaleTimeString("es-MX", {
       hour: "2-digit",
       minute: "2-digit",
       second: "2-digit",
+      timeZone: getOperationalTimezone(),
     }),
   };
 }
 
 function todayIso(date = new Date()) {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: getOperationalTimezone(),
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(date);
+  const year = parts.find((part) => part.type === "year")?.value || String(date.getFullYear());
+  const month = parts.find((part) => part.type === "month")?.value || String(date.getMonth() + 1).padStart(2, "0");
+  const day = parts.find((part) => part.type === "day")?.value || String(date.getDate()).padStart(2, "0");
   return `${year}-${month}-${day}`;
 }
 
@@ -229,11 +270,20 @@ function displayTime(value) {
     hour: "2-digit",
     minute: "2-digit",
     second: "2-digit",
+    timeZone: getOperationalTimezone(),
   });
 }
 
 function minutesFromStart(date = new Date()) {
-  return date.getHours() * 60 + date.getMinutes();
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: getOperationalTimezone(),
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).formatToParts(date);
+  const hour = Number(parts.find((part) => part.type === "hour")?.value || 0);
+  const minute = Number(parts.find((part) => part.type === "minute")?.value || 0);
+  return hour * 60 + minute;
 }
 
 function isQrWindowOpen(date = new Date()) {
@@ -324,6 +374,30 @@ function rowToRecord(row) {
     sitioId: row.sitio_id || "",
     sitioNombre: row.sitio_nombre || "",
     radioMetros: row.radio_metros ?? null,
+    fotoEntradaMetadata: row.foto_entrada_metadata || null,
+    fotoSalidaMetadata: row.foto_salida_metadata || null,
+    fotoEntradaHash: row.foto_entrada_hash || "",
+    fotoSalidaHash: row.foto_salida_hash || "",
+    fotoEntradaStoragePath: row.foto_entrada_storage_path || "",
+    fotoSalidaStoragePath: row.foto_salida_storage_path || "",
+    fotoEntradaMime: row.foto_entrada_mime || "",
+    fotoSalidaMime: row.foto_salida_mime || "",
+    fotoEntradaSizeBytes: row.foto_entrada_size_bytes ?? null,
+    fotoSalidaSizeBytes: row.foto_salida_size_bytes ?? null,
+    fotoEntradaWidth: row.foto_entrada_width ?? null,
+    fotoEntradaHeight: row.foto_entrada_height ?? null,
+    fotoSalidaWidth: row.foto_salida_width ?? null,
+    fotoSalidaHeight: row.foto_salida_height ?? null,
+    fotoEntradaCapturedAt: row.foto_entrada_captured_at || "",
+    fotoSalidaCapturedAt: row.foto_salida_captured_at || "",
+    fotoEntradaUserAgent: row.foto_entrada_user_agent || "",
+    fotoSalidaUserAgent: row.foto_salida_user_agent || "",
+    fotoEntradaDeviceLabel: row.foto_entrada_device_label || "",
+    fotoSalidaDeviceLabel: row.foto_salida_device_label || "",
+    fotosPrivadas: row.fotos_privadas !== false,
+    evidenciaEntradaCompleta: Boolean(row.evidencia_entrada_completa),
+    evidenciaSalidaCompleta: Boolean(row.evidencia_salida_completa),
+    evidenciaObservacion: row.evidencia_observacion || "",
   });
 }
 function normalizeTimeInput(value, fallback) {
@@ -580,20 +654,88 @@ function dataUrlToBlob(dataUrl) {
   return new Blob([bytes], { type: mime });
 }
 
-async function uploadEvidence(dataUrl, matricula, kind) {
-  if (!CLOUD_ENABLED) return dataUrl;
-  const cleanMatricula = normalizeMatricula(matricula).replace(/[^A-Z0-9_-]/g, "");
-  const path = `${todayIso()}/${cleanMatricula}/${kind}.jpg`;
-  const blob = dataUrlToBlob(dataUrl);
-  const encodedPath = path.split("/").map(encodeURIComponent).join("/");
+function arrayBufferToHex(buffer) {
+  return Array.from(new Uint8Array(buffer))
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("");
+}
 
-  const response = await fetch(`${SUPABASE.url}/storage/v1/object/${SUPABASE.bucket}/${encodedPath}`, {
+async function sha256Blob(blob) {
+  if (!globalThis.crypto?.subtle) return "";
+  const buffer = await blob.arrayBuffer();
+  return arrayBufferToHex(await crypto.subtle.digest("SHA-256", buffer));
+}
+
+function getImageDimensions(dataUrl) {
+  return new Promise((resolve) => {
+    const image = new Image();
+    image.onload = () => resolve({ width: image.naturalWidth || image.width, height: image.naturalHeight || image.height });
+    image.onerror = () => resolve({ width: null, height: null });
+    image.src = dataUrl;
+  });
+}
+
+function getCameraDeviceLabel(kind) {
+  const stream = state[`${kind}Stream`];
+  const track = stream?.getVideoTracks?.()[0];
+  return track?.label || "Camara del navegador";
+}
+
+async function buildImageEvidence(dataUrl, matricula, kind) {
+  const blob = dataUrlToBlob(dataUrl);
+  const dimensions = await getImageDimensions(dataUrl);
+  const capturedAt = new Date().toISOString();
+  const cleanMatricula = normalizeMatricula(matricula).replace(/[^A-Z0-9_-]/g, "") || "SIN_MATRICULA";
+  const path = `${todayIso()}/${cleanMatricula}/${kind}-${Date.now()}.jpg`;
+  const hash = await sha256Blob(blob);
+  const deviceLabel = getCameraDeviceLabel(kind);
+  const metadata = {
+    capture_type: kind === "entry" ? "entrada" : "salida",
+    sha256: hash,
+    mime: blob.type || "image/jpeg",
+    size_bytes: blob.size,
+    width: dimensions.width,
+    height: dimensions.height,
+    captured_at_client: capturedAt,
+    uploaded_at_server: null,
+    user_agent: navigator.userAgent || "",
+    device_label: deviceLabel,
+    storage_bucket: PHOTO_BUCKET,
+    storage_path: CLOUD_ENABLED ? path : "local_data_url",
+    source: "browser_camera",
+    timezone: getOperationalTimezone(),
+  };
+
+  return {
+    blob,
+    url: dataUrl,
+    path: CLOUD_ENABLED ? path : "local_data_url",
+    metadata,
+    hash,
+    mime: metadata.mime,
+    sizeBytes: blob.size,
+    width: dimensions.width,
+    height: dimensions.height,
+    capturedAt,
+    userAgent: metadata.user_agent,
+    deviceLabel,
+    private: true,
+    complete: Boolean(hash && blob.size && dimensions.width && dimensions.height),
+  };
+}
+
+async function uploadEvidence(dataUrl, matricula, kind) {
+  const evidence = await buildImageEvidence(dataUrl, matricula, kind);
+  if (!CLOUD_ENABLED) return evidence;
+
+  const encodedPath = evidence.path.split("/").map(encodeURIComponent).join("/");
+  const response = await fetch(`${SUPABASE.url}/storage/v1/object/${PHOTO_BUCKET}/${encodedPath}`, {
     method: "POST",
     headers: cloudHeaders({
-      "Content-Type": blob.type || "image/jpeg",
+      "Content-Type": evidence.mime || "image/jpeg",
       "x-upsert": "false",
     }),
-    body: blob,
+    body: evidence.blob,
   });
 
   if (!response.ok) {
@@ -601,9 +743,14 @@ async function uploadEvidence(dataUrl, matricula, kind) {
     throw new Error(text || "No se pudo subir la evidencia");
   }
 
-  return `${SUPABASE.url}/storage/v1/object/public/${SUPABASE.bucket}/${encodedPath}`;
+  evidence.url = `${SUPABASE.url}/storage/v1/object/public/${PHOTO_BUCKET}/${encodedPath}`;
+  evidence.metadata.uploaded_at_server = new Date().toISOString();
+  evidence.metadata.storage_path = evidence.path;
+  return evidence;
 }
 async function insertEntryRecord({ nombre, matricula, fotoEntrada, descriptorEntrada }) {
+  const evidence = await uploadEvidence(fotoEntrada, matricula, "entry");
+
   if (!CLOUD_ENABLED) {
     const localRecord = normalizeRecord({
       id: globalThis.crypto?.randomUUID ? globalThis.crypto.randomUUID() : String(Date.now()),
@@ -611,7 +758,7 @@ async function insertEntryRecord({ nombre, matricula, fotoEntrada, descriptorEnt
       matricula,
       fecha: todayIso(),
       horaEntrada: nowParts().time,
-      fotoEntrada,
+      fotoEntrada: evidence.url,
       horaSalida: "",
       fotoSalida: "",
       qrSalida: "",
@@ -620,27 +767,54 @@ async function insertEntryRecord({ nombre, matricula, fotoEntrada, descriptorEnt
       descriptorEntrada,
       rostroEntradaDetectado: true,
       serverTimeEntrada: new Date().toISOString(),
+      fotoEntradaMetadata: evidence.metadata,
+      fotoEntradaHash: evidence.hash,
+      fotoEntradaStoragePath: evidence.path,
+      fotoEntradaMime: evidence.mime,
+      fotoEntradaSizeBytes: evidence.sizeBytes,
+      fotoEntradaWidth: evidence.width,
+      fotoEntradaHeight: evidence.height,
+      fotoEntradaCapturedAt: evidence.capturedAt,
+      fotoEntradaUserAgent: evidence.userAgent,
+      fotoEntradaDeviceLabel: evidence.deviceLabel,
+      fotosPrivadas: evidence.private,
+      evidenciaEntradaCompleta: evidence.complete,
+      evidenciaObservacion: evidence.complete ? "" : "Metadatos de entrada incompletos.",
     });
     state.records.unshift(localRecord);
     persistLocalSnapshot();
     return localRecord;
   }
 
-  const fotoUrl = await uploadEvidence(fotoEntrada, matricula, "entrada");
   const row = await callAdminRpc("registrar_entrada_segura", {
     p_nombre: nombre,
     p_matricula: matricula,
-    p_foto_entrada_url: fotoUrl,
+    p_foto_entrada_url: evidence.url,
     p_descriptor_entrada: descriptorEntrada,
     p_rostro_entrada_detectado: true,
+    p_foto_entrada_metadata: evidence.metadata,
+    p_foto_entrada_hash: evidence.hash,
+    p_foto_entrada_storage_path: evidence.path,
+    p_foto_entrada_mime: evidence.mime,
+    p_foto_entrada_size_bytes: evidence.sizeBytes,
+    p_foto_entrada_width: evidence.width,
+    p_foto_entrada_height: evidence.height,
+    p_foto_entrada_captured_at: evidence.capturedAt,
+    p_foto_entrada_user_agent: evidence.userAgent,
+    p_foto_entrada_device_label: evidence.deviceLabel,
+    p_fotos_privadas: evidence.private,
+    p_evidencia_entrada_completa: evidence.complete,
+    p_evidencia_observacion: evidence.complete ? "" : "Metadatos de entrada incompletos.",
   });
   return rowToRecord(row);
 }
 async function updateExitRecord(record, { fotoSalida, qrToken, descriptorSalida, location, lifeChallenge }) {
+  const evidence = await uploadEvidence(fotoSalida, record.matricula, "exit");
+
   if (!CLOUD_ENABLED) {
     const faceValidation = evaluateFaceMatch(record.descriptorEntrada, descriptorSalida);
     record.horaSalida = nowParts().time;
-    record.fotoSalida = fotoSalida;
+    record.fotoSalida = evidence.url;
     record.qrSalida = qrToken;
     record.tokenQrUsado = qrToken;
     record.descriptorSalida = descriptorSalida;
@@ -657,14 +831,26 @@ async function updateExitRecord(record, { fotoSalida, qrToken, descriptorSalida,
     record.retoVida = lifeChallenge;
     record.retoVidaCumplido = Boolean(lifeChallenge);
     record.riesgo = record.ubicacionValidada && faceValidation.status === "identidad_validada" ? "normal" : "revision_multiple";
+    record.fotoSalidaMetadata = evidence.metadata;
+    record.fotoSalidaHash = evidence.hash;
+    record.fotoSalidaStoragePath = evidence.path;
+    record.fotoSalidaMime = evidence.mime;
+    record.fotoSalidaSizeBytes = evidence.sizeBytes;
+    record.fotoSalidaWidth = evidence.width;
+    record.fotoSalidaHeight = evidence.height;
+    record.fotoSalidaCapturedAt = evidence.capturedAt;
+    record.fotoSalidaUserAgent = evidence.userAgent;
+    record.fotoSalidaDeviceLabel = evidence.deviceLabel;
+    record.fotosPrivadas = evidence.private;
+    record.evidenciaSalidaCompleta = evidence.complete;
+    record.evidenciaObservacion = evidence.complete ? record.evidenciaObservacion : "Metadatos de salida incompletos.";
     persistLocalSnapshot();
     return record;
   }
 
-  const fotoUrl = await uploadEvidence(fotoSalida, record.matricula, "salida");
   const row = await callAdminRpc("registrar_salida_segura", {
     p_matricula: record.matricula,
-    p_foto_salida_url: fotoUrl,
+    p_foto_salida_url: evidence.url,
     p_descriptor_salida: descriptorSalida,
     p_token_qr: qrToken,
     p_latitud: location.latitud ?? null,
@@ -672,6 +858,18 @@ async function updateExitRecord(record, { fotoSalida, qrToken, descriptorSalida,
     p_precision: location.precision ?? null,
     p_ubicacion_estado: location.estado || "ubicacion_denegada",
     p_reto_vida: lifeChallenge || "",
+    p_foto_salida_metadata: evidence.metadata,
+    p_foto_salida_hash: evidence.hash,
+    p_foto_salida_storage_path: evidence.path,
+    p_foto_salida_mime: evidence.mime,
+    p_foto_salida_size_bytes: evidence.sizeBytes,
+    p_foto_salida_width: evidence.width,
+    p_foto_salida_height: evidence.height,
+    p_foto_salida_captured_at: evidence.capturedAt,
+    p_foto_salida_user_agent: evidence.userAgent,
+    p_foto_salida_device_label: evidence.deviceLabel,
+    p_evidencia_salida_completa: evidence.complete,
+    p_evidencia_observacion: evidence.complete ? "" : "Metadatos de salida incompletos.",
   });
   return rowToRecord(row);
 }
@@ -686,6 +884,17 @@ async function callAdminRpc(functionName, payload) {
 }
 
 async function fetchServerQrToken() {
+  if (state.demoMode) {
+    const now = new Date();
+    return {
+      token: makeQrToken(now),
+      server_time: now.toISOString(),
+      expires_at: new Date(now.getTime() + QR_VALID_MINUTES * 60 * 1000).toISOString(),
+      is_open: true,
+      message: CLOUD_ENABLED ? "QR de prueba visible. La salida global seguira validando Supabase." : "QR de prueba local valido.",
+    };
+  }
+
   if (!CLOUD_ENABLED) {
     const now = new Date();
     const isOpen = isQrWindowOpen(now);
@@ -699,7 +908,6 @@ async function fetchServerQrToken() {
   }
   return callAdminRpc("get_current_qr_token", {});
 }
-
 async function updateClockAndQr({ force = false } = {}) {
   const now = new Date();
   if (!force && state.serverQr && Date.now() < state.nextQrRefreshAt) {
@@ -1227,6 +1435,140 @@ function formatMeters(value) {
   if (Number.isNaN(numeric)) return "Pendiente";
   return `${Math.round(numeric)} m`;
 }
+function formatBytes(value) {
+  const numeric = Number(value);
+  if (!numeric || Number.isNaN(numeric)) return "Pendiente";
+  if (numeric < 1024) return `${numeric} B`;
+  if (numeric < 1024 * 1024) return `${(numeric / 1024).toFixed(1)} KB`;
+  return `${(numeric / 1024 / 1024).toFixed(2)} MB`;
+}
+
+function shortHash(value) {
+  return value ? `${String(value).slice(0, 10)}...` : "Sin hash";
+}
+
+function resolutionText(width, height) {
+  return width && height ? `${width} x ${height}` : "Pendiente";
+}
+
+function hasCompleteEvidence(record) {
+  return Boolean(record.evidenciaEntradaCompleta && (record.horaSalida ? record.evidenciaSalidaCompleta : true));
+}
+
+function evidenceCell(record) {
+  const complete = hasCompleteEvidence(record);
+  const hash = record.fotoSalidaHash || record.fotoEntradaHash;
+  return `
+    <div class="evidence-cell">
+      <span class="badge ${complete ? "success" : "warning"}">${complete ? "Completa" : "Parcial"}</span>
+      <small>${escapeHtml(shortHash(hash))}</small>
+      <small>${escapeHtml(formatBytes(record.fotoSalidaSizeBytes || record.fotoEntradaSizeBytes))}</small>
+    </div>
+  `;
+}
+
+async function getSignedEvidenceUrl(record, kind) {
+  const path = kind === "entrada" ? record.fotoEntradaStoragePath : record.fotoSalidaStoragePath;
+  const fallback = kind === "entrada" ? record.fotoEntrada : record.fotoSalida;
+  if (!CLOUD_ENABLED || !path || path === "local_data_url") return fallback;
+
+  try {
+    const encodedPath = path.split("/").map(encodeURIComponent).join("/");
+    const response = await fetch(`${SUPABASE.url}/storage/v1/object/sign/${PHOTO_BUCKET}/${encodedPath}`, {
+      method: "POST",
+      headers: cloudHeaders({ "Content-Type": "application/json" }),
+      body: JSON.stringify({ expiresIn: 300 }),
+    });
+    if (!response.ok) throw new Error("signed_url_error");
+    const data = await response.json();
+    const signedUrl = data.signedURL || data.signedUrl || data.url || "";
+    if (signedUrl) {
+      addAdminLog("signed_url_generada", `${record.matricula} ${kind}`);
+      return signedUrl.startsWith("http") ? signedUrl : `${SUPABASE.url}${signedUrl}`;
+    }
+  } catch (error) {
+    addAdminLog("error_visualizar_evidencia", `${record.matricula} ${kind}`);
+  }
+  return fallback;
+}
+
+function evidenceField(label, value) {
+  return `<div><span>${escapeHtml(label)}</span><strong>${escapeHtml(value || "Pendiente")}</strong></div>`;
+}
+
+function metadataBlock(title, fields) {
+  return `
+    <section class="evidence-detail-card">
+      <h4>${escapeHtml(title)}</h4>
+      <div class="evidence-detail-grid">${fields.join("")}</div>
+    </section>
+  `;
+}
+
+async function showEvidenceDetail(id) {
+  if (!requestAdminAccess()) return;
+  const record = state.records.find((item) => item.id === id);
+  if (!record || !els.evidenceModal || !els.evidenceBody) return;
+
+  addAdminLog("evidencia_visualizada", `${record.matricula} ${displayDate(record.fecha)}`);
+  const entradaUrl = await getSignedEvidenceUrl(record, "entrada");
+  const salidaUrl = await getSignedEvidenceUrl(record, "salida");
+
+  els.evidenceBody.innerHTML = `
+    <div class="evidence-photo-grid">
+      <figure>
+        ${entradaUrl ? `<img src="${entradaUrl}" alt="Evidencia de entrada" />` : `<div class="photo-placeholder">Sin foto de entrada</div>`}
+        <figcaption>Entrada</figcaption>
+      </figure>
+      <figure>
+        ${salidaUrl ? `<img src="${salidaUrl}" alt="Evidencia de salida" />` : `<div class="photo-placeholder">Sin foto de salida</div>`}
+        <figcaption>Salida</figcaption>
+      </figure>
+    </div>
+    ${metadataBlock("Identificacion", [
+      evidenceField("Nombre", record.nombre),
+      evidenceField("Matricula", record.matricula),
+      evidenceField("Fecha", displayDate(record.fecha)),
+      evidenceField("Estado", statusLabel(record.estado)),
+    ])}
+    ${metadataBlock("Foto de entrada", [
+      evidenceField("Hash SHA-256", record.fotoEntradaHash),
+      evidenceField("Resolucion", resolutionText(record.fotoEntradaWidth, record.fotoEntradaHeight)),
+      evidenceField("Tamano", formatBytes(record.fotoEntradaSizeBytes)),
+      evidenceField("MIME", record.fotoEntradaMime),
+      evidenceField("Storage path", record.fotoEntradaStoragePath),
+      evidenceField("Captura cliente", displayTime(record.fotoEntradaCapturedAt) || record.fotoEntradaCapturedAt),
+      evidenceField("Dispositivo", record.fotoEntradaDeviceLabel),
+    ])}
+    ${metadataBlock("Foto de salida", [
+      evidenceField("Hash SHA-256", record.fotoSalidaHash),
+      evidenceField("Resolucion", resolutionText(record.fotoSalidaWidth, record.fotoSalidaHeight)),
+      evidenceField("Tamano", formatBytes(record.fotoSalidaSizeBytes)),
+      evidenceField("MIME", record.fotoSalidaMime),
+      evidenceField("Storage path", record.fotoSalidaStoragePath),
+      evidenceField("Captura cliente", displayTime(record.fotoSalidaCapturedAt) || record.fotoSalidaCapturedAt),
+      evidenceField("Dispositivo", record.fotoSalidaDeviceLabel),
+    ])}
+    ${metadataBlock("Validaciones", [
+      evidenceField("QR usado", record.tokenQrUsado || record.qrSalida),
+      evidenceField("GPS", record.latitudSalida && record.longitudSalida ? `${record.latitudSalida}, ${record.longitudSalida}` : "Pendiente"),
+      evidenceField("Precision", formatMeters(record.precisionUbicacion)),
+      evidenceField("Distancia", formatMeters(record.distanciaEmpresaMetros)),
+      evidenceField("Reto", record.retoVida),
+      evidenceField("Riesgo", riskLabel(record.riesgo)),
+      evidenceField("Observacion", record.observacion || record.observaciones),
+      evidenceField("Privacidad", record.fotosPrivadas ? "Preparado para fotos privadas" : "URL publica temporal"),
+    ])}
+  `;
+  els.evidenceModal.hidden = false;
+  els.closeEvidence?.focus();
+}
+
+function closeEvidenceDetail() {
+  if (!els.evidenceModal) return;
+  els.evidenceModal.hidden = true;
+  if (els.evidenceBody) els.evidenceBody.innerHTML = "";
+}
 function renderRecords() {
   updateSummary();
   els.recordsBody.innerHTML = "";
@@ -1257,11 +1599,13 @@ function renderRecords() {
       <td>${escapeHtml(formatMeters(record.distanciaEmpresaMetros))}</td>
       <td>${escapeHtml(record.retoVida || "Pendiente")}</td>
       <td><span class="badge ${riskClass}">${escapeHtml(riskLabel(record.riesgo))}</span></td>
+      <td>${evidenceCell(record)}</td>
       <td>${escapeHtml(record.observacion || record.observaciones || "Sin observacion")}</td>
       <td>${escapeHtml(record.observacion_admin || "Sin observacion")}</td>
       <td><span class="badge ${adminClass}">${record.modificado_por_admin ? "Si" : "No"}</span></td>
       <td class="admin-only ${state.isAdmin ? "" : "is-hidden"}">
         <div class="row-actions">
+          <button class="secondary mini" data-action="view-evidence" data-id="${record.id}">Ver evidencia</button>
           <button class="ghost mini" data-action="edit-observation" data-id="${record.id}">Observacion</button>
           <button class="danger mini" data-action="delete-record" data-id="${record.id}">Eliminar</button>
         </div>
@@ -1281,7 +1625,7 @@ function updateSummary() {
 }
 function imageCell(src, alt) {
   if (!src) return `<span class="muted">Sin foto</span>`;
-  return `<a href="${src}" target="_blank" rel="noopener"><img class="thumb" src="${src}" alt="${alt}" /></a>`;
+  return `<span class="badge default">Foto protegida</span>`;
 }
 
 function escapeHtml(value) {
@@ -1385,6 +1729,19 @@ function exportCsv() {
     "Metodo de salida",
     "Observacion",
     "Observacion administrativa",
+    "foto_entrada_hash",
+    "foto_salida_hash",
+    "foto_entrada_size_bytes",
+    "foto_salida_size_bytes",
+    "foto_entrada_resolution",
+    "foto_salida_resolution",
+    "foto_entrada_mime",
+    "foto_salida_mime",
+    "foto_entrada_storage_path",
+    "foto_salida_storage_path",
+    "fotos_privadas",
+    "evidencia_completa",
+    "evidencia_observacion",
     "Modificado por administrativo",
   ];
 
@@ -1420,6 +1777,19 @@ function exportCsv() {
     record.metodoSalida,
     record.observacion || record.observaciones,
     record.observacion_admin,
+    record.fotoEntradaHash,
+    record.fotoSalidaHash,
+    record.fotoEntradaSizeBytes,
+    record.fotoSalidaSizeBytes,
+    resolutionText(record.fotoEntradaWidth, record.fotoEntradaHeight),
+    resolutionText(record.fotoSalidaWidth, record.fotoSalidaHeight),
+    record.fotoEntradaMime,
+    record.fotoSalidaMime,
+    record.fotoEntradaStoragePath,
+    record.fotoSalidaStoragePath,
+    record.fotosPrivadas ? "Si" : "No",
+    hasCompleteEvidence(record) ? "Si" : "No",
+    record.evidenciaObservacion,
     record.modificado_por_admin ? "Si" : "No",
   ]);
 
@@ -1528,6 +1898,10 @@ function handleRecordAction(event) {
   const button = event.target.closest("button[data-action]");
   if (!button) return;
 
+  if (button.dataset.action === "view-evidence") {
+    showEvidenceDetail(button.dataset.id);
+  }
+
   if (button.dataset.action === "edit-observation") {
     editAdminObservation(button.dataset.id);
   }
@@ -1590,6 +1964,10 @@ async function init() {
   els.exportCsv.addEventListener("click", exportCsv);
   els.clearRecords.addEventListener("click", clearRecords);
   els.recordsBody.addEventListener("click", handleRecordAction);
+  els.closeEvidence?.addEventListener("click", closeEvidenceDetail);
+  els.evidenceModal?.addEventListener("click", (event) => {
+    if (event.target === els.evidenceModal) closeEvidenceDetail();
+  });
   els.siteForm?.addEventListener("submit", handleSiteSubmit);
   els.useAdminLocation?.addEventListener("click", useAdminLocation);
   els.testAdminLocation?.addEventListener("click", testAdminLocation);

@@ -1,6 +1,6 @@
 /* =========================================================
    REGISTRO DE ASISTENCIA QR — Design System v2
-   Paleta: Índigo + Slate + Semánticos
+   Paleta: Verde institucional + Slate + Semanticos
    ========================================================= */
 
 /* ── Tokens ─────────────────────────────────────────────── */
@@ -1231,7 +1231,7 @@ tbody tr:last-child td {
 }
 
 .site-config-card strong {
-  color: var(--accent-dark);
+  color: var(--brand-dark);
   font-size: 0.95rem;
   font-weight: 700;
   overflow-wrap: anywhere;
@@ -1273,7 +1273,7 @@ tbody tr:last-child td {
 .inline-check input {
   width: 18px;
   height: 18px;
-  accent-color: var(--accent);
+  accent-color: var(--brand);
 }
 
 .site-actions {
@@ -1409,6 +1409,169 @@ tbody tr:last-child td {
 
   .site-actions button,
   .site-admin-header .badge {
+    width: 100%;
+  }
+}
+
+/* Hito 2: evidencia auditable */
+.evidence-cell {
+  display: grid;
+  gap: 4px;
+  min-width: 132px;
+}
+
+.evidence-cell small {
+  color: var(--text-secondary);
+  font-size: 0.74rem;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgba(15, 23, 42, 0.46);
+  backdrop-filter: blur(4px);
+}
+
+.modal-backdrop[hidden] {
+  display: none;
+}
+
+.evidence-modal {
+  width: min(1120px, 100%);
+  max-height: min(88vh, 980px);
+  display: grid;
+  grid-template-rows: auto 1fr;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  box-shadow: var(--shadow-xl);
+  overflow: hidden;
+}
+
+.evidence-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 18px 20px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface-soft);
+}
+
+.evidence-modal-header h3 {
+  margin: 4px 0 0;
+  color: var(--text);
+}
+
+.evidence-modal-body {
+  display: grid;
+  gap: 16px;
+  padding: 20px;
+  overflow: auto;
+}
+
+.evidence-photo-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.evidence-photo-grid figure {
+  margin: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-soft);
+  overflow: hidden;
+}
+
+.evidence-photo-grid img,
+.photo-placeholder {
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  display: grid;
+  place-items: center;
+  object-fit: cover;
+  color: var(--text-secondary);
+  font-weight: 700;
+  background: var(--surface-mid);
+}
+
+.evidence-photo-grid figcaption {
+  padding: 10px 12px;
+  color: var(--brand-dark);
+  font-size: 0.84rem;
+  font-weight: 800;
+}
+
+.evidence-detail-card {
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+.evidence-detail-card h4 {
+  margin: 0;
+  color: var(--brand-dark);
+}
+
+.evidence-detail-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.evidence-detail-grid div {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  padding: 10px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-soft);
+}
+
+.evidence-detail-grid span {
+  color: var(--text-muted);
+  font-size: 0.7rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.evidence-detail-grid strong {
+  color: var(--text);
+  font-size: 0.84rem;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 760px) {
+  .modal-backdrop {
+    padding: 10px;
+  }
+
+  .evidence-modal {
+    max-height: 94vh;
+  }
+
+  .evidence-modal-header,
+  .evidence-photo-grid,
+  .evidence-detail-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .evidence-modal-header {
+    display: grid;
+  }
+
+  .evidence-modal-header button {
     width: 100%;
   }
 }
