@@ -1335,6 +1335,12 @@ tbody tr:last-child td {
   border-color: var(--success-line);
 }
 
+.face-status[data-tone="neutral"] {
+  color: var(--text-secondary);
+  background: var(--surface-soft);
+  border-color: var(--border);
+}
+
 .face-status[data-tone="danger"] {
   color: var(--danger-dark);
   background: var(--danger-soft);

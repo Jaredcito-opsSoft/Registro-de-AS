@@ -62,6 +62,7 @@ const els = {
   entryFaceStatus: $("#entryFaceStatus"),
   exitFaceStatus: $("#exitFaceStatus"),
   lifeChallenge: $("#lifeChallenge"),
+  entryLocationStatus: $("#entryLocationStatus"),
   locationStatus: $("#locationStatus"),
   entryVideo: $("#entryVideo"),
   entryCanvas: $("#entryCanvas"),
@@ -150,8 +151,22 @@ function normalizeRecord(record) {
     qrValidado: false,
     qrObservacion: "",
     ubicacionValidada: false,
+    latitudEntrada: null,
+    longitudEntrada: null,
+    precisionEntrada: null,
+    distanciaEntradaMetros: null,
+    ubicacionEntradaValidada: false,
+    ubicacionEntradaObservacion: "",
+    sitioEntradaId: "",
+    sitioEntradaNombre: "",
     latitudSalida: null,
     longitudSalida: null,
+    precisionSalida: null,
+    distanciaSalidaMetros: null,
+    ubicacionSalidaValidada: false,
+    ubicacionSalidaObservacion: "",
+    sitioSalidaId: "",
+    sitioSalidaNombre: "",
     precisionUbicacion: null,
     distanciaEmpresaMetros: null,
     ubicacionObservacion: "",
@@ -187,6 +202,9 @@ function normalizeRecord(record) {
     evidenciaEntradaCompleta: false,
     evidenciaSalidaCompleta: false,
     evidenciaObservacion: "",
+    evidenciaEntradaGeolocalizada: false,
+    evidenciaSalidaGeolocalizada: false,
+    evidenciaGeolocalizadaObservacion: "",
     ...record,
   };
 }
@@ -360,12 +378,26 @@ function rowToRecord(row) {
     horarioObservacion: row.horario_observacion || "",
     qrValidado: Boolean(row.qr_validado),
     qrObservacion: row.qr_observacion || "",
-    ubicacionValidada: Boolean(row.ubicacion_validada),
+    ubicacionValidada: Boolean(row.ubicacion_salida_validada ?? row.ubicacion_validada),
+    latitudEntrada: row.latitud_entrada ?? null,
+    longitudEntrada: row.longitud_entrada ?? null,
+    precisionEntrada: row.precision_entrada ?? null,
+    distanciaEntradaMetros: row.distancia_entrada_metros ?? null,
+    ubicacionEntradaValidada: Boolean(row.ubicacion_entrada_validada),
+    ubicacionEntradaObservacion: row.ubicacion_entrada_observacion || "",
+    sitioEntradaId: row.sitio_entrada_id || "",
+    sitioEntradaNombre: row.sitio_entrada_nombre || row.sitio_nombre || "",
     latitudSalida: row.latitud_salida ?? null,
     longitudSalida: row.longitud_salida ?? null,
-    precisionUbicacion: row.precision_ubicacion ?? null,
-    distanciaEmpresaMetros: row.distancia_empresa_metros ?? null,
-    ubicacionObservacion: row.ubicacion_observacion || "",
+    precisionSalida: row.precision_salida ?? row.precision_ubicacion ?? null,
+    distanciaSalidaMetros: row.distancia_salida_metros ?? row.distancia_empresa_metros ?? null,
+    ubicacionSalidaValidada: Boolean(row.ubicacion_salida_validada ?? row.ubicacion_validada),
+    ubicacionSalidaObservacion: row.ubicacion_salida_observacion || row.ubicacion_observacion || "",
+    sitioSalidaId: row.sitio_salida_id || row.sitio_id || "",
+    sitioSalidaNombre: row.sitio_salida_nombre || row.sitio_nombre || "",
+    precisionUbicacion: row.precision_salida ?? row.precision_ubicacion ?? null,
+    distanciaEmpresaMetros: row.distancia_salida_metros ?? row.distancia_empresa_metros ?? null,
+    ubicacionObservacion: row.ubicacion_salida_observacion || row.ubicacion_observacion || "",
     retoVida: row.reto_vida || "",
     retoVidaCumplido: Boolean(row.reto_vida_cumplido),
     retoVidaObservacion: row.reto_vida_observacion || "",
@@ -398,6 +430,9 @@ function rowToRecord(row) {
     evidenciaEntradaCompleta: Boolean(row.evidencia_entrada_completa),
     evidenciaSalidaCompleta: Boolean(row.evidencia_salida_completa),
     evidenciaObservacion: row.evidencia_observacion || "",
+    evidenciaEntradaGeolocalizada: Boolean(row.evidencia_entrada_geolocalizada),
+    evidenciaSalidaGeolocalizada: Boolean(row.evidencia_salida_geolocalizada),
+    evidenciaGeolocalizadaObservacion: row.evidencia_geolocalizada_observacion || "",
   });
 }
 function normalizeTimeInput(value, fallback) {
@@ -681,7 +716,35 @@ function getCameraDeviceLabel(kind) {
   return track?.label || "Camara del navegador";
 }
 
-async function buildImageEvidence(dataUrl, matricula, kind) {
+function normalizeEvidenceLocation(location = null) {
+  if (!location) {
+    return {
+      estado: "ubicacion_pendiente",
+      latitud: null,
+      longitud: null,
+      precision: null,
+      sitio_id: state.activeSite?.id || null,
+      sitio_nombre: state.activeSite?.nombre || "",
+      distancia_metros: null,
+      validada: false,
+      observacion: "Ubicacion pendiente de validacion por servidor.",
+    };
+  }
+
+  return {
+    estado: location.estado || "ubicacion_pendiente",
+    latitud: location.latitud ?? null,
+    longitud: location.longitud ?? null,
+    precision: location.precision ?? null,
+    sitio_id: location.sitioId || state.activeSite?.id || null,
+    sitio_nombre: location.sitioNombre || state.activeSite?.nombre || "",
+    distancia_metros: location.distanciaMetros ?? null,
+    validada: Boolean(location.validada ?? location.estado === "ubicacion_correcta"),
+    observacion: location.observacion || "La ubicacion sera validada contra el sitio activo.",
+  };
+}
+
+async function buildImageEvidence(dataUrl, matricula, kind, location = null) {
   const blob = dataUrlToBlob(dataUrl);
   const dimensions = await getImageDimensions(dataUrl);
   const capturedAt = new Date().toISOString();
@@ -704,6 +767,7 @@ async function buildImageEvidence(dataUrl, matricula, kind) {
     storage_path: CLOUD_ENABLED ? path : "local_data_url",
     source: "browser_camera",
     timezone: getOperationalTimezone(),
+    location: normalizeEvidenceLocation(location),
   };
 
   return {
@@ -724,8 +788,8 @@ async function buildImageEvidence(dataUrl, matricula, kind) {
   };
 }
 
-async function uploadEvidence(dataUrl, matricula, kind) {
-  const evidence = await buildImageEvidence(dataUrl, matricula, kind);
+async function uploadEvidence(dataUrl, matricula, kind, location = null) {
+  const evidence = await buildImageEvidence(dataUrl, matricula, kind, location);
   if (!CLOUD_ENABLED) return evidence;
 
   const encodedPath = evidence.path.split("/").map(encodeURIComponent).join("/");
@@ -748,8 +812,8 @@ async function uploadEvidence(dataUrl, matricula, kind) {
   evidence.metadata.storage_path = evidence.path;
   return evidence;
 }
-async function insertEntryRecord({ nombre, matricula, fotoEntrada, descriptorEntrada }) {
-  const evidence = await uploadEvidence(fotoEntrada, matricula, "entry");
+async function insertEntryRecord({ nombre, matricula, fotoEntrada, descriptorEntrada, location }) {
+  const evidence = await uploadEvidence(fotoEntrada, matricula, "entry", location);
 
   if (!CLOUD_ENABLED) {
     const localRecord = normalizeRecord({
@@ -778,7 +842,14 @@ async function insertEntryRecord({ nombre, matricula, fotoEntrada, descriptorEnt
       fotoEntradaUserAgent: evidence.userAgent,
       fotoEntradaDeviceLabel: evidence.deviceLabel,
       fotosPrivadas: evidence.private,
+      latitudEntrada: location.latitud ?? null,
+      longitudEntrada: location.longitud ?? null,
+      precisionEntrada: location.precision ?? null,
+      ubicacionEntradaValidada: location.estado === "ubicacion_correcta",
+      ubicacionEntradaObservacion: location.observacion || "Ubicacion de entrada capturada localmente.",
       evidenciaEntradaCompleta: evidence.complete,
+      evidenciaEntradaGeolocalizada: Boolean(location.latitud && location.longitud && location.estado === "ubicacion_correcta"),
+      evidenciaGeolocalizadaObservacion: location.observacion || "Ubicacion de entrada capturada localmente.",
       evidenciaObservacion: evidence.complete ? "" : "Metadatos de entrada incompletos.",
     });
     state.records.unshift(localRecord);
@@ -805,11 +876,15 @@ async function insertEntryRecord({ nombre, matricula, fotoEntrada, descriptorEnt
     p_fotos_privadas: evidence.private,
     p_evidencia_entrada_completa: evidence.complete,
     p_evidencia_observacion: evidence.complete ? "" : "Metadatos de entrada incompletos.",
+    p_latitud_entrada: location.latitud ?? null,
+    p_longitud_entrada: location.longitud ?? null,
+    p_precision_entrada: location.precision ?? null,
+    p_ubicacion_entrada_estado: location.estado || "ubicacion_denegada",
   });
   return rowToRecord(row);
 }
 async function updateExitRecord(record, { fotoSalida, qrToken, descriptorSalida, location, lifeChallenge }) {
-  const evidence = await uploadEvidence(fotoSalida, record.matricula, "exit");
+  const evidence = await uploadEvidence(fotoSalida, record.matricula, "exit", location);
 
   if (!CLOUD_ENABLED) {
     const faceValidation = evaluateFaceMatch(record.descriptorEntrada, descriptorSalida);
@@ -826,8 +901,13 @@ async function updateExitRecord(record, { fotoSalida, qrToken, descriptorSalida,
     record.observaciones = faceValidation.observacion;
     record.metodoSalida = "qr_horario";
     record.qrValidado = true;
-    record.ubicacionValidada = location.estado === "ubicacion_correcta";
-    record.precisionUbicacion = location.precision ?? null;
+    record.latitudSalida = location.latitud ?? null;
+    record.longitudSalida = location.longitud ?? null;
+    record.precisionSalida = location.precision ?? null;
+    record.ubicacionSalidaValidada = location.estado === "ubicacion_correcta";
+    record.ubicacionSalidaObservacion = location.observacion || "Ubicacion de salida capturada localmente.";
+    record.ubicacionValidada = record.ubicacionSalidaValidada;
+    record.precisionUbicacion = record.precisionSalida;
     record.retoVida = lifeChallenge;
     record.retoVidaCumplido = Boolean(lifeChallenge);
     record.riesgo = record.ubicacionValidada && faceValidation.status === "identidad_validada" ? "normal" : "revision_multiple";
@@ -843,6 +923,8 @@ async function updateExitRecord(record, { fotoSalida, qrToken, descriptorSalida,
     record.fotoSalidaDeviceLabel = evidence.deviceLabel;
     record.fotosPrivadas = evidence.private;
     record.evidenciaSalidaCompleta = evidence.complete;
+    record.evidenciaSalidaGeolocalizada = Boolean(location.latitud && location.longitud && location.estado === "ubicacion_correcta");
+    record.evidenciaGeolocalizadaObservacion = location.observacion || record.evidenciaGeolocalizadaObservacion;
     record.evidenciaObservacion = evidence.complete ? record.evidenciaObservacion : "Metadatos de salida incompletos.";
     persistLocalSnapshot();
     return record;
@@ -966,6 +1048,9 @@ function showView(name) {
   setActiveNavigation(name);
   if (name !== "entry") stopCamera("entry");
   if (name !== "exit") stopCamera("exit");
+  if (name === "entry") {
+    setEntryLocationStatus("La ubicacion se solicitara al guardar entrada.");
+  }
   if (name === "exit") {
     pickLifeChallenge();
     setLocationStatus("La ubicacion se solicitara al guardar salida.");
@@ -1142,17 +1227,30 @@ function pickLifeChallenge() {
   if (els.lifeChallenge) els.lifeChallenge.textContent = state.lifeChallenge;
 }
 
-function setLocationStatus(message, tone = "neutral") {
-  if (!els.locationStatus) return;
-  els.locationStatus.textContent = message;
-  els.locationStatus.dataset.tone = tone;
+function setEntryLocationStatus(message, tone = "neutral") {
+  if (!els.entryLocationStatus) return;
+  els.entryLocationStatus.textContent = message;
+  els.entryLocationStatus.dataset.tone = tone;
 }
 
-function requestExitLocation() {
-  setLocationStatus("Solicitando ubicacion para validar presencia.", "pending");
+function locationDeniedAudit(kind) {
+  const action = kind === "entry" ? "gps_denegado_entrada" : "gps_denegado_salida";
+  addAdminLog(action, kind === "entry" ? "Ubicacion de entrada no autorizada." : "Ubicacion de salida no autorizada.");
+}
+
+function setAttendanceLocationStatus(kind, message, tone = "neutral") {
+  if (kind === "entry") setEntryLocationStatus(message, tone);
+  else setLocationStatus(message, tone);
+}
+
+function requestAttendanceLocation(kind) {
+  const label = kind === "entry" ? "entrada" : "salida";
+  setAttendanceLocationStatus(kind, "Solicitando ubicacion para validar presencia.", "pending");
   if (!navigator.geolocation) {
-    setLocationStatus("No se pudo obtener tu ubicacion. El registro quedara en revision.", "danger");
-    return Promise.resolve({ estado: "ubicacion_denegada" });
+    const observacion = "No se pudo obtener ubicacion de " + label + ". El registro quedara en revision.";
+    setAttendanceLocationStatus(kind, observacion, "danger");
+    locationDeniedAudit(kind);
+    return Promise.resolve({ estado: "ubicacion_denegada", observacion });
   }
 
   return new Promise((resolve) => {
@@ -1163,22 +1261,42 @@ function requestExitLocation() {
           latitud: Number(position.coords.latitude.toFixed(7)),
           longitud: Number(position.coords.longitude.toFixed(7)),
           precision: Math.round(position.coords.accuracy),
+          sitioId: state.activeSite?.id || "",
+          sitioNombre: state.activeSite?.nombre || "",
         };
-        setLocationStatus(
+        location.observacion = location.estado === "ubicacion_correcta"
+          ? "Ubicacion capturada. Se validara contra el sitio activo."
+          : "Precision GPS baja; el registro quedara en revision si el servidor lo confirma.";
+        setAttendanceLocationStatus(
+          kind,
           location.estado === "ubicacion_correcta"
-            ? "Ubicacion recibida; el servidor validara el radio permitido."
+            ? "Ubicacion capturada. Se validara contra el sitio activo."
             : "Precision GPS baja; el servidor marcara revision si corresponde.",
           location.estado === "ubicacion_correcta" ? "success" : "pending"
         );
         resolve(location);
       },
       () => {
-        setLocationStatus("No se pudo obtener tu ubicacion. El registro quedara en revision.", "danger");
-        resolve({ estado: "ubicacion_denegada" });
+        const observacion = kind === "entry"
+          ? "Ubicacion de entrada no autorizada por el navegador."
+          : "No se pudo obtener ubicacion de salida. El registro quedara en revision.";
+        setAttendanceLocationStatus(kind, "No se pudo obtener ubicacion. El registro quedara en revision.", "danger");
+        locationDeniedAudit(kind);
+        resolve({ estado: "ubicacion_denegada", observacion });
       },
       { enableHighAccuracy: true, timeout: 12000, maximumAge: 0 }
     );
   });
+}
+
+function setLocationStatus(message, tone = "neutral") {
+  if (!els.locationStatus) return;
+  els.locationStatus.textContent = message;
+  els.locationStatus.dataset.tone = tone;
+}
+
+function requestExitLocation() {
+  return requestAttendanceLocation("exit");
 }
 async function startCamera(kind) {
   const video = kind === "entry" ? els.entryVideo : els.exitVideo;
@@ -1283,12 +1401,15 @@ async function handleEntrySubmit(event) {
     return;
   }
 
+  const location = await requestAttendanceLocation("entry");
+
   try {
     const record = await insertEntryRecord({
       nombre,
       matricula,
       fotoEntrada: state.entryPhoto,
       descriptorEntrada: state.entryFace.descriptor,
+      location,
     });
     state.records.unshift(record);
     persistLocalSnapshot();
@@ -1299,7 +1420,7 @@ async function handleEntrySubmit(event) {
     setFaceStatus(els.entryFaceStatus, "Listo para nueva captura.");
     stopCamera("entry");
     await refreshRecords({ silent: true });
-    showToast(CLOUD_ENABLED ? "Entrada registrada correctamente." : "Entrada registrada localmente.");
+    showToast(record.riesgo === "normal" || record.riesgo === "entrada_registrada" ? "Entrada registrada correctamente." : "Entrada registrada, requiere revision administrativa.");
   } catch (error) {
     showToast("No se pudo guardar la entrada global. Intenta de nuevo.");
   }
@@ -1402,6 +1523,8 @@ function riskLabel(value) {
   const labels = {
     normal: "Normal",
     revision_ubicacion: "Revision ubicacion",
+    revision_ubicacion_entrada: "Revision ubicacion entrada",
+    revision_ubicacion_salida: "Revision ubicacion salida",
     revision_identidad: "Revision identidad",
     revision_qr: "Revision QR",
     revision_horario: "Revision horario",
@@ -1455,6 +1578,10 @@ function hasCompleteEvidence(record) {
   return Boolean(record.evidenciaEntradaCompleta && (record.horaSalida ? record.evidenciaSalidaCompleta : true));
 }
 
+function hasCompleteGeoEvidence(record) {
+  return Boolean(record.evidenciaEntradaGeolocalizada && (record.horaSalida ? record.evidenciaSalidaGeolocalizada : true));
+}
+
 function evidenceCell(record) {
   const complete = hasCompleteEvidence(record);
   const hash = record.fotoSalidaHash || record.fotoEntradaHash;
@@ -1463,6 +1590,7 @@ function evidenceCell(record) {
       <span class="badge ${complete ? "success" : "warning"}">${complete ? "Completa" : "Parcial"}</span>
       <small>${escapeHtml(shortHash(hash))}</small>
       <small>${escapeHtml(formatBytes(record.fotoSalidaSizeBytes || record.fotoEntradaSizeBytes))}</small>
+      <small>Geo: ${hasCompleteGeoEvidence(record) ? "Completa" : "Parcial"}</small>
     </div>
   `;
 }
@@ -1510,7 +1638,7 @@ async function showEvidenceDetail(id) {
   const record = state.records.find((item) => item.id === id);
   if (!record || !els.evidenceModal || !els.evidenceBody) return;
 
-  addAdminLog("evidencia_visualizada", `${record.matricula} ${displayDate(record.fecha)}`);
+  addAdminLog("evidencia_geolocalizada_visualizada", `${record.matricula} ${displayDate(record.fecha)}`);
   const entradaUrl = await getSignedEvidenceUrl(record, "entrada");
   const salidaUrl = await getSignedEvidenceUrl(record, "salida");
 
@@ -1539,6 +1667,12 @@ async function showEvidenceDetail(id) {
       evidenceField("Storage path", record.fotoEntradaStoragePath),
       evidenceField("Captura cliente", displayTime(record.fotoEntradaCapturedAt) || record.fotoEntradaCapturedAt),
       evidenceField("Dispositivo", record.fotoEntradaDeviceLabel),
+      evidenceField("GPS entrada", record.latitudEntrada && record.longitudEntrada ? `${record.latitudEntrada}, ${record.longitudEntrada}` : "Pendiente"),
+      evidenceField("Precision entrada", formatMeters(record.precisionEntrada)),
+      evidenceField("Distancia entrada", formatMeters(record.distanciaEntradaMetros)),
+      evidenceField("Sitio entrada", record.sitioEntradaNombre || record.sitioEntradaId),
+      evidenceField("Ubicacion entrada", record.ubicacionEntradaValidada ? "Validada" : "Revision"),
+      evidenceField("Obs. entrada", record.ubicacionEntradaObservacion),
     ])}
     ${metadataBlock("Foto de salida", [
       evidenceField("Hash SHA-256", record.fotoSalidaHash),
@@ -1548,12 +1682,18 @@ async function showEvidenceDetail(id) {
       evidenceField("Storage path", record.fotoSalidaStoragePath),
       evidenceField("Captura cliente", displayTime(record.fotoSalidaCapturedAt) || record.fotoSalidaCapturedAt),
       evidenceField("Dispositivo", record.fotoSalidaDeviceLabel),
+      evidenceField("GPS salida", record.latitudSalida && record.longitudSalida ? `${record.latitudSalida}, ${record.longitudSalida}` : "Pendiente"),
+      evidenceField("Precision salida", formatMeters(record.precisionSalida || record.precisionUbicacion)),
+      evidenceField("Distancia salida", formatMeters(record.distanciaSalidaMetros || record.distanciaEmpresaMetros)),
+      evidenceField("Sitio salida", record.sitioSalidaNombre || record.sitioSalidaId),
+      evidenceField("Ubicacion salida", record.ubicacionSalidaValidada ? "Validada" : "Revision"),
+      evidenceField("Obs. salida", record.ubicacionSalidaObservacion),
     ])}
     ${metadataBlock("Validaciones", [
       evidenceField("QR usado", record.tokenQrUsado || record.qrSalida),
-      evidenceField("GPS", record.latitudSalida && record.longitudSalida ? `${record.latitudSalida}, ${record.longitudSalida}` : "Pendiente"),
-      evidenceField("Precision", formatMeters(record.precisionUbicacion)),
-      evidenceField("Distancia", formatMeters(record.distanciaEmpresaMetros)),
+      evidenceField("Geo entrada", record.evidenciaEntradaGeolocalizada ? "Completa" : "Parcial"),
+      evidenceField("Geo salida", record.evidenciaSalidaGeolocalizada ? "Completa" : "Parcial"),
+      evidenceField("Observacion geo", record.evidenciaGeolocalizadaObservacion),
       evidenceField("Reto", record.retoVida),
       evidenceField("Riesgo", riskLabel(record.riesgo)),
       evidenceField("Observacion", record.observacion || record.observaciones),
@@ -1594,9 +1734,9 @@ function renderRecords() {
       <td><span class="badge ${identityClass}">${escapeHtml(identityLabel(record.validacionIdentidad))}</span></td>
       <td>${escapeHtml(formatSimilarity(record.similitudFacial))}</td>
       <td>${booleanBadge(record.qrValidado, "Validado", "Pendiente")}</td>
-      <td>${booleanBadge(record.ubicacionValidada, "Correcta", "Revision")}</td>
-      <td>${escapeHtml(formatMeters(record.precisionUbicacion))}</td>
-      <td>${escapeHtml(formatMeters(record.distanciaEmpresaMetros))}</td>
+      <td>${booleanBadge(record.ubicacionEntradaValidada && (record.horaSalida ? record.ubicacionSalidaValidada : true), "Correcta", "Revision")}</td>
+      <td>${escapeHtml(formatMeters(record.precisionSalida || record.precisionEntrada || record.precisionUbicacion))}</td>
+      <td>${escapeHtml(formatMeters(record.distanciaSalidaMetros || record.distanciaEntradaMetros || record.distanciaEmpresaMetros))}</td>
       <td>${escapeHtml(record.retoVida || "Pendiente")}</td>
       <td><span class="badge ${riskClass}">${escapeHtml(riskLabel(record.riesgo))}</span></td>
       <td>${evidenceCell(record)}</td>
@@ -1722,6 +1862,23 @@ function exportCsv() {
     "Distancia empresa metros",
     "Precision ubicacion",
     "Ubicacion observacion",
+    "latitud_entrada",
+    "longitud_entrada",
+    "precision_entrada",
+    "distancia_entrada_metros",
+    "ubicacion_entrada_validada",
+    "ubicacion_entrada_observacion",
+    "sitio_entrada_id",
+    "latitud_salida",
+    "longitud_salida",
+    "precision_salida",
+    "distancia_salida_metros",
+    "ubicacion_salida_validada",
+    "ubicacion_salida_observacion",
+    "sitio_salida_id",
+    "evidencia_entrada_geolocalizada",
+    "evidencia_salida_geolocalizada",
+    "evidencia_geolocalizada_observacion",
     "Reto de vida",
     "Reto cumplido",
     "Riesgo",
@@ -1770,6 +1927,23 @@ function exportCsv() {
     record.distanciaEmpresaMetros,
     record.precisionUbicacion,
     record.ubicacionObservacion,
+    record.latitudEntrada,
+    record.longitudEntrada,
+    record.precisionEntrada,
+    record.distanciaEntradaMetros,
+    record.ubicacionEntradaValidada ? "Si" : "No",
+    record.ubicacionEntradaObservacion,
+    record.sitioEntradaId,
+    record.latitudSalida,
+    record.longitudSalida,
+    record.precisionSalida || record.precisionUbicacion,
+    record.distanciaSalidaMetros || record.distanciaEmpresaMetros,
+    record.ubicacionSalidaValidada ? "Si" : "No",
+    record.ubicacionSalidaObservacion,
+    record.sitioSalidaId,
+    record.evidenciaEntradaGeolocalizada ? "Si" : "No",
+    record.evidenciaSalidaGeolocalizada ? "Si" : "No",
+    record.evidenciaGeolocalizadaObservacion,
     record.retoVida,
     record.retoVidaCumplido ? "Si" : "No",
     riskLabel(record.riesgo),
