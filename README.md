@@ -73,11 +73,10 @@ exportar, limpiar datos, eliminar registros y editar observaciones requieren la
 clave administrativa del prototipo:
 
 ```text
-ADMIN123
+[Tu contraseña]
 ```
 
-Esta clave sigue siendo una proteccion de MVP. Para produccion real conviene
-mover administracion a Supabase Auth, roles y funciones Edge.
+Esta clave sigue siendo una proteccion del Proyecto. Para produccion real conviene, tú como usuario te conviene mover administracion a Supabase Auth, roles y funciones Edge.
 
 No se usa `service_role_key` en frontend. La app usa una publishable key y RLS
 con permisos por columnas para limitar inserciones de entrada y actualizaciones
