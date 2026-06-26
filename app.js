@@ -21,6 +21,7 @@ const LIFE_CHALLENGES = [
 const SUPABASE = window.SUPABASE_CONFIG || {};
 const CLOUD_ENABLED = Boolean(SUPABASE.url && SUPABASE.publishableKey && SUPABASE.bucket);
 const PHOTO_BUCKET = SUPABASE.bucket || "attendance-photos";
+const GEO_PRECISION_MAX_METERS = 200;
 
 const state = {
   records: loadLocalRecords(),
@@ -463,6 +464,81 @@ function setSiteMessage(message, tone = "neutral") {
   els.siteTestResult.dataset.tone = tone;
 }
 
+function toFiniteNumber(value) {
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
+}
+
+function normalizeSiteLocationValidation(validation, fallbackPrecision = null) {
+  if (!validation || validation.configured === false) {
+    return {
+      configured: false,
+      estado: "sitio_no_configurado",
+      tone: "warning",
+      message: "No hay sitio activo configurado.",
+    };
+  }
+
+  const distance = toFiniteNumber(validation.distancia_metros);
+  const radius = toFiniteNumber(validation.radio_metros);
+  const precision = toFiniteNumber(validation.precision_metros ?? fallbackPrecision);
+  const precisionLimit = toFiniteNumber(validation.precision_maxima_metros) ?? GEO_PRECISION_MAX_METERS;
+  const insideRadius = typeof validation.dentro_radio === "boolean"
+    ? validation.dentro_radio
+    : distance !== null && radius !== null && distance <= radius;
+  const precisionOk = typeof validation.precision_aceptable === "boolean"
+    ? validation.precision_aceptable
+    : precision !== null && precision <= precisionLimit;
+  const validated = typeof validation.validado === "boolean"
+    ? validation.validado
+    : insideRadius && precisionOk;
+
+  let estado = validation.estado || validation.observacion || "";
+  if (!estado || estado === "precision_insuficiente") {
+    if (validated) estado = "ubicacion_validada";
+    else if (insideRadius && !precisionOk) estado = "dentro_radio_precision_baja";
+    else estado = "fuera_de_radio";
+  }
+
+  const distanceText = formatMeters(distance);
+  const radiusText = formatMeters(radius);
+  const precisionText = formatMeters(precision);
+
+  if (estado === "ubicacion_validada" || validated) {
+    return {
+      configured: true,
+      estado: "ubicacion_validada",
+      tone: "success",
+      message: "Ubicacion validada: " + distanceText + " de " + radiusText + ". Precision: " + precisionText + ".",
+    };
+  }
+
+  if (estado === "dentro_radio_precision_baja" || (insideRadius && !precisionOk)) {
+    return {
+      configured: true,
+      estado: "dentro_radio_precision_baja",
+      tone: "warning",
+      message: "Estas dentro del radio, pero la precision GPS es baja. Distancia: " + distanceText + " de " + radiusText + ". Precision: " + precisionText + ".",
+    };
+  }
+
+  if (estado === "gps_no_disponible" || estado === "gps_denegado") {
+    return {
+      configured: true,
+      estado,
+      tone: "warning",
+      message: "No se pudo obtener la ubicacion. Revisa permisos del navegador.",
+    };
+  }
+
+  return {
+    configured: true,
+    estado: "fuera_de_radio",
+    tone: "danger",
+    message: "Ubicacion fuera del radio permitido. Distancia: " + distanceText + " de " + radiusText + ". Precision: " + precisionText + ".",
+  };
+}
+
 function fillSiteForm(site) {
   if (!els.siteForm) return;
   const configured = hasConfiguredSite(site);
@@ -578,21 +654,10 @@ async function testAdminLocation() {
       p_longitud: position.coords.longitude,
       p_precision: position.coords.accuracy,
     });
-    const validation = getRpcFirstRow(result);
-    if (!validation || validation.configured === false) {
-      setSiteMessage("No hay sitio activo para comparar. Guarda primero la configuracion.", "warning");
-      return;
-    }
-    const distance = formatMeters(validation.distancia_metros);
-    const radius = formatMeters(validation.radio_metros);
-    setSiteMessage(
-      validation.validado
-        ? "Ubicacion dentro del radio: " + distance + " de " + radius + "."
-        : "Ubicacion fuera o imprecisa: " + distance + " de " + radius + ".",
-      validation.validado ? "success" : "danger",
-    );
+    const validation = normalizeSiteLocationValidation(getRpcFirstRow(result), position.coords.accuracy);
+    setSiteMessage(validation.message, validation.tone);
   } catch (error) {
-    setSiteMessage("No se pudo probar la ubicacion actual.", "danger");
+    setSiteMessage("No se pudo obtener la ubicacion. Revisa permisos del navegador.", "warning");
   }
 }
 
