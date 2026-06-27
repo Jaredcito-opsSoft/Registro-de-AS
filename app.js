@@ -1144,6 +1144,21 @@ function setFaceStatus(element, message, tone = "neutral") {
   if (!element) return;
   element.textContent = message;
   element.dataset.tone = tone;
+  if (element.id === "faceStatus") {
+    const headerFace = document.getElementById("headerFaceState");
+    if (headerFace) {
+      if (tone === "success") {
+        headerFace.textContent = "Facial: activo";
+        headerFace.dataset.tone = "active";
+      } else if (tone === "pending") {
+        headerFace.textContent = "Facial: cargando…";
+        headerFace.dataset.tone = "pending";
+      } else {
+        headerFace.textContent = "Facial: error";
+        headerFace.dataset.tone = "inactive";
+      }
+    }
+  }
 }
 
 function syncCaptureControls() {
