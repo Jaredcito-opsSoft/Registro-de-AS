@@ -20,10 +20,22 @@
         </div>
 
         <nav class="top-nav" aria-label="Navegacion principal">
-          <button class="nav-button is-active" data-target="home" type="button" aria-label="Inicio"><span>IN</span></button>
-          <button class="nav-button" data-target="entry" type="button" aria-label="Entrada"><span>EN</span></button>
-          <button class="nav-button" data-target="exit" type="button" aria-label="Salida"><span>SA</span></button>
-          <button class="nav-button" data-target="records" type="button" aria-label="Registros"><span>RG</span></button>
+          <button class="nav-button is-active" data-target="home" type="button" aria-label="Inicio">
+            <span class="nav-icon" aria-hidden="true">&#8962;</span>
+            <span class="nav-label">Inicio</span>
+          </button>
+          <button class="nav-button" data-target="entry" type="button" aria-label="Entrada">
+            <span class="nav-icon" aria-hidden="true">&#8594;</span>
+            <span class="nav-label">Entrada</span>
+          </button>
+          <button class="nav-button" data-target="exit" type="button" aria-label="Salida">
+            <span class="nav-icon" aria-hidden="true">&#8592;</span>
+            <span class="nav-label">Salida</span>
+          </button>
+          <button class="nav-button" data-target="records" type="button" aria-label="Registros">
+            <span class="nav-icon" aria-hidden="true">&#9776;</span>
+            <span class="nav-label">Registros</span>
+          </button>
         </nav>
 
         <div class="sidebar-orbit" aria-hidden="true"></div>
@@ -37,11 +49,12 @@
             <h1>Asistencia QR</h1>
           </div>
 
-          <div class="toolbar-cluster" aria-hidden="true">
-            <div class="channel-pill"><span>f</span> registro.asistencia/qr</div>
-            <div class="search-pill">Search</div>
-            <button class="icon-button" type="button" tabindex="-1">[]</button>
-            <button class="icon-button has-dot" type="button" tabindex="-1"></button>
+          <div class="sys-status-bar" aria-label="Estado del sistema">
+            <span class="sys-time-chip">
+              <span class="sys-dot is-live" aria-hidden="true"></span>
+              Sistema activo
+            </span>
+            <span id="headerQrState" class="sys-qr-chip" data-tone="inactive">QR: verificando…</span>
           </div>
         </header>
 

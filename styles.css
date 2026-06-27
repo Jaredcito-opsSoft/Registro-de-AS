@@ -19,6 +19,16 @@
   --radius-soft: 18px;
   --radius-pill: 999px;
   --ease: cubic-bezier(0.23, 1, 0.32, 1);
+
+  /* Tokens semánticos — fixes de estados GPS y badges (Fix 2 y 3) */
+  --success-ink: #10643c;
+  --success-bg: #dcf8e9;
+  --warning-ink: #784a08;
+  --warning-bg: #fff2cf;
+  --pending-ink: #3d3d6b;
+  --pending-bg: #ededf8;
+  --danger-ink: #913832;
+  --danger-bg: #ffe9e7;
 }
 
 *,
@@ -366,8 +376,8 @@ a {
   margin: 0;
   padding: 15px 18px;
   border-radius: var(--radius-soft);
-  color: #7b3630;
-  background: #ffe9e7;
+  color: var(--danger-ink);
+  background: var(--danger-bg);
   border: 1px solid rgba(239, 68, 68, 0.18);
   font-size: 0.93rem;
   font-weight: 600;
@@ -375,15 +385,15 @@ a {
 }
 
 .model-status[data-tone="success"] {
-  color: #10643c;
-  background: #dcf8e9;
+  color: var(--success-ink);
+  background: var(--success-bg);
   border-color: rgba(69, 196, 135, 0.3);
 }
 
 .model-status[data-tone="pending"],
 .model-status[data-tone="neutral"] {
-  color: #755016;
-  background: #fff2cf;
+  color: var(--warning-ink);
+  background: var(--warning-bg);
   border-color: rgba(255, 198, 83, 0.34);
 }
 
@@ -513,7 +523,7 @@ a {
   padding-left: 0;
 }
 
-.hero-meta div + div {
+.hero-meta div+div {
   border-left: 2px dotted rgba(255, 255, 255, 0.54);
   padding-left: 24px;
 }
@@ -978,8 +988,8 @@ input::placeholder {
 .site-test-result {
   padding: 13px 16px;
   border-radius: 18px;
-  color: #10643c;
-  background: #dcf8e9;
+  color: var(--success-ink);
+  background: var(--success-bg);
   border: 1px solid rgba(69, 196, 135, 0.28);
   font-size: 0.9rem;
   font-weight: 700;
@@ -990,21 +1000,21 @@ input::placeholder {
 .face-status[data-tone="neutral"],
 .site-test-result[data-tone="warning"],
 .site-test-result[data-tone="neutral"] {
-  color: #855b11;
-  background: #fff2cf;
+  color: var(--warning-ink);
+  background: var(--warning-bg);
   border-color: rgba(255, 198, 83, 0.34);
 }
 
 .face-status[data-tone="success"],
 .site-test-result[data-tone="success"] {
-  color: #10643c;
-  background: #dcf8e9;
+  color: var(--success-ink);
+  background: var(--success-bg);
 }
 
 .face-status[data-tone="danger"],
 .site-test-result[data-tone="danger"] {
-  color: #913832;
-  background: #ffe9e7;
+  color: var(--danger-ink);
+  background: var(--danger-bg);
 }
 
 .anti-fraud-strip {
@@ -1029,6 +1039,26 @@ input::placeholder {
 .anti-fraud-strip span {
   color: var(--ink);
   font-weight: 800;
+}
+
+/* Fix 2: estados GPS de #locationStatus con color visual por tono */
+#locationStatus[data-tone="success"] {
+  color: var(--success-ink);
+  font-weight: 800;
+}
+
+#locationStatus[data-tone="warning"] {
+  color: var(--warning-ink);
+  font-weight: 800;
+}
+
+#locationStatus[data-tone="danger"] {
+  color: #c0392b;
+  font-weight: 800;
+}
+
+#locationStatus[data-tone="neutral"] {
+  color: var(--muted);
 }
 
 .table-wrap {
@@ -1096,13 +1126,23 @@ tbody tr:hover {
 }
 
 .badge.success {
-  color: #10643c;
-  background: #dcf8e9;
+  color: var(--success-ink);
+  background: var(--success-bg);
 }
 
 .badge.danger {
-  color: #913832;
-  background: #ffe9e7;
+  color: var(--danger-ink);
+  background: var(--danger-bg);
+}
+
+.badge.warning {
+  color: var(--warning-ink);
+  background: var(--warning-bg);
+}
+
+.badge.pending {
+  color: var(--pending-ink);
+  background: var(--pending-bg);
 }
 
 .badge.admin,
@@ -1245,10 +1285,61 @@ tbody tr:hover {
     opacity: 0;
     transform: translateY(8px);
   }
+
   to {
     opacity: 1;
     transform: translateY(0);
   }
+}
+
+/* ─── Header: chips de estado del sistema (Fix 5) ──────────────────────────── */
+.sys-status-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  flex: 1;
+  justify-content: flex-end;
+}
+
+.sys-time-chip,
+.sys-qr-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 40px;
+  padding: 0 16px;
+  border-radius: var(--radius-pill);
+  background: rgba(255, 255, 255, 0.7);
+  color: var(--ink);
+  font-size: 0.84rem;
+  font-weight: 700;
+  box-shadow: inset 0 0 0 1px rgba(17, 19, 32, 0.04);
+  white-space: nowrap;
+}
+
+.sys-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--muted);
+  flex-shrink: 0;
+}
+
+.sys-dot.is-live {
+  background: var(--green);
+  box-shadow: 0 0 0 3px rgba(69, 196, 135, 0.22);
+  animation: pulse-dot 2s infinite;
+}
+
+.sys-qr-chip[data-tone="active"] {
+  color: var(--success-ink);
+  background: var(--success-bg);
+}
+
+@keyframes pulse-dot {
+  0%, 100% { box-shadow: 0 0 0 3px rgba(69, 196, 135, 0.22); }
+  50%       { box-shadow: 0 0 0 5px rgba(69, 196, 135, 0.1); }
 }
 
 @media (max-width: 1120px) {
@@ -1267,6 +1358,12 @@ tbody tr:hover {
 
   .dashboard-grid {
     grid-template-columns: 1fr;
+  }
+
+  /* Fix 1: .model-status tiene grid-column:2 fijo; al colapsar el grid hay que resetearlo */
+  .model-status {
+    grid-column: 1;
+    grid-row: auto;
   }
 
   .hero-panel,
@@ -1405,7 +1502,7 @@ tbody tr:hover {
     grid-template-columns: 1fr;
   }
 
-  .hero-meta div + div {
+  .hero-meta div+div {
     border-left: 0;
     padding-left: 0;
   }
@@ -1585,6 +1682,7 @@ tbody tr:hover {
 }
 
 @media (prefers-reduced-motion: reduce) {
+
   *,
   *::before,
   *::after {
