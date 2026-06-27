@@ -3,8 +3,8 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="description" content="Sistema de control de asistencia con registro fotográfico, código QR dinámico y validación de ubicación. Ideal para escuelas y pequeñas empresas." />
-    <title>Asistencia QR — Control Institucional</title>
+    <meta name="description" content="Sistema de control de asistencia con registro fotografico, codigo QR dinamico y validacion de ubicacion." />
+    <title>Asistencia QR - Control Institucional</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" />
@@ -12,359 +12,414 @@
   </head>
   <body>
     <div class="app-shell">
-      <header class="topbar">
-        <div class="brand-block">
-          <div class="brand-mark" aria-hidden="true">AS</div>
-          <div>
+      <aside class="sidebar" aria-label="Navegacion principal">
+        <div class="sidebar-mark" aria-hidden="true">
+          <span></span>
+          <span></span>
+          <span></span>
+        </div>
+
+        <nav class="top-nav" aria-label="Navegacion principal">
+          <button class="nav-button is-active" data-target="home" type="button" aria-label="Inicio"><span>IN</span></button>
+          <button class="nav-button" data-target="entry" type="button" aria-label="Entrada"><span>EN</span></button>
+          <button class="nav-button" data-target="exit" type="button" aria-label="Salida"><span>SA</span></button>
+          <button class="nav-button" data-target="records" type="button" aria-label="Registros"><span>RG</span></button>
+        </nav>
+
+        <div class="sidebar-orbit" aria-hidden="true"></div>
+        <div class="sidebar-user" aria-hidden="true">AS</div>
+      </aside>
+
+      <div class="workspace">
+        <header class="topbar">
+          <div class="brand-block">
             <p class="eyebrow">Control institucional</p>
             <h1>Asistencia QR</h1>
           </div>
-        </div>
 
-        <nav class="top-nav" aria-label="Navegación principal">
-          <button class="nav-button is-active" data-target="home">Inicio</button>
-          <button class="nav-button" data-target="entry">Entrada</button>
-          <button class="nav-button" data-target="exit">Salida</button>
-          <button class="nav-button" data-target="records">Registros</button>
-        </nav>
+          <div class="toolbar-cluster" aria-hidden="true">
+            <div class="channel-pill"><span>f</span> registro.asistencia/qr</div>
+            <div class="search-pill">Search</div>
+            <button class="icon-button" type="button" tabindex="-1">[]</button>
+            <button class="icon-button has-dot" type="button" tabindex="-1"></button>
+          </div>
+        </header>
 
-        <div class="status-card" aria-live="polite">
-          <small>Hora del sistema</small>
-          <span id="clockLabel">--:--</span>
-          <em id="qrWindowLabel">Validando horario…</em>
-        </div>
-      </header>
-
-      <div id="faceStatus" class="model-status" data-tone="pending">Cargando modelos de reconocimiento facial...</div>
-
-      <main>
-        <!-- ── Vista: Inicio ── -->
-        <section class="dashboard-grid" data-view="home">
-          <section class="panel hero-panel">
-            <div class="hero-copy">
-              <p class="section-kicker">Sistema activo</p>
-              <h2>Registro rápido, evidencia visual y salida protegida.</h2>
-              <p>
-                Captura entrada con foto, valida salida por QR y conserva el historial
-                en modo lectura para evitar cambios no autorizados.
-              </p>
-            </div>
-
-            <div class="summary-grid" aria-label="Resumen de asistencia del día">
-              <div class="summary-tile">
-                <span id="totalRecords">0</span>
-                <small>📋 Registros</small>
+        <main>
+          <section class="dashboard-grid" data-view="home">
+            <section class="hero-panel">
+              <div class="hero-topline">
+                <span>Hora del sistema</span>
+                <b aria-hidden="true">...</b>
               </div>
-              <div class="summary-tile">
-                <span id="completedRecords">0</span>
-                <small>✅ Completos</small>
+              <div class="status-card" aria-live="polite">
+                <small>Hora del sistema</small>
+                <span id="clockLabel">--:--</span>
+                <em id="qrWindowLabel">Validando horario...</em>
               </div>
-              <div class="summary-tile attention">
-                <span id="pendingRecords">0</span>
-                <small>⏳ Pendientes</small>
-              </div>
-            </div>
 
-            <div class="operation-strip" aria-label="Flujo de operación">
-              <div>
-                <strong>01</strong>
-                <span>📷 Entrada con foto</span>
+              <div class="hero-visual" aria-hidden="true">
+                <span></span>
+                <span></span>
+                <span></span>
+                <span></span>
               </div>
-              <div>
-                <strong>02</strong>
-                <span>🔲 QR por horario</span>
-              </div>
-              <div>
-                <strong>03</strong>
-                <span>🔒 Historial protegido</span>
-              </div>
-            </div>
 
-            <div class="action-grid">
-              <button class="primary action-card" data-target="entry">
-                <span>Registrar entrada</span>
-                <small>Foto, nombre y matrícula</small>
-              </button>
-              <button class="secondary action-card" data-target="exit">
-                <span>Registrar salida</span>
-                <small>QR vigente y foto final</small>
-              </button>
-              <button class="neutral action-card" data-target="records">
-                <span>Ver registros</span>
-                <small>Historial de solo lectura</small>
-              </button>
-            </div>
+              <div class="hero-meta" aria-label="Estado operativo">
+                <div>
+                  <small>Status</small>
+                  <strong>QR/Manual</strong>
+                </div>
+                <div>
+                  <small>Locacion</small>
+                  <strong>Institucional</strong>
+                </div>
+                <div>
+                  <small>Ventana</small>
+                  <strong>4:30 - 5:10</strong>
+                </div>
+              </div>
+            </section>
+
+            <section class="panel stats-panel">
+              <div class="panel-menu">
+                <p class="section-kicker">Desglose de registros</p>
+                <span aria-hidden="true">...</span>
+              </div>
+              <div class="donut-wrap" aria-hidden="true">
+                <div class="donut"></div>
+              </div>
+              <div class="summary-list" aria-label="Resumen de asistencia del dia">
+                <article class="summary-tile">
+                  <span id="totalRecords">0</span>
+                  <small>Registros</small>
+                </article>
+                <article class="summary-tile success">
+                  <span id="completedRecords">0</span>
+                  <small>Completos</small>
+                </article>
+                <article class="summary-tile attention">
+                  <span id="pendingRecords">0</span>
+                  <small>Pendientes</small>
+                </article>
+              </div>
+            </section>
+
+            <div id="faceStatus" class="model-status" data-tone="pending">Cargando modelos de reconocimiento facial...</div>
+
+            <section class="panel activity-panel">
+              <div class="tab-strip" aria-label="Acciones principales">
+                <button class="is-active" data-target="home" type="button">Inicio</button>
+                <button data-target="entry" type="button">Entrada</button>
+                <button data-target="exit" type="button">Salida</button>
+                <button data-target="records" type="button">Registros</button>
+              </div>
+
+              <div class="hero-copy">
+                <p class="section-kicker">Sistema activo</p>
+                <h2>Registro rapido, evidencia visual protegida.</h2>
+                <p>
+                  Captura entrada con foto, valida salida por QR y conserva el historial en modo lectura
+                  para evitar cambios no autorizados.
+                </p>
+              </div>
+
+              <div class="operation-strip" aria-label="Flujo de operacion">
+                <div>
+                  <strong>01</strong>
+                  <span>Entrada con foto</span>
+                </div>
+                <div>
+                  <strong>02</strong>
+                  <span>QR por horario</span>
+                </div>
+                <div>
+                  <strong>03</strong>
+                  <span>Historial protegido</span>
+                </div>
+              </div>
+
+              <div class="action-grid">
+                <button class="primary action-card" data-target="entry" type="button">
+                  <span>Registrar entrada</span>
+                  <small>Foto, nombre y matricula</small>
+                </button>
+                <button class="secondary action-card" data-target="exit" type="button">
+                  <span>Registrar salida</span>
+                  <small>QR vigente y foto final</small>
+                </button>
+                <button class="neutral action-card" data-target="records" type="button">
+                  <span>Ver registros</span>
+                  <small>Historial de solo lectura</small>
+                </button>
+              </div>
+            </section>
+
+            <section class="panel qr-panel">
+              <div class="panel-menu">
+                <p class="section-kicker">QR de salida</p>
+                <span aria-hidden="true">...</span>
+              </div>
+              <h2>Estado del QR</h2>
+              <p id="qrMessage">El sistema revisara si el QR puede mostrarse.</p>
+
+              <div class="qr-box" id="qrBox">
+                <img id="qrImage" alt="Codigo QR de salida" />
+                <a id="qrDirectLink" href="#salida">Abrir registro de salida</a>
+                <small id="qrTokenLabel">Token: --</small>
+              </div>
+
+              <label class="toggle-row">
+                <span>Modo prueba (demo)</span>
+                <input id="demoMode" type="checkbox" />
+              </label>
+            </section>
           </section>
 
-          <section class="panel qr-panel">
-            <div>
-              <p class="section-kicker">QR de salida</p>
-              <h2>4:30 p. m. – 5:10 p. m.</h2>
-              <p id="qrMessage">El sistema revisará si el QR puede mostrarse.</p>
-            </div>
-
-            <div class="qr-box" id="qrBox">
-              <img id="qrImage" alt="Código QR de salida" />
-              <a id="qrDirectLink" href="#salida">Abrir registro de salida</a>
-              <small id="qrTokenLabel">Token: --</small>
-            </div>
-
-            <label class="toggle-row">
-              <span>Modo prueba (demo)</span>
-              <input id="demoMode" type="checkbox" />
-            </label>
-          </section>
-        </section>
-
-        <!-- ── Vista: Entrada ── -->
-        <section class="panel form-panel is-hidden" data-view="entry">
-          <div class="panel-heading">
-            <div>
-              <p class="section-kicker">Paso 1 de 2</p>
-              <h2>Registrar entrada</h2>
-            </div>
-            <button class="back-button" data-target="home" type="button">Volver al inicio</button>
-          </div>
-
-          <div class="capture-layout">
-            <div class="camera-card">
-              <video id="entryVideo" playsinline autoplay muted aria-label="Vista de cámara para entrada"></video>
-              <canvas id="entryCanvas" class="is-hidden"></canvas>
-              <img id="entryPreview" class="photo-preview is-hidden" alt="Foto de entrada capturada" />
-              <p id="entryFaceStatus" class="face-status" data-tone="pending">Espera a que carguen los modelos faciales.</p>
-              <p id="entryLocationStatus" class="face-status" data-tone="neutral">La ubicacion se solicitara al guardar entrada.</p>
-              <p class="camera-help">Posiciona tu rostro dentro del encuadre y toma la foto.</p>
-              <div class="camera-actions">
-                <button id="startEntryCamera" class="secondary">📷 Activar cámara</button>
-                <button id="takeEntryPhoto" class="primary" disabled>Tomar foto</button>
+          <section class="panel form-panel is-hidden" data-view="entry">
+            <div class="panel-heading">
+              <div>
+                <p class="section-kicker">Paso 1 de 2</p>
+                <h2>Registrar entrada</h2>
               </div>
-            </div>
-
-            <form id="entryForm" class="data-form" novalidate>
-              <label>
-                Nombre completo
-                <input id="entryName" type="text" autocomplete="name" placeholder="Ej. Ana López Pérez" required />
-              </label>
-              <label>
-                Matrícula
-                <input id="entryMatricula" type="text" autocomplete="off" placeholder="Ej. A00125" required />
-              </label>
-              <div class="form-actions">
-                <button class="primary wide" type="submit">✓ Guardar entrada</button>
-                <button class="back-button wide" data-target="home" type="button">Cancelar y volver</button>
-              </div>
-            </form>
-          </div>
-        </section>
-
-        <!-- ── Vista: Salida ── -->
-        <section class="panel form-panel is-hidden" data-view="exit">
-          <div class="panel-heading">
-            <div>
-              <p class="section-kicker">Paso 2 de 2</p>
-              <h2>Registrar salida</h2>
-            </div>
-            <button class="back-button" data-target="home" type="button">Volver al inicio</button>
-          </div>
-
-          <div class="notice" id="exitGuard" aria-live="polite">
-            La salida solo puede registrarse cuando el QR está vigente.
-          </div>
-
-          <div class="anti-fraud-strip">
-            <div>
-              <strong>Reto de vida</strong>
-              <span id="lifeChallenge">Preparando reto...</span>
-            </div>
-            <div>
-              <strong>Ubicacion</strong>
-              <span id="locationStatus" data-tone="neutral">La ubicacion se solicitara al guardar salida.</span>
-            </div>
-          </div>
-
-          <div class="capture-layout">
-            <div class="camera-card">
-              <video id="exitVideo" playsinline autoplay muted aria-label="Vista de cámara para salida"></video>
-              <canvas id="exitCanvas" class="is-hidden"></canvas>
-              <img id="exitPreview" class="photo-preview is-hidden" alt="Foto de salida capturada" />
-              <p id="exitFaceStatus" class="face-status" data-tone="pending">Espera a que carguen los modelos faciales.</p>
-              <p class="camera-help">Toma una foto de frente para confirmar tu salida.</p>
-              <div class="camera-actions">
-                <button id="startExitCamera" class="secondary">📷 Activar cámara</button>
-                <button id="takeExitPhoto" class="primary" disabled>Tomar foto</button>
-              </div>
-            </div>
-
-            <form id="exitForm" class="data-form" novalidate>
-              <label>
-                Matrícula
-                <input id="exitMatricula" type="text" autocomplete="off" placeholder="Ej. A00125" required />
-              </label>
-              <div class="form-actions">
-                <button class="primary wide" type="submit">✓ Guardar salida</button>
-                <button class="back-button wide" data-target="home" type="button">Cancelar y volver</button>
-              </div>
-            </form>
-          </div>
-        </section>
-
-        <!-- ── Vista: Registros ── -->
-        <section class="panel records-panel is-hidden" data-view="records">
-          <div class="panel-heading">
-            <div>
-              <p class="section-kicker">Historial</p>
-              <h2>Tabla de asistencia</h2>
-              <p class="read-only-note">
-                Vista de solo lectura. Las acciones sensibles requieren clave administrativa.
-              </p>
-            </div>
-            <div class="button-row toolbar-actions">
               <button class="back-button" data-target="home" type="button">Volver al inicio</button>
-              <button id="unlockAdmin" class="secondary">🔓 Desbloquear admin</button>
-              <button id="lockAdmin" class="ghost is-hidden">🔒 Bloquear admin</button>
-              <button id="exportCsv" class="secondary admin-control is-hidden">⬇ Exportar CSV</button>
-              <button id="clearRecords" class="danger admin-control is-hidden">🗑 Limpiar datos</button>
             </div>
-          </div>
 
-          <div id="adminStatus" class="notice is-blocked" aria-live="polite">
-            Modo lectura activo. No se pueden modificar horarios, fotos, estados ni eliminar registros.
-          </div>
-
-
-          <section class="site-admin-panel admin-control is-hidden" aria-labelledby="siteConfigTitle">
-            <div class="site-admin-header">
-              <div>
-                <p class="section-kicker">Configuracion del sitio</p>
-                <h3 id="siteConfigTitle">Ubicacion oficial</h3>
-                <p id="siteStatusSummary">Configura el sitio oficial para activar la validacion global de ubicacion.</p>
+            <div class="capture-layout">
+              <div class="camera-card">
+                <video id="entryVideo" playsinline autoplay muted aria-label="Vista de camara para entrada"></video>
+                <canvas id="entryCanvas" class="is-hidden"></canvas>
+                <img id="entryPreview" class="photo-preview is-hidden" alt="Foto de entrada capturada" />
+                <p id="entryFaceStatus" class="face-status" data-tone="pending">Espera a que carguen los modelos faciales.</p>
+                <p id="entryLocationStatus" class="face-status" data-tone="neutral">La ubicacion se solicitara al guardar entrada.</p>
+                <p class="camera-help">Posiciona tu rostro dentro del encuadre y toma la foto.</p>
+                <div class="camera-actions">
+                  <button id="startEntryCamera" class="secondary" type="button">Activar camara</button>
+                  <button id="takeEntryPhoto" class="primary" type="button" disabled>Tomar foto</button>
+                </div>
               </div>
-              <span id="siteStatusBadge" class="badge warning">Sitio pendiente</span>
-            </div>
 
-            <div class="site-dashboard-grid" aria-label="Estado del sitio activo">
-              <article class="site-config-card">
-                <small>Sitio</small>
-                <strong id="siteNameLabel">Sin sitio configurado</strong>
-                <span id="siteAddressLabel">Pendiente de direccion</span>
-              </article>
-              <article class="site-config-card">
-                <small>Coordenadas</small>
-                <strong id="siteCoordsLabel">Pendiente</strong>
-                <span>Radio: <b id="siteRadiusLabel">Pendiente</b></span>
-              </article>
-              <article class="site-config-card">
-                <small>Horarios</small>
-                <strong>Entrada <span id="siteEntryHoursLabel">07:30 - 08:15</span></strong>
-                <span>Salida <b id="siteExitHoursLabel">16:30 - 17:10</b></span>
-              </article>
-              <article class="site-config-card">
-                <small>Zona y prueba</small>
-                <strong id="siteTimezoneLabel">America/Mexico_City</strong>
-                <span id="sitePrecisionLabel">Sin prueba reciente</span>
-              </article>
+              <form id="entryForm" class="data-form" novalidate>
+                <label>
+                  Nombre completo
+                  <input id="entryName" type="text" autocomplete="name" placeholder="Ej. Ana Lopez Perez" required />
+                </label>
+                <label>
+                  Matricula
+                  <input id="entryMatricula" type="text" autocomplete="off" placeholder="Ej. A00125" required />
+                </label>
+                <div class="form-actions">
+                  <button class="primary wide" type="submit">Guardar entrada</button>
+                  <button class="back-button wide" data-target="home" type="button">Cancelar y volver</button>
+                </div>
+              </form>
             </div>
-
-            <form id="siteForm" class="site-form-grid">
-              <label>
-                Nombre del sitio
-                <input id="siteName" autocomplete="organization" placeholder="Ej. Planta principal" required />
-              </label>
-              <label>
-                Direccion
-                <input id="siteAddress" autocomplete="street-address" placeholder="Calle, numero, colonia" />
-              </label>
-              <label>
-                Latitud
-                <input id="siteLat" inputmode="decimal" placeholder="19.432608" required />
-              </label>
-              <label>
-                Longitud
-                <input id="siteLng" inputmode="decimal" placeholder="-99.133209" required />
-              </label>
-              <label>
-                Radio permitido (m)
-                <input id="siteRadius" type="number" min="20" max="1000" step="1" value="150" required />
-              </label>
-              <label>
-                Zona horaria
-                <input id="siteTimezone" value="America/Mexico_City" required />
-              </label>
-              <label>
-                Entrada inicio
-                <input id="siteEntryStart" type="time" value="07:30" required />
-              </label>
-              <label>
-                Entrada fin
-                <input id="siteEntryEnd" type="time" value="08:15" required />
-              </label>
-              <label>
-                Salida inicio
-                <input id="siteExitStart" type="time" value="16:30" required />
-              </label>
-              <label>
-                Salida fin
-                <input id="siteExitEnd" type="time" value="17:10" required />
-              </label>
-              <label class="inline-check">
-                <input id="siteActive" type="checkbox" checked />
-                Mantener como sitio activo
-              </label>
-              <div class="site-actions">
-                <button id="useAdminLocation" class="ghost" type="button">Usar mi ubicacion</button>
-                <button id="testAdminLocation" class="secondary" type="button">Probar ubicacion</button>
-                <button class="primary" type="submit">Guardar sitio</button>
-              </div>
-              <p id="siteTestResult" class="site-test-result" data-tone="warning">Captura nombre, coordenadas, radio y horarios.</p>
-            </form>
           </section>
 
-          <div class="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>Foto entrada</th>
-                  <th>Foto salida</th>
-                  <th>Nombre</th>
-                  <th>Matrícula</th>
-                  <th>Sitio</th>
-                  <th>Radio</th>
-                  <th>Fecha</th>
-                  <th>Hora entrada</th>
-                  <th>Hora salida</th>
-                  <th>Estado</th>
-                  <th>Identidad</th>
-                  <th>Similitud</th>
-                  <th>QR</th>
-                  <th>Ubicacion</th>
-                  <th>Precision</th>
-                  <th>Distancia</th>
-                  <th>Reto</th>
-                  <th>Riesgo</th>
-                  <th>Evidencia</th>
-                  <th>Observacion</th>
-                  <th>Obs. admin</th>
-                  <th>Mod. admin</th>
-                  <th class="admin-only is-hidden">Acciones</th>
-                </tr>
-              </thead>
-              <tbody id="recordsBody"></tbody>
-            </table>
-            <div id="emptyRecords" class="empty-state">
-              <div class="empty-state-icon" aria-hidden="true">📋</div>
-              <p>Todavía no hay registros guardados.</p>
-              <p>Usa <strong>Registrar entrada</strong> para agregar el primero.</p>
+          <section class="panel form-panel is-hidden" data-view="exit">
+            <div class="panel-heading">
+              <div>
+                <p class="section-kicker">Paso 2 de 2</p>
+                <h2>Registrar salida</h2>
+              </div>
+              <button class="back-button" data-target="home" type="button">Volver al inicio</button>
             </div>
-          </div>
 
-          <div class="audit-box">
-            <h3>🔍 Auditoría administrativa</h3>
-            <p id="adminAudit">No hay acciones administrativas registradas.</p>
-          </div>
-        </section>
-      </main>
+            <div class="notice" id="exitGuard" aria-live="polite">
+              La salida solo puede registrarse cuando el QR esta vigente.
+            </div>
 
+            <div class="anti-fraud-strip">
+              <div>
+                <strong>Reto de vida</strong>
+                <span id="lifeChallenge">Preparando reto...</span>
+              </div>
+              <div>
+                <strong>Ubicacion</strong>
+                <span id="locationStatus" data-tone="neutral">La ubicacion se solicitara al guardar salida.</span>
+              </div>
+            </div>
 
+            <div class="capture-layout">
+              <div class="camera-card">
+                <video id="exitVideo" playsinline autoplay muted aria-label="Vista de camara para salida"></video>
+                <canvas id="exitCanvas" class="is-hidden"></canvas>
+                <img id="exitPreview" class="photo-preview is-hidden" alt="Foto de salida capturada" />
+                <p id="exitFaceStatus" class="face-status" data-tone="pending">Espera a que carguen los modelos faciales.</p>
+                <p class="camera-help">Toma una foto de frente para confirmar tu salida.</p>
+                <div class="camera-actions">
+                  <button id="startExitCamera" class="secondary" type="button">Activar camara</button>
+                  <button id="takeExitPhoto" class="primary" type="button" disabled>Tomar foto</button>
+                </div>
+              </div>
+
+              <form id="exitForm" class="data-form" novalidate>
+                <label>
+                  Matricula
+                  <input id="exitMatricula" type="text" autocomplete="off" placeholder="Ej. A00125" required />
+                </label>
+                <div class="form-actions">
+                  <button class="primary wide" type="submit">Guardar salida</button>
+                  <button class="back-button wide" data-target="home" type="button">Cancelar y volver</button>
+                </div>
+              </form>
+            </div>
+          </section>
+
+          <section class="panel records-panel is-hidden" data-view="records">
+            <div class="panel-heading">
+              <div>
+                <p class="section-kicker">Historial</p>
+                <h2>Tabla de asistencia</h2>
+                <p class="read-only-note">
+                  Vista de solo lectura. Las acciones sensibles requieren clave administrativa.
+                </p>
+              </div>
+              <div class="button-row toolbar-actions">
+                <button class="back-button" data-target="home" type="button">Volver al inicio</button>
+                <button id="unlockAdmin" class="secondary" type="button">Desbloquear admin</button>
+                <button id="lockAdmin" class="ghost is-hidden" type="button">Bloquear admin</button>
+                <button id="exportCsv" class="secondary admin-control is-hidden" type="button">Exportar CSV</button>
+                <button id="clearRecords" class="danger admin-control is-hidden" type="button">Limpiar datos</button>
+              </div>
+            </div>
+
+            <div id="adminStatus" class="notice is-blocked" aria-live="polite">
+              Modo lectura activo. No se pueden modificar horarios, fotos, estados ni eliminar registros.
+            </div>
+
+            <section class="site-admin-panel admin-control is-hidden" aria-labelledby="siteConfigTitle">
+              <div class="site-admin-header">
+                <div>
+                  <p class="section-kicker">Configuracion del sitio</p>
+                  <h3 id="siteConfigTitle">Ubicacion oficial</h3>
+                  <p id="siteStatusSummary">Configura el sitio oficial para activar la validacion global de ubicacion.</p>
+                </div>
+                <span id="siteStatusBadge" class="badge warning">Sitio pendiente</span>
+              </div>
+
+              <div class="site-dashboard-grid" aria-label="Estado del sitio activo">
+                <article class="site-config-card">
+                  <small>Sitio</small>
+                  <strong id="siteNameLabel">Sin sitio configurado</strong>
+                  <span id="siteAddressLabel">Pendiente de direccion</span>
+                </article>
+                <article class="site-config-card">
+                  <small>Coordenadas</small>
+                  <strong id="siteCoordsLabel">Pendiente</strong>
+                  <span>Radio: <b id="siteRadiusLabel">Pendiente</b></span>
+                </article>
+                <article class="site-config-card">
+                  <small>Horarios</small>
+                  <strong>Entrada <span id="siteEntryHoursLabel">07:30 - 08:15</span></strong>
+                  <span>Salida <b id="siteExitHoursLabel">16:30 - 17:10</b></span>
+                </article>
+                <article class="site-config-card">
+                  <small>Zona y prueba</small>
+                  <strong id="siteTimezoneLabel">America/Mexico_City</strong>
+                  <span id="sitePrecisionLabel">Sin prueba reciente</span>
+                </article>
+              </div>
+
+              <form id="siteForm" class="site-form-grid">
+                <label>
+                  Nombre del sitio
+                  <input id="siteName" autocomplete="organization" placeholder="Ej. Planta principal" required />
+                </label>
+                <label>
+                  Direccion
+                  <input id="siteAddress" autocomplete="street-address" placeholder="Calle, numero, colonia" />
+                </label>
+                <label>
+                  Latitud
+                  <input id="siteLat" inputmode="decimal" placeholder="19.432608" required />
+                </label>
+                <label>
+                  Longitud
+                  <input id="siteLng" inputmode="decimal" placeholder="-99.133209" required />
+                </label>
+                <label>
+                  Radio permitido (m)
+                  <input id="siteRadius" type="number" min="20" max="1000" step="1" value="150" required />
+                </label>
+                <label>
+                  Zona horaria
+                  <input id="siteTimezone" value="America/Mexico_City" required />
+                </label>
+                <label>
+                  Entrada inicio
+                  <input id="siteEntryStart" type="time" value="07:30" required />
+                </label>
+                <label>
+                  Entrada fin
+                  <input id="siteEntryEnd" type="time" value="08:15" required />
+                </label>
+                <label>
+                  Salida inicio
+                  <input id="siteExitStart" type="time" value="16:30" required />
+                </label>
+                <label>
+                  Salida fin
+                  <input id="siteExitEnd" type="time" value="17:10" required />
+                </label>
+                <label class="inline-check">
+                  <input id="siteActive" type="checkbox" checked />
+                  Mantener como sitio activo
+                </label>
+                <div class="site-actions">
+                  <button id="useAdminLocation" class="ghost" type="button">Usar mi ubicacion</button>
+                  <button id="testAdminLocation" class="secondary" type="button">Probar ubicacion</button>
+                  <button class="primary" type="submit">Guardar sitio</button>
+                </div>
+                <p id="siteTestResult" class="site-test-result" data-tone="warning">Captura nombre, coordenadas, radio y horarios.</p>
+              </form>
+            </section>
+
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Foto entrada</th>
+                    <th>Foto salida</th>
+                    <th>Nombre</th>
+                    <th>Matricula</th>
+                    <th>Sitio</th>
+                    <th>Radio</th>
+                    <th>Fecha</th>
+                    <th>Hora entrada</th>
+                    <th>Hora salida</th>
+                    <th>Estado</th>
+                    <th>Identidad</th>
+                    <th>Similitud</th>
+                    <th>QR</th>
+                    <th>Ubicacion</th>
+                    <th>Precision</th>
+                    <th>Distancia</th>
+                    <th>Reto</th>
+                    <th>Riesgo</th>
+                    <th>Evidencia</th>
+                    <th>Observacion</th>
+                    <th>Obs. admin</th>
+                    <th>Mod. admin</th>
+                    <th class="admin-only is-hidden">Acciones</th>
+                  </tr>
+                </thead>
+                <tbody id="recordsBody"></tbody>
+              </table>
+              <div id="emptyRecords" class="empty-state">
+                <div class="empty-state-icon" aria-hidden="true"></div>
+                <p>Todavia no hay registros guardados.</p>
+                <p>Usa <strong>Registrar entrada</strong> para agregar el primero.</p>
+              </div>
+            </div>
+
+            <div class="audit-box">
+              <h3>Auditoria administrativa</h3>
+              <p id="adminAudit">No hay acciones administrativas registradas.</p>
+            </div>
+          </section>
+        </main>
+      </div>
       <div id="evidenceModal" class="modal-backdrop" hidden>
         <section class="evidence-modal" role="dialog" aria-modal="true" aria-labelledby="evidenceTitle">
           <header class="evidence-modal-header">
@@ -377,6 +432,7 @@
           <div id="evidenceBody" class="evidence-modal-body"></div>
         </section>
       </div>
+
       <div id="toast" class="toast" role="status" aria-live="polite"></div>
     </div>
 
