@@ -107,21 +107,27 @@
                 <p class="section-kicker">Desglose de registros</p>
                 <span aria-hidden="true">...</span>
               </div>
-              <div class="donut-wrap" aria-hidden="true">
-                <div class="donut"></div>
-              </div>
-              <div class="summary-list" aria-label="Resumen de asistencia del dia">
-                <article class="summary-tile">
-                  <span id="totalRecords">0</span>
-                  <small>Registros</small>
+              <div class="records-progress" aria-label="Resumen visual de asistencia del dia">
+                <article class="metric-row metric-total">
+                  <div class="metric-row-head">
+                    <span>Registros</span>
+                    <strong id="totalRecords">0</strong>
+                  </div>
+                  <div class="metric-track" aria-hidden="true"><span id="totalProgress" class="metric-fill"></span></div>
                 </article>
-                <article class="summary-tile success">
-                  <span id="completedRecords">0</span>
-                  <small>Completos</small>
+                <article class="metric-row metric-complete">
+                  <div class="metric-row-head">
+                    <span>Completos</span>
+                    <strong id="completedRecords">0</strong>
+                  </div>
+                  <div class="metric-track" aria-hidden="true"><span id="completedProgress" class="metric-fill"></span></div>
                 </article>
-                <article class="summary-tile attention">
-                  <span id="pendingRecords">0</span>
-                  <small>Pendientes</small>
+                <article class="metric-row metric-pending">
+                  <div class="metric-row-head">
+                    <span>Pendientes</span>
+                    <strong id="pendingRecords">0</strong>
+                  </div>
+                  <div class="metric-track" aria-hidden="true"><span id="pendingProgress" class="metric-fill"></span></div>
                 </article>
               </div>
             </section>
@@ -144,19 +150,21 @@
                   para evitar cambios no autorizados.
                 </p>
               </div>
-
               <div class="operation-strip" aria-label="Flujo de operacion">
                 <div>
                   <strong>01</strong>
-                  <span>Entrada con foto</span>
+                  <span>Registrar entrada</span>
+                  <small>Captura foto, matricula y GPS.</small>
                 </div>
                 <div>
                   <strong>02</strong>
-                  <span>QR por horario</span>
+                  <span>Registrar salida</span>
+                  <small>Usa QR vigente, foto final y ubicacion.</small>
                 </div>
                 <div>
                   <strong>03</strong>
-                  <span>Historial protegido</span>
+                  <span>Ver registros</span>
+                  <small>Revisa evidencia, riesgos y estado.</small>
                 </div>
               </div>
 
@@ -202,6 +210,7 @@
               <div>
                 <p class="section-kicker">Paso 1 de 2</p>
                 <h2>Registrar entrada</h2>
+                <p class="view-subtitle">Primero captura una foto clara; al guardar se solicitara GPS y se creara la asistencia global.</p>
               </div>
               <button class="back-button" data-target="home" type="button">Volver al inicio</button>
             </div>
@@ -235,6 +244,19 @@
                 </div>
               </form>
             </div>
+
+            <div id="entrySuccessPanel" class="flow-confirmation is-hidden" aria-live="polite">
+              <div>
+                <p class="section-kicker">Entrada guardada</p>
+                <h3>Entrada registrada correctamente</h3>
+                <p>El siguiente paso natural es registrar la salida cuando el QR este vigente.</p>
+              </div>
+              <div class="flow-actions">
+                <button class="primary" data-target="exit" type="button">Ir a salida</button>
+                <button class="secondary" data-target="records" type="button">Ver registros</button>
+                <button class="ghost" data-target="entry" type="button">Registrar otra entrada</button>
+              </div>
+            </div>
           </section>
 
           <section class="panel form-panel is-hidden" data-view="exit">
@@ -242,6 +264,7 @@
               <div>
                 <p class="section-kicker">Paso 2 de 2</p>
                 <h2>Registrar salida</h2>
+                <p class="view-subtitle">Confirma matricula, toma foto final y guarda la salida con QR, reto y ubicacion.</p>
               </div>
               <button class="back-button" data-target="home" type="button">Volver al inicio</button>
             </div>
@@ -284,6 +307,18 @@
                   <button class="back-button wide" data-target="home" type="button">Cancelar y volver</button>
                 </div>
               </form>
+            </div>
+
+            <div id="exitSuccessPanel" class="flow-confirmation is-hidden" aria-live="polite">
+              <div>
+                <p class="section-kicker">Salida guardada</p>
+                <h3>Salida registrada correctamente</h3>
+                <p>La asistencia quedo cerrada. Puedes revisar el historial o volver al inicio.</p>
+              </div>
+              <div class="flow-actions">
+                <button class="primary" data-target="records" type="button">Ver registros</button>
+                <button class="secondary" data-target="home" type="button">Volver al inicio</button>
+              </div>
             </div>
           </section>
 

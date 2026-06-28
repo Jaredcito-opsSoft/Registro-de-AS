@@ -92,6 +92,9 @@ const els = {
   totalRecords: $("#totalRecords"),
   completedRecords: $("#completedRecords"),
   pendingRecords: $("#pendingRecords"),
+  totalProgress: $("#totalProgress"),
+  completedProgress: $("#completedProgress"),
+  pendingProgress: $("#pendingProgress"),
   siteStatusBadge: $("#siteStatusBadge"),
   siteStatusSummary: $("#siteStatusSummary"),
   siteNameLabel: $("#siteNameLabel"),
@@ -120,6 +123,8 @@ const els = {
   evidenceModal: $("#evidenceModal"),
   evidenceBody: $("#evidenceBody"),
   closeEvidence: $("#closeEvidence"),
+  entrySuccessPanel: $("#entrySuccessPanel"),
+  exitSuccessPanel: $("#exitSuccessPanel"),
 };
 
 function loadLocalRecords() {
@@ -1105,7 +1110,19 @@ async function updateClockAndQr({ force = false } = {}) {
     els.exitGuard.classList.add("is-blocked");
   }
 }
+function hideGuidedPanels() {
+  els.entrySuccessPanel?.classList.add("is-hidden");
+  els.exitSuccessPanel?.classList.add("is-hidden");
+}
+
+function showGuidedPanel(kind) {
+  hideGuidedPanels();
+  const panel = kind === "entry" ? els.entrySuccessPanel : els.exitSuccessPanel;
+  panel?.classList.remove("is-hidden");
+}
+
 function showView(name) {
+  hideGuidedPanels();
   $$('[data-view]').forEach((view) => {
     view.classList.toggle("is-hidden", view.dataset.view !== name);
   });
@@ -1500,6 +1517,7 @@ async function handleEntrySubmit(event) {
     setFaceStatus(els.entryFaceStatus, "Listo para nueva captura.");
     stopCamera("entry");
     await refreshRecords({ silent: true });
+    showGuidedPanel("entry");
     showToast(record.riesgo === "normal" || record.riesgo === "entrada_registrada" ? "Entrada registrada correctamente." : "Entrada registrada, requiere revision administrativa.");
   } catch (error) {
     showToast("No se pudo guardar la entrada global. Intenta de nuevo.");
@@ -1557,6 +1575,7 @@ async function handleExitSubmit(event) {
     pickLifeChallenge();
     stopCamera("exit");
     await refreshRecords({ silent: true });
+    showGuidedPanel("exit");
     showToast(updated.riesgo === "normal" ? "Salida registrada y validada." : "Salida registrada, pero requiere revision administrativa.");
   } catch (error) {
     const message = error.message?.includes("QR") ? error.message : "No se pudo guardar la salida segura. Intenta de nuevo.";
@@ -1836,12 +1855,22 @@ function renderRecords() {
 
   updateAdminControls();
 }
+function setProgressBar(element, value) {
+  if (!element) return;
+  const safeValue = Math.max(0, Math.min(100, Number.isFinite(value) ? value : 0));
+  element.style.width = safeValue + "%";
+}
+
 function updateSummary() {
+  const total = state.records.length;
   const completed = state.records.filter((record) => ["asistencia_completa", "Asistencia completa"].includes(record.estado)).length;
-  const pending = state.records.length - completed;
-  els.totalRecords.textContent = state.records.length;
+  const pending = total - completed;
+  els.totalRecords.textContent = total;
   els.completedRecords.textContent = completed;
   els.pendingRecords.textContent = pending;
+  setProgressBar(els.totalProgress, total > 0 ? 100 : 0);
+  setProgressBar(els.completedProgress, total > 0 ? (completed / total) * 100 : 0);
+  setProgressBar(els.pendingProgress, total > 0 ? (pending / total) * 100 : 0);
 }
 function imageCell(src, alt) {
   if (!src) return `<span class="muted">Sin foto</span>`;
