@@ -702,7 +702,7 @@ a {
 }
 
 .operation-strip,
-.action-grid {
+.home-insights {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   gap: 14px;
@@ -710,7 +710,7 @@ a {
 }
 
 .operation-strip div,
-.action-card,
+.home-insights article,
 .data-form,
 .camera-card,
 .site-config-card,
@@ -739,8 +739,37 @@ a {
   font-weight: 800;
 }
 
-.action-grid {
+.home-insights {
   padding-bottom: 32px;
+}
+
+.home-insights article {
+  display: grid;
+  gap: 8px;
+  min-height: 116px;
+  padding: 18px 20px;
+}
+
+.home-insights span {
+  color: var(--pink);
+  font-size: 0.76rem;
+  font-weight: 900;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.home-insights strong {
+  color: var(--ink);
+  font-size: 1rem;
+  line-height: 1.25;
+}
+
+.home-insights p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.9rem;
+  font-weight: 600;
+  line-height: 1.45;
 }
 
 .primary,
@@ -801,25 +830,6 @@ a {
 .danger:active,
 .back-button:active {
   transform: scale(0.98);
-}
-
-.action-card {
-  display: grid;
-  justify-items: start;
-  align-content: center;
-  gap: 5px;
-  min-height: 104px;
-  padding: 18px 20px;
-  text-align: left;
-}
-
-.action-card span {
-  font-weight: 900;
-}
-
-.action-card small {
-  color: rgba(17, 19, 32, 0.62);
-  font-weight: 600;
 }
 
 .form-panel,
@@ -1482,7 +1492,7 @@ tbody tr:hover {
 
   .hero-meta,
   .operation-strip,
-  .action-grid,
+  .home-insights,
   .summary-list,
   .tab-strip,
   .capture-layout,
@@ -1505,7 +1515,7 @@ tbody tr:hover {
 
   .hero-copy,
   .operation-strip,
-  .action-grid {
+  .home-insights {
     padding-left: 20px;
     padding-right: 20px;
   }
