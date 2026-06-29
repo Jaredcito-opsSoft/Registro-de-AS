@@ -5,6 +5,8 @@ const ADMIN_KEY = "ADMIN123";
 const QR_START = { hour: 16, minute: 30 };
 const QR_END = { hour: 17, minute: 10 };
 const QR_VALID_MINUTES = 5;
+const TEMPORARY_ALL_DAY_EXIT_QR = true;
+const TEMPORARY_QR_MESSAGE = "QR disponible temporalmente todo el día. La salida se valida por matrícula, foto, GPS y token.";
 const FACE_MODEL_URL = "models";
 const DEFAULT_TIMEZONE = "America/Mexico_City";
 const FACE_DISTANCE_STRONG = 0.46;
@@ -44,6 +46,8 @@ const state = {
   nextQrRefreshAt: 0,
   activeSite: null,
   adminLocation: null,
+  exitActiveRecord: null,
+  exitLookupSeq: 0,
 };
 
 const $ = (selector) => document.querySelector(selector);
@@ -81,6 +85,7 @@ const els = {
   takeExitPhoto: $("#takeExitPhoto"),
   exitForm: $("#exitForm"),
   exitMatricula: $("#exitMatricula"),
+  exitLookupInfo: $("#exitLookupInfo"),
   recordsBody: $("#recordsBody"),
   emptyRecords: $("#emptyRecords"),
   unlockAdmin: $("#unlockAdmin"),
@@ -1035,7 +1040,35 @@ async function callAdminRpc(functionName, payload) {
   });
 }
 
+function buildTemporaryAllDayQrPayload(qr = {}, fallbackDate = new Date()) {
+  const serverDate = qr.server_time ? new Date(qr.server_time) : fallbackDate;
+  const safeDate = Number.isNaN(serverDate.getTime()) ? fallbackDate : serverDate;
+
+  // TODO: Restaurar ventana horaria 16:30–17:10 cuando se corrija validación de QR por servidor.
+  return {
+    ...qr,
+    token: qr.token || makeQrToken(safeDate),
+    server_time: qr.server_time || safeDate.toISOString(),
+    expires_at: qr.expires_at || new Date(safeDate.getTime() + QR_VALID_MINUTES * 60 * 1000).toISOString(),
+    is_open: true,
+    message: TEMPORARY_QR_MESSAGE,
+    temporary_all_day: true,
+  };
+}
+
 async function fetchServerQrToken() {
+  if (TEMPORARY_ALL_DAY_EXIT_QR) {
+    const now = new Date();
+    if (CLOUD_ENABLED) {
+      try {
+        const qr = await callAdminRpc("get_current_qr_token", {});
+        return buildTemporaryAllDayQrPayload(qr, now);
+      } catch (error) {
+        return buildTemporaryAllDayQrPayload({ message: TEMPORARY_QR_MESSAGE }, now);
+      }
+    }
+    return buildTemporaryAllDayQrPayload({ message: TEMPORARY_QR_MESSAGE }, now);
+  }
   if (state.demoMode) {
     const now = new Date();
     return {
@@ -1080,25 +1113,25 @@ async function updateClockAndQr({ force = false } = {}) {
 
     state.qrToken = token;
     els.clockLabel.textContent = displayTime(qr.server_time || now.toISOString());
-    els.qrWindowLabel.textContent = isOpen ? "QR servidor disponible" : "QR servidor bloqueado";
-    els.qrMessage.textContent = isOpen
-      ? "QR valido. La vigencia y horario se validan con Supabase."
-      : (qr.message || "La salida aun no esta disponible.");
+    els.qrWindowLabel.textContent = qr.temporary_all_day ? "QR temporal disponible" : (isOpen ? "QR servidor disponible" : "QR servidor bloqueado");
+    els.qrMessage.textContent = qr.temporary_all_day
+      ? TEMPORARY_QR_MESSAGE
+      : (isOpen ? "QR valido. La vigencia y horario se validan con Supabase." : (qr.message || "La salida aun no esta disponible."));
 
     els.qrBox.classList.toggle("is-disabled", !isOpen);
     els.qrImage.hidden = !isOpen;
     els.qrDirectLink.hidden = !isOpen;
     els.qrTokenLabel.textContent = isOpen
-      ? `Expira: ${displayTime(qr.expires_at)} | Token servidor`
+      ? `Expira: ${displayTime(qr.expires_at)} | ${qr.temporary_all_day ? "Token temporal" : "Token servidor"}`
       : "Token: no disponible";
     els.qrDirectLink.href = exitUrl;
     els.qrImage.src = isOpen
       ? `https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(exitUrl)}`
       : "";
 
-    els.exitGuard.textContent = isOpen
-      ? "QR vigente. La hora se valida con el servidor; completa foto, reto y ubicacion."
-      : "Salida bloqueada. El QR solo esta disponible de 4:30 p. m. a 5:10 p. m. con hora de servidor.";
+    els.exitGuard.textContent = qr.temporary_all_day
+      ? TEMPORARY_QR_MESSAGE
+      : (isOpen ? "QR vigente. La hora se valida con el servidor; completa foto, reto y ubicacion." : "Salida bloqueada. El QR solo esta disponible de 4:30 p. m. a 5:10 p. m. con hora de servidor.");
     els.exitGuard.classList.toggle("is-blocked", !isOpen);
   } catch (error) {
     els.qrWindowLabel.textContent = "QR no disponible";
@@ -1136,6 +1169,11 @@ function showView(name) {
   if (name === "exit") {
     pickLifeChallenge();
     setLocationStatus("La ubicacion se solicitara al guardar salida.");
+    if (els.exitMatricula.value.trim()) {
+      validateExitMatricula();
+    } else {
+      resetExitActiveRecord();
+    }
     updateClockAndQr({ force: true });
   }
   if (name === "records" || name === "home") refreshRecords({ silent: true });
@@ -1181,9 +1219,10 @@ function setFaceStatus(element, message, tone = "neutral") {
 function syncCaptureControls() {
   const canUseFace = state.facialModelsLoaded && !state.facialModelsError;
   els.startEntryCamera.disabled = !canUseFace;
-  els.startExitCamera.disabled = !canUseFace;
+  const canStartExit = canUseFace && Boolean(state.exitActiveRecord);
+  els.startExitCamera.disabled = !canStartExit;
   els.takeEntryPhoto.disabled = !canUseFace || !state.entryStream;
-  els.takeExitPhoto.disabled = !canUseFace || !state.exitStream;
+  els.takeExitPhoto.disabled = !canStartExit || !state.exitStream;
 }
 
 async function loadFaceModels() {
@@ -1315,8 +1354,10 @@ function getIncomingQrToken() {
 }
 
 function isCurrentQrToken(token) {
-  if (!CLOUD_ENABLED) return state.demoMode || (Boolean(token) && token === makeQrToken(new Date()));
-  return Boolean(token) && Boolean(state.serverQr?.is_open) && token === state.qrToken;
+  if (!token) return false;
+  if (TEMPORARY_ALL_DAY_EXIT_QR) return token === state.qrToken;
+  if (!CLOUD_ENABLED) return state.demoMode || token === makeQrToken(new Date());
+  return Boolean(state.serverQr?.is_open) && token === state.qrToken;
 }
 
 function pickLifeChallenge() {
@@ -1480,6 +1521,59 @@ function todayRecordByMatricula(matricula) {
   );
 }
 
+function setExitLookupInfo(message, tone = "neutral") {
+  if (!els.exitLookupInfo) return;
+  els.exitLookupInfo.textContent = message;
+  els.exitLookupInfo.dataset.tone = tone;
+}
+
+function resetExitActiveRecord(message = "Ingresa la matricula para validar entrada activa antes de tomar foto de salida.") {
+  state.exitActiveRecord = null;
+  if (state.exitStream) stopCamera("exit");
+  clearCapturedFace("exit");
+  setExitLookupInfo(message, "neutral");
+  syncCaptureControls();
+}
+
+async function validateExitMatricula({ showErrors = false } = {}) {
+  const matricula = normalizeMatricula(els.exitMatricula.value);
+  const seq = ++state.exitLookupSeq;
+
+  if (!matricula) {
+    resetExitActiveRecord();
+    return null;
+  }
+
+  state.exitActiveRecord = null;
+  syncCaptureControls();
+  setExitLookupInfo("Validando entrada activa para esta matricula...", "neutral");
+  await refreshRecords({ silent: true });
+  if (seq !== state.exitLookupSeq) return null;
+
+  const record = todayRecordByMatricula(matricula);
+
+  if (!record || !record.horaEntrada) {
+    const message = "No existe una entrada activa para esta matrícula el día de hoy.";
+    resetExitActiveRecord(message);
+    els.exitLookupInfo.dataset.tone = "danger";
+    if (showErrors) showToast(message);
+    return null;
+  }
+
+  if (record.horaSalida) {
+    const message = "Esta matrícula ya registró salida el día de hoy.";
+    resetExitActiveRecord(message);
+    els.exitLookupInfo.dataset.tone = "danger";
+    if (showErrors) showToast(message);
+    return null;
+  }
+
+  state.exitActiveRecord = record;
+  setExitLookupInfo(`Entrada activa: ${record.nombre || "Sin nombre"} | Hora de entrada: ${record.horaEntrada || "Pendiente"}`, "success");
+  syncCaptureControls();
+  return record;
+}
+
 async function handleEntrySubmit(event) {
   event.preventDefault();
 
@@ -1533,27 +1627,11 @@ async function handleExitSubmit(event) {
     return;
   }
 
-  const matricula = normalizeMatricula(els.exitMatricula.value);
+  const record = await validateExitMatricula({ showErrors: true });
+  if (!record) return;
 
-  if (!matricula || !state.exitPhoto || !state.exitFace) {
-    showToast("Falta matricula o foto de salida con rostro valido.");
-    return;
-  }
-
-  await refreshRecords({ silent: true });
-  let record = todayRecordByMatricula(matricula);
-
-  if (!record && CLOUD_ENABLED) {
-    record = normalizeRecord({ matricula });
-  }
-
-  if (!record) {
-    showToast("No existe una entrada registrada para esta matricula el dia de hoy.");
-    return;
-  }
-
-  if (record.horaSalida) {
-    showToast("La salida de esa matricula ya fue registrada.");
+  if (!state.exitPhoto || !state.exitFace) {
+    showToast("Falta foto de salida con rostro valido.");
     return;
   }
 
@@ -1569,11 +1647,14 @@ async function handleExitSubmit(event) {
     });
     state.exitPhoto = "";
     state.exitFace = null;
+    state.exitActiveRecord = null;
     els.exitForm.reset();
     els.exitPreview.classList.add("is-hidden");
+    setExitLookupInfo("Salida registrada correctamente.", "success");
     setFaceStatus(els.exitFaceStatus, "Listo para nueva captura.");
     pickLifeChallenge();
     stopCamera("exit");
+    syncCaptureControls();
     await refreshRecords({ silent: true });
     showGuidedPanel("exit");
     showToast(updated.riesgo === "normal" ? "Salida registrada y validada." : "Salida registrada, pero requiere revision administrativa.");
@@ -2238,7 +2319,22 @@ async function init() {
   els.takeEntryPhoto.addEventListener("click", () => takePhoto("entry"));
   els.entryForm.addEventListener("submit", handleEntrySubmit);
 
-  els.startExitCamera.addEventListener("click", () => startCamera("exit"));
+  els.exitMatricula.addEventListener("input", () => {
+    window.clearTimeout(validateExitMatricula.timer);
+    state.exitActiveRecord = null;
+    if (state.exitStream) stopCamera("exit");
+    clearCapturedFace("exit");
+    syncCaptureControls();
+    setExitLookupInfo("Validando entrada activa para esta matricula...", "neutral");
+    validateExitMatricula.timer = window.setTimeout(() => validateExitMatricula(), 450);
+  });
+  els.exitMatricula.addEventListener("blur", () => validateExitMatricula());
+
+  els.startExitCamera.addEventListener("click", async () => {
+    const record = state.exitActiveRecord || await validateExitMatricula({ showErrors: true });
+    if (!record) return;
+    startCamera("exit");
+  });
   els.takeExitPhoto.addEventListener("click", () => takePhoto("exit"));
   els.exitForm.addEventListener("submit", handleExitSubmit);
 

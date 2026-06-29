@@ -253,10 +253,10 @@
               <div>
                 <p class="section-kicker">Entrada guardada</p>
                 <h3>Entrada registrada correctamente</h3>
-                <p>El siguiente paso natural es registrar la salida cuando el QR este vigente.</p>
+                <p>El siguiente paso natural es registrar la salida con matricula validada y QR temporal disponible.</p>
               </div>
               <div class="flow-actions">
-                <button class="primary" data-target="exit" type="button">Ir a salida</button>
+                <button class="primary" data-target="exit" type="button">Registrar salida</button>
                 <button class="secondary" data-target="records" type="button">Ver registros</button>
                 <button class="ghost" data-target="entry" type="button">Registrar otra entrada</button>
               </div>
@@ -306,6 +306,9 @@
                   Matricula
                   <input id="exitMatricula" type="text" autocomplete="off" placeholder="Ej. A00125" required />
                 </label>
+                <div id="exitLookupInfo" class="exit-lookup" data-tone="neutral" aria-live="polite">
+                  Ingresa la matricula para validar entrada activa antes de tomar foto de salida.
+                </div>
                 <div class="form-actions">
                   <button class="primary wide" type="submit">Guardar salida</button>
                   <button class="back-button wide" data-target="home" type="button">Cancelar y volver</button>
