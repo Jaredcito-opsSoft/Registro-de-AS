@@ -146,7 +146,7 @@
                 <p class="section-kicker">Sistema activo</p>
                 <h2>Registro rapido, evidencia visual protegida.</h2>
                 <p>
-                  Captura entrada con foto, valida salida por QR y conserva el historial en modo lectura
+                  Captura entrada con foto, valida salida por matricula y conserva el historial en modo lectura
                   para evitar cambios no autorizados.
                 </p>
               </div>
@@ -159,7 +159,7 @@
                 <div>
                   <strong>02</strong>
                   <span>Registrar salida</span>
-                  <small>Usa QR vigente, foto final y ubicacion.</small>
+                  <small>Usa matricula, foto final y ubicacion.</small>
                 </div>
                 <div>
                   <strong>03</strong>
@@ -173,12 +173,12 @@
                 <article>
                   <span>Ventana actual</span>
                   <strong>Entrada y salida con evidencia</strong>
-                  <p>El sistema conserva foto, ubicacion, QR y validaciones de riesgo por cada registro.</p>
+                  <p>El sistema conserva foto, ubicacion, facial y validaciones de riesgo por cada registro.</p>
                 </article>
                 <article>
                   <span>Salida segura</span>
-                  <strong>QR vigente por servidor</strong>
-                  <p>La salida se habilita solo con token activo, prueba de vida y ubicacion dentro del rango permitido.</p>
+                  <strong>Salida por matricula</strong>
+                  <p>La salida se habilita con entrada activa, prueba de vida y ubicacion dentro del rango permitido.</p>
                 </article>
                 <article>
                   <span>Historial protegido</span>
@@ -190,22 +190,17 @@
 
             <section class="panel qr-panel">
               <div class="panel-menu">
-                <p class="section-kicker">QR de salida</p>
+                <p class="section-kicker">QR de acceso</p>
                 <span aria-hidden="true">...</span>
               </div>
-              <h2>Estado del QR</h2>
-              <p id="qrMessage">El sistema revisara si el QR puede mostrarse.</p>
+              <h2>Acceso al sistema</h2>
+              <p id="qrMessage">Escanea para abrir el sistema de asistencia.</p>
 
               <div class="qr-box" id="qrBox">
-                <img id="qrImage" alt="Codigo QR de salida" />
-                <a id="qrDirectLink" href="#salida">Abrir registro de salida</a>
-                <small id="qrTokenLabel">Token: --</small>
+                <img id="qrImage" alt="Codigo QR de acceso" />
+                <a id="qrDirectLink" href="https://registro-de-as.vercel.app/">Abrir sistema</a>
+                <small id="qrTokenLabel">Acceso: registro-de-as.vercel.app</small>
               </div>
-
-              <label class="toggle-row">
-                <span>Modo prueba (demo)</span>
-                <input id="demoMode" type="checkbox" />
-              </label>
             </section>
           </section>
 
@@ -253,7 +248,7 @@
               <div>
                 <p class="section-kicker">Entrada guardada</p>
                 <h3>Entrada registrada correctamente</h3>
-                <p>El siguiente paso natural es registrar la salida con matricula validada y QR temporal disponible.</p>
+                <p>El siguiente paso natural es registrar la salida con matricula validada.</p>
               </div>
               <div class="flow-actions">
                 <button class="primary" data-target="exit" type="button">Registrar salida</button>
@@ -268,13 +263,13 @@
               <div>
                 <p class="section-kicker">Paso 2 de 2</p>
                 <h2>Registrar salida</h2>
-                <p class="view-subtitle">Confirma matricula, toma foto final y guarda la salida con QR, reto y ubicacion.</p>
+                <p class="view-subtitle">Ingresa tu matricula para buscar tu entrada activa; despues toma foto final y guarda la salida con GPS y validacion facial.</p>
               </div>
               <button class="back-button" data-target="home" type="button">Volver al inicio</button>
             </div>
 
             <div class="notice" id="exitGuard" aria-live="polite">
-              La salida solo puede registrarse cuando el QR esta vigente.
+              Ingresa tu matricula para buscar tu entrada activa.
             </div>
 
             <div class="anti-fraud-strip">

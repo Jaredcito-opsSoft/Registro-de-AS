@@ -977,6 +977,22 @@ button:disabled {
   background: var(--danger-bg);
 }
 
+
+.exit-lookup {
+  display: grid;
+  gap: 5px;
+}
+
+.exit-lookup strong,
+.exit-lookup span {
+  display: block;
+}
+
+.exit-lookup span {
+  color: inherit;
+  font-size: 0.86rem;
+  font-weight: 650;
+}
 .anti-fraud-strip {
   display: grid;
   grid-template-columns: 1fr 1fr;

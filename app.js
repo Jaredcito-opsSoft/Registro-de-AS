@@ -5,8 +5,8 @@ const ADMIN_KEY = "ADMIN123";
 const QR_START = { hour: 16, minute: 30 };
 const QR_END = { hour: 17, minute: 10 };
 const QR_VALID_MINUTES = 5;
-const TEMPORARY_ALL_DAY_EXIT_QR = true;
-const TEMPORARY_QR_MESSAGE = "QR disponible temporalmente todo el día. La salida se valida por matrícula, foto, GPS y token.";
+const ACCESS_QR_URL = "https://registro-de-as.vercel.app/";
+const ACCESS_QR_MESSAGE = "Escanea para abrir el sistema de asistencia.";
 const FACE_MODEL_URL = "models";
 const DEFAULT_TIMEZONE = "America/Mexico_City";
 const FACE_DISTANCE_STRONG = 0.46;
@@ -958,15 +958,15 @@ async function insertEntryRecord({ nombre, matricula, fotoEntrada, descriptorEnt
   });
   return rowToRecord(row);
 }
-async function updateExitRecord(record, { fotoSalida, qrToken, descriptorSalida, location, lifeChallenge }) {
+async function updateExitRecord(record, { fotoSalida, descriptorSalida, location, lifeChallenge }) {
   const evidence = await uploadEvidence(fotoSalida, record.matricula, "exit", location);
 
   if (!CLOUD_ENABLED) {
     const faceValidation = evaluateFaceMatch(record.descriptorEntrada, descriptorSalida);
     record.horaSalida = nowParts().time;
     record.fotoSalida = evidence.url;
-    record.qrSalida = qrToken;
-    record.tokenQrUsado = qrToken;
+    record.qrSalida = "no_aplica";
+    record.tokenQrUsado = "no_aplica";
     record.descriptorSalida = descriptorSalida;
     record.rostroSalidaDetectado = true;
     record.similitudFacial = faceValidation.similarity;
@@ -974,8 +974,9 @@ async function updateExitRecord(record, { fotoSalida, qrToken, descriptorSalida,
     record.estado = faceValidation.estado;
     record.observacion = faceValidation.observacion;
     record.observaciones = faceValidation.observacion;
-    record.metodoSalida = "qr_horario";
-    record.qrValidado = true;
+    record.metodoSalida = "matricula_foto_gps";
+    record.qrValidado = false;
+    record.qrObservacion = "No aplica: salida validada por matricula, foto, GPS y facial.";
     record.latitudSalida = location.latitud ?? null;
     record.longitudSalida = location.longitud ?? null;
     record.precisionSalida = location.precision ?? null;
@@ -1009,7 +1010,7 @@ async function updateExitRecord(record, { fotoSalida, qrToken, descriptorSalida,
     p_matricula: record.matricula,
     p_foto_salida_url: evidence.url,
     p_descriptor_salida: descriptorSalida,
-    p_token_qr: qrToken,
+    p_token_qr: null,
     p_latitud: location.latitud ?? null,
     p_longitud: location.longitud ?? null,
     p_precision: location.precision ?? null,
@@ -1040,108 +1041,34 @@ async function callAdminRpc(functionName, payload) {
   });
 }
 
-function buildTemporaryAllDayQrPayload(qr = {}, fallbackDate = new Date()) {
-  const serverDate = qr.server_time ? new Date(qr.server_time) : fallbackDate;
-  const safeDate = Number.isNaN(serverDate.getTime()) ? fallbackDate : serverDate;
-
-  // TODO: Restaurar ventana horaria 16:30–17:10 cuando se corrija validación de QR por servidor.
-  return {
-    ...qr,
-    token: qr.token || makeQrToken(safeDate),
-    server_time: qr.server_time || safeDate.toISOString(),
-    expires_at: qr.expires_at || new Date(safeDate.getTime() + QR_VALID_MINUTES * 60 * 1000).toISOString(),
-    is_open: true,
-    message: TEMPORARY_QR_MESSAGE,
-    temporary_all_day: true,
-  };
-}
-
-async function fetchServerQrToken() {
-  if (TEMPORARY_ALL_DAY_EXIT_QR) {
-    const now = new Date();
-    if (CLOUD_ENABLED) {
-      try {
-        const qr = await callAdminRpc("get_current_qr_token", {});
-        return buildTemporaryAllDayQrPayload(qr, now);
-      } catch (error) {
-        return buildTemporaryAllDayQrPayload({ message: TEMPORARY_QR_MESSAGE }, now);
-      }
-    }
-    return buildTemporaryAllDayQrPayload({ message: TEMPORARY_QR_MESSAGE }, now);
-  }
-  if (state.demoMode) {
-    const now = new Date();
-    return {
-      token: makeQrToken(now),
-      server_time: now.toISOString(),
-      expires_at: new Date(now.getTime() + QR_VALID_MINUTES * 60 * 1000).toISOString(),
-      is_open: true,
-      message: CLOUD_ENABLED ? "QR de prueba visible. La salida global seguira validando Supabase." : "QR de prueba local valido.",
-    };
-  }
-
-  if (!CLOUD_ENABLED) {
-    const now = new Date();
-    const isOpen = isQrWindowOpen(now);
-    return {
-      token: isOpen ? makeQrToken(now) : null,
-      server_time: now.toISOString(),
-      expires_at: isOpen ? new Date(now.getTime() + QR_VALID_MINUTES * 60 * 1000).toISOString() : null,
-      is_open: isOpen,
-      message: isOpen ? "QR valido." : "Salida bloqueada por horario local de prueba.",
-    };
-  }
-  return callAdminRpc("get_current_qr_token", {});
-}
-async function updateClockAndQr({ force = false } = {}) {
+function updateAccessQr() {
   const now = new Date();
-  if (!force && state.serverQr && Date.now() < state.nextQrRefreshAt) {
-    const serverNow = new Date(Date.now() + state.serverClockOffset);
-    els.clockLabel.textContent = displayTime(serverNow.toISOString());
-    return;
+  const accessUrl = ACCESS_QR_URL;
+
+  state.serverQr = null;
+  state.qrToken = "";
+  state.nextQrRefreshAt = Date.now() + 60000;
+  els.clockLabel.textContent = displayTime(now.toISOString());
+  els.qrWindowLabel.textContent = "QR de acceso";
+  els.qrMessage.textContent = ACCESS_QR_MESSAGE;
+  els.qrBox.classList.remove("is-disabled");
+  els.qrImage.hidden = false;
+  els.qrDirectLink.hidden = false;
+  els.qrTokenLabel.textContent = "Acceso: registro-de-as.vercel.app";
+  els.qrDirectLink.href = accessUrl;
+  els.qrImage.src = `https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(accessUrl)}`;
+  els.exitGuard.textContent = "Ingresa tu matricula para buscar tu entrada activa.";
+  els.exitGuard.classList.remove("is-blocked");
+
+  const headerQr = $("#headerQrState");
+  if (headerQr) {
+    headerQr.textContent = "QR: acceso";
+    headerQr.dataset.tone = "active";
   }
+}
 
-  try {
-    const qr = await fetchServerQrToken();
-    state.serverQr = qr;
-    state.nextQrRefreshAt = Date.now() + 12000;
-    if (qr.server_time) state.serverClockOffset = new Date(qr.server_time).getTime() - Date.now();
-
-    const isOpen = Boolean(qr.is_open && qr.token);
-    const token = qr.token || "";
-    const exitUrl = token ? getExitUrl(token) : "#salida";
-
-    state.qrToken = token;
-    els.clockLabel.textContent = displayTime(qr.server_time || now.toISOString());
-    els.qrWindowLabel.textContent = qr.temporary_all_day ? "QR temporal disponible" : (isOpen ? "QR servidor disponible" : "QR servidor bloqueado");
-    els.qrMessage.textContent = qr.temporary_all_day
-      ? TEMPORARY_QR_MESSAGE
-      : (isOpen ? "QR valido. La vigencia y horario se validan con Supabase." : (qr.message || "La salida aun no esta disponible."));
-
-    els.qrBox.classList.toggle("is-disabled", !isOpen);
-    els.qrImage.hidden = !isOpen;
-    els.qrDirectLink.hidden = !isOpen;
-    els.qrTokenLabel.textContent = isOpen
-      ? `Expira: ${displayTime(qr.expires_at)} | ${qr.temporary_all_day ? "Token temporal" : "Token servidor"}`
-      : "Token: no disponible";
-    els.qrDirectLink.href = exitUrl;
-    els.qrImage.src = isOpen
-      ? `https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(exitUrl)}`
-      : "";
-
-    els.exitGuard.textContent = qr.temporary_all_day
-      ? TEMPORARY_QR_MESSAGE
-      : (isOpen ? "QR vigente. La hora se valida con el servidor; completa foto, reto y ubicacion." : "Salida bloqueada. El QR solo esta disponible de 4:30 p. m. a 5:10 p. m. con hora de servidor.");
-    els.exitGuard.classList.toggle("is-blocked", !isOpen);
-  } catch (error) {
-    els.qrWindowLabel.textContent = "QR no disponible";
-    els.qrMessage.textContent = "No se pudo validar QR con servidor. Revisa la conexion.";
-    els.qrBox.classList.add("is-disabled");
-    els.qrImage.hidden = true;
-    els.qrDirectLink.hidden = true;
-    els.exitGuard.textContent = "Salida bloqueada hasta recuperar validacion de servidor.";
-    els.exitGuard.classList.add("is-blocked");
-  }
+function updateClockAndQr() {
+  updateAccessQr();
 }
 function hideGuidedPanels() {
   els.entrySuccessPanel?.classList.add("is-hidden");
@@ -1346,18 +1273,6 @@ function evaluateFaceMatch(entryDescriptor, exitDescriptor) {
     observacion: "La foto de salida no parece coincidir con la foto de entrada.",
     toast: "La foto no coincide suficientemente con la entrada.",
   };
-}
-
-function getIncomingQrToken() {
-  const [, query = ""] = window.location.hash.split("?");
-  return new URLSearchParams(query).get("token") || "";
-}
-
-function isCurrentQrToken(token) {
-  if (!token) return false;
-  if (TEMPORARY_ALL_DAY_EXIT_QR) return token === state.qrToken;
-  if (!CLOUD_ENABLED) return state.demoMode || token === makeQrToken(new Date());
-  return Boolean(state.serverQr?.is_open) && token === state.qrToken;
 }
 
 function pickLifeChallenge() {
@@ -1569,7 +1484,15 @@ async function validateExitMatricula({ showErrors = false } = {}) {
   }
 
   state.exitActiveRecord = record;
-  setExitLookupInfo(`Entrada activa: ${record.nombre || "Sin nombre"} | Hora de entrada: ${record.horaEntrada || "Pendiente"}`, "success");
+  if (els.exitLookupInfo) {
+    els.exitLookupInfo.dataset.tone = "success";
+    els.exitLookupInfo.innerHTML = `
+      <strong>Salida para: ${escapeHtml(record.nombre || "Sin nombre")}</strong>
+      <span>Matricula: ${escapeHtml(record.matricula)}</span>
+      <span>Entrada registrada: ${escapeHtml(record.horaEntrada || "Pendiente")}</span>
+      <span>Estado: entrada activa</span>
+    `;
+  }
   syncCaptureControls();
   return record;
 }
@@ -1620,12 +1543,6 @@ async function handleEntrySubmit(event) {
 async function handleExitSubmit(event) {
   event.preventDefault();
 
-  await updateClockAndQr({ force: true });
-  const qrToken = getIncomingQrToken() || state.qrToken;
-  if (!isCurrentQrToken(qrToken)) {
-    showToast("El QR ha expirado. Escanea el codigo actual.");
-    return;
-  }
 
   const record = await validateExitMatricula({ showErrors: true });
   if (!record) return;
@@ -1640,7 +1557,6 @@ async function handleExitSubmit(event) {
   try {
     const updated = await updateExitRecord(record, {
       fotoSalida: state.exitPhoto,
-      qrToken,
       descriptorSalida: state.exitFace.descriptor,
       location,
       lifeChallenge: state.lifeChallenge,
@@ -1659,7 +1575,7 @@ async function handleExitSubmit(event) {
     showGuidedPanel("exit");
     showToast(updated.riesgo === "normal" ? "Salida registrada y validada." : "Salida registrada, pero requiere revision administrativa.");
   } catch (error) {
-    const message = error.message?.includes("QR") ? error.message : "No se pudo guardar la salida segura. Intenta de nuevo.";
+    const message = "No se pudo guardar la salida segura. Intenta de nuevo.";
     showToast(message);
   }
 }
@@ -1706,7 +1622,7 @@ function riskLabel(value) {
     revision_ubicacion_entrada: "Revision ubicacion entrada",
     revision_ubicacion_salida: "Revision ubicacion salida",
     revision_identidad: "Revision identidad",
-    revision_qr: "Revision QR",
+
     revision_horario: "Revision horario",
     revision_multiple: "Revision multiple",
     sospechoso: "Sospechoso",
@@ -1870,7 +1786,7 @@ async function showEvidenceDetail(id) {
       evidenceField("Obs. salida", record.ubicacionSalidaObservacion),
     ])}
     ${metadataBlock("Validaciones", [
-      evidenceField("QR usado", record.tokenQrUsado || record.qrSalida),
+      evidenceField("QR", "No aplica"),
       evidenceField("Geo entrada", record.evidenciaEntradaGeolocalizada ? "Completa" : "Parcial"),
       evidenceField("Geo salida", record.evidenciaSalidaGeolocalizada ? "Completa" : "Parcial"),
       evidenceField("Observacion geo", record.evidenciaGeolocalizadaObservacion),
@@ -1913,7 +1829,7 @@ function renderRecords() {
       <td><span class="badge ${statusClass}">${escapeHtml(statusLabel(record.estado))}</span></td>
       <td><span class="badge ${identityClass}">${escapeHtml(identityLabel(record.validacionIdentidad))}</span></td>
       <td>${escapeHtml(formatSimilarity(record.similitudFacial))}</td>
-      <td>${booleanBadge(record.qrValidado, "Validado", "Pendiente")}</td>
+      <td><span class="badge default">No aplica</span></td>
       <td>${booleanBadge(record.ubicacionEntradaValidada && (record.horaSalida ? record.ubicacionSalidaValidada : true), "Correcta", "Revision")}</td>
       <td>${escapeHtml(formatMeters(record.precisionSalida || record.precisionEntrada || record.precisionUbicacion))}</td>
       <td>${escapeHtml(formatMeters(record.distanciaSalidaMetros || record.distanciaEntradaMetros || record.distanciaEmpresaMetros))}</td>
@@ -2108,9 +2024,9 @@ function exportCsv() {
     statusLabel(record.estado),
     identityLabel(record.validacionIdentidad),
     formatSimilarity(record.similitudFacial),
-    record.qrValidado ? "Si" : "No",
-    record.tokenQrUsado || record.qrSalida,
-    record.qrObservacion,
+    "No aplica",
+    "no_aplica",
+    record.qrObservacion || "No aplica",
     record.horarioValidado ? "Si" : "No",
     record.horarioObservacion,
     record.ubicacionValidada ? "Si" : "No",
@@ -2276,7 +2192,7 @@ function handleRecordAction(event) {
 }
 
 async function init() {
-  els.demoMode.checked = state.demoMode;
+  if (els.demoMode) els.demoMode.checked = state.demoMode;
   setFaceStatus(els.entryFaceStatus, "Espera a que carguen los modelos faciales.", "pending");
   setFaceStatus(els.exitFaceStatus, "Espera a que carguen los modelos faciales.", "pending");
   syncCaptureControls();
@@ -2300,19 +2216,6 @@ async function init() {
 
   $$('[data-target]').forEach((button) => {
     button.addEventListener("click", () => showView(button.dataset.target));
-  });
-
-  els.qrDirectLink.addEventListener("click", (event) => {
-    event.preventDefault();
-    window.history.replaceState(null, "", "#salida");
-    showView("exit");
-  });
-
-  els.demoMode.addEventListener("change", () => {
-    state.demoMode = els.demoMode.checked;
-    localStorage.setItem(DEMO_KEY, String(state.demoMode));
-    updateClockAndQr({ force: true });
-    showToast(state.demoMode ? "Modo prueba local activado. En Supabase la salida sigue validando hora de servidor." : "Modo prueba desactivado.");
   });
 
   els.startEntryCamera.addEventListener("click", () => startCamera("entry"));
