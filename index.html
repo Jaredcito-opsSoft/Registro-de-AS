@@ -6,7 +6,12 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta name="description"
     content="Sistema de control de asistencia con registro fotografico, codigo QR dinamico y validacion de ubicacion." />
+  <meta name="theme-color" content="#ef4ea0" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-title" content="Asistencia QR" />
   <title>Asistencia QR - Control Institucional</title>
+  <link rel="manifest" href="manifest.webmanifest" />
+  <link rel="apple-touch-icon" href="icons/icon-192.png" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="stylesheet"
@@ -212,6 +217,15 @@
           </section>
 
           <div id="faceStatus" class="model-status" data-tone="pending">Cargando modelos de reconocimiento facial...
+          </div>
+
+          <div id="pwaInstallBanner" class="install-card is-hidden" aria-live="polite">
+            <div>
+              <strong>Instalar asistencia QR</strong>
+              <span>Acceso rapido desde la pantalla de inicio para entrada, salida y consulta.</span>
+              <small id="pwaInstallHelp" class="is-hidden">En Safari, toca Compartir y luego Agregar a pantalla de inicio.</small>
+            </div>
+            <button id="pwaInstallButton" class="primary" type="button">Instalar app</button>
           </div>
 
           <section class="panel activity-panel">

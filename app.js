@@ -49,6 +49,7 @@ const state = {
   exitActiveRecord: null,
   exitLookupSeq: 0,
   currentUser: null,
+  deferredInstallPrompt: null,
 };
 
 const $ = (selector) => document.querySelector(selector);
@@ -150,8 +151,66 @@ const els = {
   profileEmail: $("#profileEmail"),
   userInitials: $("#userInitials"),
   btnLogout: $("#btn-logout"),
+  pwaInstallBanner: $("#pwaInstallBanner"),
+  pwaInstallButton: $("#pwaInstallButton"),
+  pwaInstallHelp: $("#pwaInstallHelp"),
 };
 
+
+function isStandaloneDisplay() {
+  return window.matchMedia("(display-mode: standalone)").matches || window.navigator.standalone === true;
+}
+
+function isIosSafari() {
+  const ua = window.navigator.userAgent || "";
+  const isIos = /iphone|ipad|ipod/i.test(ua);
+  const isWebKit = /safari/i.test(ua) && !/crios|fxios|edgios/i.test(ua);
+  return isIos && isWebKit;
+}
+
+function updatePwaInstallUi() {
+  if (!els.pwaInstallBanner) return;
+  const canInstall = Boolean(state.deferredInstallPrompt);
+  const showIosHelp = isIosSafari() && !isStandaloneDisplay();
+  const shouldShow = !isStandaloneDisplay() && (canInstall || showIosHelp);
+
+  els.pwaInstallBanner.classList.toggle("is-hidden", !shouldShow);
+  els.pwaInstallButton?.classList.toggle("is-hidden", !canInstall);
+  els.pwaInstallHelp?.classList.toggle("is-hidden", !showIosHelp);
+}
+
+function setupPwaInstall() {
+  if ("serviceWorker" in navigator) {
+    window.addEventListener("load", () => {
+      navigator.serviceWorker.register("/service-worker.js").catch(() => {
+        console.warn("No se pudo registrar el service worker.");
+      });
+    });
+  }
+
+  window.addEventListener("beforeinstallprompt", (event) => {
+    event.preventDefault();
+    state.deferredInstallPrompt = event;
+    updatePwaInstallUi();
+  });
+
+  window.addEventListener("appinstalled", () => {
+    state.deferredInstallPrompt = null;
+    updatePwaInstallUi();
+    showToast("Asistencia QR instalada correctamente.");
+  });
+
+  els.pwaInstallButton?.addEventListener("click", async () => {
+    if (!state.deferredInstallPrompt) return;
+    const promptEvent = state.deferredInstallPrompt;
+    state.deferredInstallPrompt = null;
+    promptEvent.prompt();
+    await promptEvent.userChoice.catch(() => null);
+    updatePwaInstallUi();
+  });
+
+  updatePwaInstallUi();
+}
 function loadLocalRecords() {
   try {
     return (JSON.parse(localStorage.getItem(STORAGE_KEY)) || []).map(normalizeRecord);
@@ -2361,6 +2420,7 @@ async function finishInitialization() {
 }
 
 async function init() {
+  setupPwaInstall();
   // Verificar sesión activa
   const user = await verificarSesion();
   if (user) {
