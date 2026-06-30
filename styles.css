@@ -1862,3 +1862,136 @@ tbody tr:hover {
     transition-duration: 0.01ms !important;
   }
 }
+
+/* ==========================================
+   Estilos de Autenticación, Perfil y Sidebar
+   ========================================== */
+
+/* Login & Registro */
+.login-wrapper {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  padding: 24px;
+  background: var(--cream);
+}
+
+.login-card {
+  width: 100%;
+  max-width: 440px;
+  background: var(--card);
+  border-radius: var(--radius-soft);
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.04), inset 0 0 0 1px var(--line);
+  padding: 36px 30px;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.login-header {
+  text-align: center;
+}
+
+.login-header h1 {
+  font-size: 1.8rem;
+  font-weight: 900;
+  margin: 6px 0 8px;
+  letter-spacing: -0.025em;
+  color: var(--ink);
+}
+
+.login-header .eyebrow {
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-weight: 900;
+  color: var(--coral);
+}
+
+.login-header p:not(.eyebrow) {
+  font-size: 0.84rem;
+  color: #6e6e73;
+  line-height: 1.45;
+}
+
+.auth-toggle-bar {
+  display: flex;
+  background: rgba(0, 0, 0, 0.03);
+  padding: 4px;
+  border-radius: 99px;
+  box-shadow: inset 0 1px 2px rgba(0,0,0,0.05);
+}
+
+.auth-toggle-bar .toggle-btn {
+  flex: 1;
+  border: none;
+  background: none;
+  padding: 8px 12px;
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: #6e6e73;
+  border-radius: 99px;
+  cursor: pointer;
+  transition: background 180ms var(--ease), color 180ms var(--ease), box-shadow 180ms var(--ease);
+}
+
+.auth-toggle-bar .toggle-btn.active {
+  background: #fff;
+  color: var(--ink);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+
+/* Sidebar Footer & Botones */
+.sidebar-footer {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  width: 100%;
+}
+
+.sidebar-footer .nav-button {
+  width: 100%;
+  max-width: 48px;
+  aspect-ratio: 1;
+  padding: 0;
+  display: grid;
+  place-items: center;
+}
+
+.sidebar-footer .nav-button .nav-icon {
+  margin-right: 0;
+}
+
+.sidebar-footer .nav-button .nav-label {
+  display: none;
+}
+
+.sidebar-user-btn {
+  border: none;
+  padding: 0;
+  background: none;
+  cursor: pointer;
+  outline: none;
+  border-radius: 50%;
+  transition: transform 180ms var(--ease);
+}
+
+.sidebar-user-btn:hover {
+  transform: scale(1.05);
+}
+
+/* Responsividad del Sidebar Footer en Móvil */
+@media (max-width: 760px) {
+  .sidebar-footer {
+    flex-direction: row;
+    align-items: center;
+    gap: 12px;
+    width: auto;
+  }
+
+  .sidebar-footer .nav-button {
+    max-width: 36px;
+  }
+}
