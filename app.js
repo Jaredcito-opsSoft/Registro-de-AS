@@ -48,6 +48,7 @@ const state = {
   adminLocation: null,
   exitActiveRecord: null,
   exitLookupSeq: 0,
+  currentUser: null,
 };
 
 const $ = (selector) => document.querySelector(selector);
@@ -130,6 +131,25 @@ const els = {
   closeEvidence: $("#closeEvidence"),
   entrySuccessPanel: $("#entrySuccessPanel"),
   exitSuccessPanel: $("#exitSuccessPanel"),
+  loginView: $("#login-view"),
+  appShell: $(".app-shell"),
+  authForm: $("#authForm"),
+  authEmail: $("#authEmail"),
+  authPassword: $("#authPassword"),
+  authName: $("#authName"),
+  authMatricula: $("#authMatricula"),
+  authSubmitBtn: $("#authSubmitBtn"),
+  toggleLoginBtn: $("#toggle-login-btn"),
+  toggleRegisterBtn: $("#toggle-register-btn"),
+  labelName: $("#label-name"),
+  labelMatricula: $("#label-matricula"),
+  loginTitle: $("#login-title"),
+  loginSubtitle: $("#login-subtitle"),
+  profileName: $("#profileName"),
+  profileMatricula: $("#profileMatricula"),
+  profileEmail: $("#profileEmail"),
+  userInitials: $("#userInitials"),
+  btnLogout: $("#btn-logout"),
 };
 
 function loadLocalRecords() {
@@ -335,9 +355,10 @@ function getExitUrl(token) {
 }
 
 function cloudHeaders(extra = {}) {
+  const token = localStorage.getItem("registro_asistencia_token");
   return {
     apikey: SUPABASE.publishableKey,
-    Authorization: `Bearer ${SUPABASE.publishableKey}`,
+    Authorization: token ? `Bearer ${token}` : `Bearer ${SUPABASE.publishableKey}`,
     ...extra,
   };
 }
@@ -1468,7 +1489,7 @@ async function validateExitMatricula({ showErrors = false } = {}) {
   const record = todayRecordByMatricula(matricula);
 
   if (!record || !record.horaEntrada) {
-    const message = "No existe una entrada activa para esta matr�cula el d�a de hoy.";
+    const message = "No existe una entrada activa para esta matr�cula el d�a de hoy.";
     resetExitActiveRecord(message);
     els.exitLookupInfo.dataset.tone = "danger";
     if (showErrors) showToast(message);
@@ -1476,7 +1497,7 @@ async function validateExitMatricula({ showErrors = false } = {}) {
   }
 
   if (record.horaSalida) {
-    const message = "Esta matr�cula ya registr� salida el d�a de hoy.";
+    const message = "Esta matr�cula ya registr� salida el d�a de hoy.";
     resetExitActiveRecord(message);
     els.exitLookupInfo.dataset.tone = "danger";
     if (showErrors) showToast(message);
@@ -1750,51 +1771,51 @@ async function showEvidenceDetail(id) {
       </figure>
     </div>
     ${metadataBlock("Identificacion", [
-      evidenceField("Nombre", record.nombre),
-      evidenceField("Matricula", record.matricula),
-      evidenceField("Fecha", displayDate(record.fecha)),
-      evidenceField("Estado", statusLabel(record.estado)),
-    ])}
+    evidenceField("Nombre", record.nombre),
+    evidenceField("Matricula", record.matricula),
+    evidenceField("Fecha", displayDate(record.fecha)),
+    evidenceField("Estado", statusLabel(record.estado)),
+  ])}
     ${metadataBlock("Foto de entrada", [
-      evidenceField("Hash SHA-256", record.fotoEntradaHash),
-      evidenceField("Resolucion", resolutionText(record.fotoEntradaWidth, record.fotoEntradaHeight)),
-      evidenceField("Tamano", formatBytes(record.fotoEntradaSizeBytes)),
-      evidenceField("MIME", record.fotoEntradaMime),
-      evidenceField("Storage path", record.fotoEntradaStoragePath),
-      evidenceField("Captura cliente", displayTime(record.fotoEntradaCapturedAt) || record.fotoEntradaCapturedAt),
-      evidenceField("Dispositivo", record.fotoEntradaDeviceLabel),
-      evidenceField("GPS entrada", record.latitudEntrada && record.longitudEntrada ? `${record.latitudEntrada}, ${record.longitudEntrada}` : "Pendiente"),
-      evidenceField("Precision entrada", formatMeters(record.precisionEntrada)),
-      evidenceField("Distancia entrada", formatMeters(record.distanciaEntradaMetros)),
-      evidenceField("Sitio entrada", record.sitioEntradaNombre || record.sitioEntradaId),
-      evidenceField("Ubicacion entrada", record.ubicacionEntradaValidada ? "Validada" : "Revision"),
-      evidenceField("Obs. entrada", record.ubicacionEntradaObservacion),
-    ])}
+    evidenceField("Hash SHA-256", record.fotoEntradaHash),
+    evidenceField("Resolucion", resolutionText(record.fotoEntradaWidth, record.fotoEntradaHeight)),
+    evidenceField("Tamano", formatBytes(record.fotoEntradaSizeBytes)),
+    evidenceField("MIME", record.fotoEntradaMime),
+    evidenceField("Storage path", record.fotoEntradaStoragePath),
+    evidenceField("Captura cliente", displayTime(record.fotoEntradaCapturedAt) || record.fotoEntradaCapturedAt),
+    evidenceField("Dispositivo", record.fotoEntradaDeviceLabel),
+    evidenceField("GPS entrada", record.latitudEntrada && record.longitudEntrada ? `${record.latitudEntrada}, ${record.longitudEntrada}` : "Pendiente"),
+    evidenceField("Precision entrada", formatMeters(record.precisionEntrada)),
+    evidenceField("Distancia entrada", formatMeters(record.distanciaEntradaMetros)),
+    evidenceField("Sitio entrada", record.sitioEntradaNombre || record.sitioEntradaId),
+    evidenceField("Ubicacion entrada", record.ubicacionEntradaValidada ? "Validada" : "Revision"),
+    evidenceField("Obs. entrada", record.ubicacionEntradaObservacion),
+  ])}
     ${metadataBlock("Foto de salida", [
-      evidenceField("Hash SHA-256", record.fotoSalidaHash),
-      evidenceField("Resolucion", resolutionText(record.fotoSalidaWidth, record.fotoSalidaHeight)),
-      evidenceField("Tamano", formatBytes(record.fotoSalidaSizeBytes)),
-      evidenceField("MIME", record.fotoSalidaMime),
-      evidenceField("Storage path", record.fotoSalidaStoragePath),
-      evidenceField("Captura cliente", displayTime(record.fotoSalidaCapturedAt) || record.fotoSalidaCapturedAt),
-      evidenceField("Dispositivo", record.fotoSalidaDeviceLabel),
-      evidenceField("GPS salida", record.latitudSalida && record.longitudSalida ? `${record.latitudSalida}, ${record.longitudSalida}` : "Pendiente"),
-      evidenceField("Precision salida", formatMeters(record.precisionSalida || record.precisionUbicacion)),
-      evidenceField("Distancia salida", formatMeters(record.distanciaSalidaMetros || record.distanciaEmpresaMetros)),
-      evidenceField("Sitio salida", record.sitioSalidaNombre || record.sitioSalidaId),
-      evidenceField("Ubicacion salida", record.ubicacionSalidaValidada ? "Validada" : "Revision"),
-      evidenceField("Obs. salida", record.ubicacionSalidaObservacion),
-    ])}
+    evidenceField("Hash SHA-256", record.fotoSalidaHash),
+    evidenceField("Resolucion", resolutionText(record.fotoSalidaWidth, record.fotoSalidaHeight)),
+    evidenceField("Tamano", formatBytes(record.fotoSalidaSizeBytes)),
+    evidenceField("MIME", record.fotoSalidaMime),
+    evidenceField("Storage path", record.fotoSalidaStoragePath),
+    evidenceField("Captura cliente", displayTime(record.fotoSalidaCapturedAt) || record.fotoSalidaCapturedAt),
+    evidenceField("Dispositivo", record.fotoSalidaDeviceLabel),
+    evidenceField("GPS salida", record.latitudSalida && record.longitudSalida ? `${record.latitudSalida}, ${record.longitudSalida}` : "Pendiente"),
+    evidenceField("Precision salida", formatMeters(record.precisionSalida || record.precisionUbicacion)),
+    evidenceField("Distancia salida", formatMeters(record.distanciaSalidaMetros || record.distanciaEmpresaMetros)),
+    evidenceField("Sitio salida", record.sitioSalidaNombre || record.sitioSalidaId),
+    evidenceField("Ubicacion salida", record.ubicacionSalidaValidada ? "Validada" : "Revision"),
+    evidenceField("Obs. salida", record.ubicacionSalidaObservacion),
+  ])}
     ${metadataBlock("Validaciones", [
-      evidenceField("QR", "No aplica"),
-      evidenceField("Geo entrada", record.evidenciaEntradaGeolocalizada ? "Completa" : "Parcial"),
-      evidenceField("Geo salida", record.evidenciaSalidaGeolocalizada ? "Completa" : "Parcial"),
-      evidenceField("Observacion geo", record.evidenciaGeolocalizadaObservacion),
-      evidenceField("Reto", record.retoVida),
-      evidenceField("Riesgo", riskLabel(record.riesgo)),
-      evidenceField("Observacion", record.observacion || record.observaciones),
-      evidenceField("Privacidad", record.fotosPrivadas ? "Preparado para fotos privadas" : "URL publica temporal"),
-    ])}
+    evidenceField("QR", "No aplica"),
+    evidenceField("Geo entrada", record.evidenciaEntradaGeolocalizada ? "Completa" : "Parcial"),
+    evidenceField("Geo salida", record.evidenciaSalidaGeolocalizada ? "Completa" : "Parcial"),
+    evidenceField("Observacion geo", record.evidenciaGeolocalizadaObservacion),
+    evidenceField("Reto", record.retoVida),
+    evidenceField("Riesgo", riskLabel(record.riesgo)),
+    evidenceField("Observacion", record.observacion || record.observaciones),
+    evidenceField("Privacidad", record.fotosPrivadas ? "Preparado para fotos privadas" : "URL publica temporal"),
+  ])}
   `;
   els.evidenceModal.hidden = false;
   els.closeEvidence?.focus();
@@ -2191,7 +2212,135 @@ function handleRecordAction(event) {
   }
 }
 
-async function init() {
+
+// Variables del estado de autenticación de la UI
+let authMode = "login"; // "login" o "register"
+
+// Función global requerida por auth.js para el redireccionamiento al cerrar sesión
+window.onLogoutSuccess = function () {
+  state.currentUser = null;
+  if (els.loginView) els.loginView.classList.remove("is-hidden");
+  if (els.appShell) els.appShell.classList.add("is-hidden");
+};
+
+function showLoginView() {
+  authMode = "login";
+  if (els.loginView) els.loginView.classList.remove("is-hidden");
+  if (els.appShell) els.appShell.classList.add("is-hidden");
+  updateAuthUI();
+}
+
+function showAppShell(user) {
+  state.currentUser = user;
+
+  // Rellenar iniciales en el avatar
+  if (els.userInitials) {
+    const nombre = user.user_metadata?.nombre || user.user_metadata?.full_name || user.email || "US";
+    const iniciales = nombre.split(" ").filter(Boolean).map(n => n[0].toUpperCase()).slice(0, 2).join("");
+    els.userInitials.textContent = iniciales || "US";
+  }
+
+  // Rellenar campos de perfil
+  if (els.profileName) els.profileName.value = user.user_metadata?.nombre || user.user_metadata?.full_name || "-";
+  if (els.profileMatricula) els.profileMatricula.value = user.user_metadata?.matricula || "-";
+  if (els.profileEmail) els.profileEmail.value = user.email || "-";
+
+  if (els.loginView) els.loginView.classList.add("is-hidden");
+  if (els.appShell) els.appShell.classList.remove("is-hidden");
+}
+
+function updateAuthUI() {
+  if (!els.labelName || !els.labelMatricula || !els.loginTitle || !els.loginSubtitle || !els.authSubmitBtn) return;
+
+  if (authMode === "login") {
+    els.labelName.classList.add("is-hidden");
+    els.labelMatricula.classList.add("is-hidden");
+    els.authName.required = false;
+    els.authMatricula.required = false;
+    els.loginTitle.textContent = "Iniciar Sesión";
+    els.loginSubtitle.textContent = "Ingresa tus credenciales para acceder al control de asistencia.";
+    els.authSubmitBtn.textContent = "Ingresar";
+    els.toggleLoginBtn.classList.add("active");
+    els.toggleRegisterBtn.classList.remove("active");
+  } else {
+    els.labelName.classList.remove("is-hidden");
+    els.labelMatricula.classList.remove("is-hidden");
+    els.authName.required = true;
+    els.authMatricula.required = true;
+    els.loginTitle.textContent = "Registrarse";
+    els.loginSubtitle.textContent = "Crea una cuenta para registrar tu asistencia diaria.";
+    els.authSubmitBtn.textContent = "Crear Cuenta";
+    els.toggleLoginBtn.classList.remove("active");
+    els.toggleRegisterBtn.classList.add("active");
+  }
+}
+
+async function handleAuthSubmit(event) {
+  event.preventDefault();
+
+  const email = els.authEmail.value.trim();
+  const password = els.authPassword.value.trim();
+
+  if (!email || !password) {
+    showToast("Por favor completa los campos obligatorios.");
+    return;
+  }
+
+  els.authSubmitBtn.disabled = true;
+  const originalText = els.authSubmitBtn.textContent;
+  els.authSubmitBtn.textContent = authMode === "login" ? "Ingresando..." : "Registrando...";
+
+  try {
+    if (authMode === "login") {
+      const data = await iniciarSesion(email, password);
+      showToast("¡Inicio de sesión exitoso!");
+
+      // Obtener datos del usuario
+      const user = await verificarSesion();
+      if (user) {
+        showAppShell(user);
+        // Inicializar datos una vez logueado
+        await finishInitialization();
+      } else {
+        throw new Error("No se pudo obtener el usuario después del inicio de sesión.");
+      }
+    } else {
+      const nombre = els.authName.value.trim();
+      const matricula = els.authMatricula.value.trim();
+
+      if (!nombre || !matricula) {
+        showToast("Nombre y matrícula son requeridos para el registro.");
+        els.authSubmitBtn.disabled = false;
+        els.authSubmitBtn.textContent = originalText;
+        return;
+      }
+
+      const data = await crearCuenta(email, password, nombre, matricula);
+
+      // Si retorna sesión, entra directo. Si no, pide verificar correo o iniciar sesión
+      if (localStorage.getItem("registro_asistencia_token")) {
+        showToast("¡Registro e inicio de sesión exitoso!");
+        const user = await verificarSesion();
+        if (user) {
+          showAppShell(user);
+          await finishInitialization();
+        }
+      } else {
+        showToast("Registro exitoso. Por favor, inicia sesión.");
+        authMode = "login";
+        updateAuthUI();
+        els.authPassword.value = "";
+      }
+    }
+  } catch (error) {
+    showToast(error.message || "Ocurrió un error inesperado.");
+  } finally {
+    els.authSubmitBtn.disabled = false;
+    els.authSubmitBtn.textContent = originalText;
+  }
+}
+
+async function finishInitialization() {
   if (els.demoMode) els.demoMode.checked = state.demoMode;
   setFaceStatus(els.entryFaceStatus, "Espera a que carguen los modelos faciales.", "pending");
   setFaceStatus(els.exitFaceStatus, "Espera a que carguen los modelos faciales.", "pending");
@@ -2202,7 +2351,6 @@ async function init() {
   renderRecords();
   renderAdminAudit();
   updateAdminControls();
-  setActiveNavigation("home");
 
   if (CLOUD_ENABLED) {
     await refreshRecords({ silent: true });
@@ -2210,14 +2358,63 @@ async function init() {
   } else {
     showToast("Modo local: falta configurar Supabase.");
   }
+}
 
-  setInterval(() => updateClockAndQr(), 1000);
-  setInterval(() => refreshRecords({ silent: true }), 30000);
+async function init() {
+  // Verificar sesión activa
+  const user = await verificarSesion();
+  if (user) {
+    showAppShell(user);
+    await finishInitialization();
+  } else {
+    showLoginView();
+  }
 
-  $$('[data-target]').forEach((button) => {
-    button.addEventListener("click", () => showView(button.dataset.target));
+  // Intervalos de actualización si está logueado
+  setInterval(() => {
+    if (state.currentUser) updateClockAndQr();
+  }, 1000);
+
+  setInterval(() => {
+    if (state.currentUser) refreshRecords({ silent: true });
+  }, 30000);
+
+  // Registro de manejadores de navegación
+  $('[data-target]').forEach((button) => {
+    button.addEventListener("click", () => {
+      // Evitar que el perfil se marque en la navegación principal si es un botón especial
+      if (button.dataset.target === "profile") {
+        showView("profile");
+        return;
+      }
+      showView(button.dataset.target);
+    });
   });
 
+  // Manejadores de autenticación
+  if (els.toggleLoginBtn) {
+    els.toggleLoginBtn.addEventListener("click", () => {
+      authMode = "login";
+      updateAuthUI();
+    });
+  }
+  if (els.toggleRegisterBtn) {
+    els.toggleRegisterBtn.addEventListener("click", () => {
+      authMode = "register";
+      updateAuthUI();
+    });
+  }
+  if (els.authForm) {
+    els.authForm.addEventListener("submit", handleAuthSubmit);
+  }
+  if (els.btnLogout) {
+    els.btnLogout.addEventListener("click", async () => {
+      await cerrarSesion();
+      showToast("Sesión cerrada.");
+    });
+  }
+
+  // Manejadores estándar de la app
   els.startEntryCamera.addEventListener("click", () => startCamera("entry"));
   els.takeEntryPhoto.addEventListener("click", () => takePhoto("entry"));
   els.entryForm.addEventListener("submit", handleEntrySubmit);
