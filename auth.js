@@ -49,6 +49,10 @@ async function crearCuenta(email, password, nombre, matricula) {
     const data = await parseAuthResponse(response);
 
     if (!response.ok) {
+      // Clave API invalida o no autorizado
+      if (response.status === 401 || response.status === 403) {
+        throw new Error("La clave de Supabase es inválida o no tiene permisos. Revisa supabase-config.js y asegúrate de usar la 'anon key' correcta.");
+      }
       const message = authErrorMessage(data, "Error al crear la cuenta.");
       if (data.error_code === "email_address_invalid") {
         throw new Error("El correo no fue aceptado por Supabase. Usa un correo real para crear la cuenta o entra en modo operativo.");
@@ -79,6 +83,10 @@ async function iniciarSesion(email, password) {
     const data = await parseAuthResponse(response);
 
     if (!response.ok) {
+      // Clave API invalida
+      if (response.status === 401 || response.status === 403) {
+        throw new Error("La clave de Supabase es inválida. Verifica supabase-config.js y usa la 'anon key' (empieza con eyJ...) desde el panel de Supabase → Project Settings → API.");
+      }
       const message = authErrorMessage(data, "Error al iniciar sesion.");
       if (data.error_code === "email_not_confirmed" || /not confirmed/i.test(message)) {
         throw new Error("Tu cuenta fue creada, pero falta confirmar el correo antes de iniciar sesion.");

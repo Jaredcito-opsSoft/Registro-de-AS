@@ -2673,7 +2673,12 @@ function showLoginView() {
 
 function showAppShell(user) {
   state.currentUser = user;
-  applyAppUserSession(state.currentAppUser);
+  // Solo aplicar sesión si aún no se ha configurado (evita sobreescribir modo guest)
+  if (!state.currentAppUser) {
+    applyAppUserSession(null);
+  } else {
+    renderCurrentUserProfile();
+  }
 
   if (els.loginView) els.loginView.classList.add("is-hidden");
   if (els.appShell) els.appShell.classList.remove("is-hidden");
@@ -2693,6 +2698,7 @@ async function continueAsOperationalGuest() {
   };
   localStorage.removeItem("registro_asistencia_token");
   state.currentUser = guestUser;
+  // Establecer el usuario guest ANTES de showAppShell para que no se sobreescriba
   applyAppUserSession({
     nombre: "Usuario operativo",
     matricula: "OPERATIVO",
@@ -2700,6 +2706,7 @@ async function continueAsOperationalGuest() {
     rol: "usuario",
     permisos: { ...ROLE_DEFINITIONS.usuario.permissions },
     activo: true,
+    isGuest: true,
   });
   showAppShell(guestUser);
   await finishInitialization();
@@ -2803,16 +2810,22 @@ async function finishInitialization() {
   syncCaptureControls();
   loadFaceModels();
   updateClockAndQr({ force: true });
-  await loadCurrentAppUser({ silent: true });
+  // Solo cargar usuario desde Supabase si no estamos en modo operativo guest
+  const isGuestMode = state.currentAppUser?.isGuest || state.currentUser?.isGuest;
+  if (!isGuestMode) {
+    await loadCurrentAppUser({ silent: true });
+  }
   loadActiveSite({ silent: true });
   loadOrganizationContext({ silent: true });
   renderRecords();
   renderAdminAudit();
   updateAdminControls();
 
-  if (CLOUD_ENABLED) {
+  if (CLOUD_ENABLED && !isGuestMode) {
     await refreshRecords({ silent: true });
     showToast("Lista global conectada a Supabase.");
+  } else if (isGuestMode) {
+    showToast("Modo operativo activo. Registros guardados localmente.");
   } else {
     showToast("Modo local: falta configurar Supabase.");
   }
