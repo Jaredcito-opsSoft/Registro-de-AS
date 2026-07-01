@@ -462,10 +462,7 @@
                 <h3 id="opsDashboardTitle">Corte de asistencia</h3>
                 <p id="dashboardScopeLabel">Mostrando registros permitidos por tu rol.</p>
               </div>
-              <span id="dashboardCompletionRate" class="ops-rate">0% completo</span>
-            </div>
-
-            <div class="ops-metrics" aria-label="Indicadores de asistencia">
+              <span id="dashboardCompletionRate" class="ops-rate">0% completo</span>             <div class="ops-metrics" aria-label="Indicadores de asistencia">
               <article class="ops-metric is-primary">
                 <small>Total visible</small>
                 <strong id="dashboardVisibleTotal">0</strong>
@@ -487,6 +484,16 @@
                 <span>Sin salida registrada</span>
               </article>
               <article class="ops-metric">
+                <small>Retrasos / Tarde</small>
+                <strong id="dashboardLate" style="color: var(--warning-ink, #d97706);">0</strong>
+                <span>Entradas fuera de horario</span>
+              </article>
+              <article class="ops-metric">
+                <small>Sin salida</small>
+                <strong id="dashboardNoExit" style="color: var(--danger-ink, #ef4444);">0</strong>
+                <span>Turno vencido sin cerrar</span>
+              </article>
+              <article class="ops-metric">
                 <small>Revision</small>
                 <strong id="dashboardReview">0</strong>
                 <span>Riesgo o estado alerta</span>
@@ -498,7 +505,7 @@
               </article>
             </div>
 
-            <form class="ops-filters" aria-label="Filtros de registros">
+            <form class="ops-filters" aria-label="Filtros de registros" style="grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));">
               <label>
                 Fecha
                 <input id="filterDate" type="date" />
@@ -522,11 +529,23 @@
                   <option value="sospechoso">Sospechoso</option>
                 </select>
               </label>
+              <label>
+                Sitio
+                <select id="filterSite">
+                  <option value="all">Todos los sitios</option>
+                </select>
+              </label>
+              <label>
+                Usuario
+                <select id="filterUser">
+                  <option value="all">Todos los usuarios</option>
+                </select>
+              </label>
               <label class="ops-search-field">
                 Buscar
                 <input id="filterSearch" type="search" autocomplete="off" placeholder="Nombre o matricula" />
               </label>
-              <button id="clearDashboardFilters" class="ghost" type="button">Limpiar filtros</button>
+              <button id="clearDashboardFilters" class="ghost" type="button" style="align-self: flex-end; margin-bottom: 4px;">Limpiar filtros</button>
             </form>
 
             <div id="dashboardAlerts" class="ops-alerts" aria-live="polite">

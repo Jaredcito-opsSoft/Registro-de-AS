@@ -131,6 +131,8 @@ const state = {
     date: "",
     status: "all",
     risk: "all",
+    site: "all",
+    user: "all",
     query: "",
   },
   deferredInstallPrompt: null,
@@ -200,8 +202,12 @@ function populateElements() {
   els.filterDate = $("#filterDate");
   els.filterStatus = $("#filterStatus");
   els.filterRisk = $("#filterRisk");
+  els.filterSite = $("#filterSite");
+  els.filterUser = $("#filterUser");
   els.filterSearch = $("#filterSearch");
   els.clearDashboardFilters = $("#clearDashboardFilters");
+  els.dashboardLate = $("#dashboardLate");
+  els.dashboardNoExit = $("#dashboardNoExit");
   els.orgStatusBadge = $("#orgStatusBadge");
   els.orgFoundationSummary = $("#orgFoundationSummary");
   els.orgNameLabel = $("#orgNameLabel");
@@ -2238,6 +2244,7 @@ function renderRecentActivity() {
 }
 
 function renderRecords() {
+  populateDashboardFilterSelects();
   const filteredRecords = getFilteredRecords();
   renderOperationsDashboard(filteredRecords);
   updateSummary(filteredRecords);
@@ -2331,6 +2338,18 @@ function recordMatchesDashboardFilters(record) {
   if (!statusFilterMatches(record, filters.status)) return false;
   if (!riskFilterMatches(record, filters.risk)) return false;
 
+  // Filtro por Sitio
+  if (filters.site && filters.site !== "all") {
+    const recordSite = String(record.sitioNombre || record.sitioEntradaNombre || "").trim().toLowerCase();
+    const targetSite = String(filters.site).trim().toLowerCase();
+    if (recordSite !== targetSite) return false;
+  }
+
+  // Filtro por Usuario (Vista por usuario)
+  if (filters.user && filters.user !== "all") {
+    if (normalizeMatricula(record.matricula) !== normalizeMatricula(filters.user)) return false;
+  }
+
   const query = normalizeMatricula(filters.query || "");
   if (!query) return true;
   return normalizeMatricula(record.nombre || "").includes(query)
@@ -2353,25 +2372,65 @@ function renderDashboardAlerts(records) {
   if (!els.dashboardAlerts) return;
   const today = todayIso();
   const alerts = [];
-  const pendingToday = records.filter((record) => record.fecha === today && isPendingExitRecord(record));
-  const identity = records.filter(hasIdentityIssue);
-  const location = records.filter(hasLocationIssue);
-  const suspicious = records.filter((record) => record.riesgo === "sospechoso");
 
-  if (pendingToday.length) alerts.push(["Pendientes de salida", `${pendingToday.length} matricula(s) con entrada activa hoy.`]);
-  if (identity.length) alerts.push(["Facial en revision", `${identity.length} registro(s) requieren validacion de identidad.`]);
-  if (location.length) alerts.push(["GPS por revisar", `${location.length} evidencia(s) fuera de radio o sin validacion completa.`]);
-  if (suspicious.length) alerts.push(["Riesgo alto", `${suspicious.length} registro(s) marcados como sospechosos.`]);
+  // Detección de Sin GPS
+  const noGpsCount = records.filter(r => 
+    (r.latitudEntrada === null || r.longitudEntrada === null) || 
+    (r.horaSalida && r.horaSalida !== "Pendiente" && (r.latitudSalida === null || r.longitudSalida === null))
+  ).length;
+
+  // Detección de Foto fallida
+  const failedPhotoCount = records.filter(r => 
+    !r.fotoEntrada || 
+    (r.horaSalida && r.horaSalida !== "Pendiente" && !r.fotoSalida)
+  ).length;
+
+  // Detección de Rostro en revisión
+  const faceReviewCount = records.filter(r => 
+    r.rostroEntradaDetectado === false || 
+    (r.horaSalida && r.horaSalida !== "Pendiente" && r.rostroSalidaDetectado === false) ||
+    r.validacionIdentidad === "revision_administrativa" || 
+    (r.similitudFacial !== null && r.similitudFacial > FACE_DISTANCE_REVIEW)
+  ).length;
+
+  // Detección de Salida duplicada
+  const duplicates = new Set();
+  const seen = new Set();
+  records.forEach(r => {
+    const key = `${normalizeMatricula(r.matricula)}_${r.fecha}`;
+    if (seen.has(key)) {
+      duplicates.add(r.matricula);
+    }
+    seen.add(key);
+  });
+
+  if (noGpsCount) {
+    alerts.push(["Sin GPS", `${noGpsCount} asistencia(s) sin coordenadas GPS.`]);
+  }
+  if (failedPhotoCount) {
+    alerts.push(["Foto fallida", `${failedPhotoCount} registro(s) sin evidencia fotográfica válida.`]);
+  }
+  if (faceReviewCount) {
+    alerts.push(["Rostro en revisión", `${faceReviewCount} validacion(es) faciales pendientes o en revisión.`]);
+  }
+  if (duplicates.size) {
+    alerts.push(["Salida duplicada", `${duplicates.size} matrícula(s) registran múltiples entradas/salidas hoy.`]);
+  }
+
+  const pendingToday = records.filter((record) => record.fecha === today && isPendingExitRecord(record));
+  if (pendingToday.length) {
+    alerts.push(["Pendientes de salida", `${pendingToday.length} matrícula(s) con entrada activa hoy.`]);
+  }
 
   if (!alerts.length) {
     els.dashboardAlerts.innerHTML = "<span>Sin alertas operativas con los filtros actuales.</span>";
     return;
   }
 
-  els.dashboardAlerts.innerHTML = alerts.slice(0, 4).map(([title, detail]) => `
-    <article>
-      <strong>${escapeHtml(title)}</strong>
-      <span>${escapeHtml(detail)}</span>
+  els.dashboardAlerts.innerHTML = alerts.slice(0, 5).map(([title, detail]) => `
+    <article class="ops-alert-card" style="padding: 12px 16px; border-radius: var(--radius-soft); background: var(--card); border-left: 4px solid var(--accent); box-shadow: inset 0 0 0 1px var(--line); display: flex; flex-direction: column; gap: 4px; text-align: left;">
+      <strong style="color: var(--ink); font-size: 0.85rem; font-weight: 800;">${escapeHtml(title)}</strong>
+      <span style="color: var(--slate); font-size: 0.75rem; font-weight: 500;">${escapeHtml(detail)}</span>
     </article>
   `).join("");
 }
@@ -2386,10 +2445,26 @@ function renderOperationsDashboard(records = getFilteredRecords()) {
   const todayCount = getVisibleRecords().filter((record) => record.fecha === today).length;
   const completionRate = total ? Math.round((completed / total) * 100) : 0;
 
+  // Cálculo de retrasos (Tarde): entradas después de la hora oficial fin del sitio activo
+  const lateCount = records.filter(r => {
+    if (r.horarioValidado === false && /tarde|retraso/i.test(r.horarioObservacion || "")) {
+      return true;
+    }
+    if (r.horaEntrada && state.activeSite && state.activeSite.hora_entrada_fin) {
+      return r.horaEntrada > state.activeSite.hora_entrada_fin;
+    }
+    return false;
+  }).length;
+
+  // Cálculo de Sin salida (Turnos vencidos sin cerrar de días anteriores)
+  const noExitCount = records.filter(r => isPendingExitRecord(r) && r.fecha !== today).length;
+
   if (els.dashboardVisibleTotal) els.dashboardVisibleTotal.textContent = total;
   if (els.dashboardToday) els.dashboardToday.textContent = todayCount;
   if (els.dashboardCompleted) els.dashboardCompleted.textContent = completed;
   if (els.dashboardPending) els.dashboardPending.textContent = pending;
+  if (els.dashboardLate) els.dashboardLate.textContent = lateCount;
+  if (els.dashboardNoExit) els.dashboardNoExit.textContent = noExitCount;
   if (els.dashboardReview) els.dashboardReview.textContent = review;
   if (els.dashboardIssues) els.dashboardIssues.textContent = issues;
   if (els.dashboardCompletionRate) els.dashboardCompletionRate.textContent = `${completionRate}% completo`;
@@ -2401,66 +2476,73 @@ function syncDashboardFiltersFromUi() {
   state.recordFilters.date = els.filterDate?.value || "";
   state.recordFilters.status = els.filterStatus?.value || "all";
   state.recordFilters.risk = els.filterRisk?.value || "all";
+  state.recordFilters.site = els.filterSite?.value || "all";
+  state.recordFilters.user = els.filterUser?.value || "all";
   state.recordFilters.query = els.filterSearch?.value || "";
 }
 
+function populateDashboardFilterSelects() {
+  if (!els.filterSite || !els.filterUser) return;
+  
+  const currentSite = els.filterSite.value;
+  const currentUser = els.filterUser.value;
+  
+  const allVisible = getVisibleRecords();
+  
+  const uniqueSites = new Set();
+  const uniqueUsers = new Map();
+  
+  allVisible.forEach(record => {
+    const siteName = record.sitioNombre || record.sitioEntradaNombre || "";
+    if (siteName.trim()) uniqueSites.add(siteName.trim());
+    
+    if (record.matricula && record.nombre) {
+      uniqueUsers.set(normalizeMatricula(record.matricula), record.nombre.trim());
+    }
+  });
+  
+  // Rellenar select de Sitios
+  els.filterSite.innerHTML = '<option value="all">Todos los sitios</option>';
+  Array.from(uniqueSites).sort().forEach(site => {
+    const option = document.createElement("option");
+    option.value = site;
+    option.textContent = site;
+    els.filterSite.appendChild(option);
+  });
+  // Restaurar selección anterior de forma segura
+  if (Array.from(uniqueSites).includes(currentSite)) {
+    els.filterSite.value = currentSite;
+  } else {
+    els.filterSite.value = "all";
+  }
+  
+  // Rellenar select de Usuarios
+  els.filterUser.innerHTML = '<option value="all">Todos los usuarios</option>';
+  Array.from(uniqueUsers.entries()).sort((a,b) => a[1].localeCompare(b[1])).forEach(([matricula, nombre]) => {
+    const option = document.createElement("option");
+    option.value = matricula;
+    option.textContent = `${nombre} (${matricula})`;
+    els.filterUser.appendChild(option);
+  });
+  // Restaurar selección anterior de forma segura
+  if (uniqueUsers.has(currentUser)) {
+    els.filterUser.value = currentUser;
+  } else {
+    els.filterUser.value = "all";
+  }
+}
+
 function resetDashboardFilters() {
-  state.recordFilters = { date: "", status: "all", risk: "all", query: "" };
+  state.recordFilters = { date: "", status: "all", risk: "all", site: "all", user: "all", query: "" };
   if (els.filterDate) els.filterDate.value = "";
   if (els.filterStatus) els.filterStatus.value = "all";
   if (els.filterRisk) els.filterRisk.value = "all";
+  if (els.filterSite) els.filterSite.value = "all";
+  if (els.filterUser) els.filterUser.value = "all";
   if (els.filterSearch) els.filterSearch.value = "";
   renderRecords();
 }
-function renderRecords() {
-  const filteredRecords = getFilteredRecords();
-  renderOperationsDashboard(filteredRecords);
-  updateSummary(filteredRecords);
-  els.recordsBody.innerHTML = "";
-  els.emptyRecords.classList.toggle("is-hidden", filteredRecords.length > 0);
 
-  filteredRecords.forEach((record) => {
-    const row = document.createElement("tr");
-    const statusClass = statusBadgeClass(record.estado);
-    const identityClass = identityBadgeClass(record.validacionIdentidad);
-    const riskClass = riskBadgeClass(record.riesgo);
-    const adminClass = record.modificado_por_admin ? "admin" : "default";
-    row.innerHTML = `
-      <td>${imageCell(record.fotoEntrada, "Entrada")}</td>
-      <td>${imageCell(record.fotoSalida, "Salida")}</td>
-      <td>${escapeHtml(record.nombre)}</td>
-      <td>${escapeHtml(record.matricula)}</td>
-      <td>${escapeHtml(record.sitioNombre || "Sin sitio")}</td>
-      <td>${escapeHtml(formatMeters(record.radioMetros))}</td>
-      <td>${escapeHtml(displayDate(record.fecha))}</td>
-      <td>${escapeHtml(record.horaEntrada)}</td>
-      <td>${escapeHtml(record.horaSalida || "Pendiente")}</td>
-      <td><span class="badge ${statusClass}">${escapeHtml(statusLabel(record.estado))}</span></td>
-      <td><span class="badge ${identityClass}">${escapeHtml(identityLabel(record.validacionIdentidad))}</span></td>
-      <td>${escapeHtml(formatSimilarity(record.similitudFacial))}</td>
-      <td><span class="badge default">No aplica</span></td>
-      <td>${booleanBadge(record.ubicacionEntradaValidada && (record.horaSalida ? record.ubicacionSalidaValidada : true), "Correcta", "Revision")}</td>
-      <td>${escapeHtml(formatMeters(record.precisionSalida || record.precisionEntrada || record.precisionUbicacion))}</td>
-      <td>${escapeHtml(formatMeters(record.distanciaSalidaMetros || record.distanciaEntradaMetros || record.distanciaEmpresaMetros))}</td>
-      <td>${escapeHtml(record.retoVida || "Pendiente")}</td>
-      <td><span class="badge ${riskClass}">${escapeHtml(riskLabel(record.riesgo))}</span></td>
-      <td>${evidenceCell(record)}</td>
-      <td>${escapeHtml(record.observacion || record.observaciones || "Sin observacion")}</td>
-      <td>${escapeHtml(record.observacion_admin || "Sin observacion")}</td>
-      <td><span class="badge ${adminClass}">${record.modificado_por_admin ? "Si" : "No"}</span></td>
-      <td class="admin-only ${state.isAdmin ? "" : "is-hidden"}">
-        <div class="row-actions">
-          <button class="secondary mini" data-action="view-evidence" data-id="${record.id}">Ver evidencia</button>
-          <button class="ghost mini" data-action="edit-observation" data-id="${record.id}">Observacion</button>
-          <button class="danger mini" data-action="delete-record" data-id="${record.id}">Eliminar</button>
-        </div>
-      </td>
-    `;
-    els.recordsBody.appendChild(row);
-  });
-
-  updateAdminControls();
-}
 function setProgressBar(element, value) {
   if (!element) return;
   const safeValue = Math.max(0, Math.min(100, Number.isFinite(value) ? value : 0));
@@ -2837,6 +2919,23 @@ async function deleteRecord(id) {
 }
 
 function handleRecordAction(event) {
+  // Al hacer clic en un nombre o matrícula en la tabla (columna 2 o 3), filtrar la vista por ese usuario
+  const cell = event.target.closest("td");
+  if (cell) {
+    const row = cell.closest("tr");
+    const matriculaCell = row?.querySelector("td:nth-child(4)"); // la matrícula está en la columna 4 (1-indexed)
+    if (matriculaCell && (cell.cellIndex === 2 || cell.cellIndex === 3)) { // Columna de nombre (2) o matrícula (3) (0-indexed)
+      const matricula = matriculaCell.textContent.trim();
+      if (els.filterUser) {
+        els.filterUser.value = normalizeMatricula(matricula);
+        syncDashboardFiltersFromUi();
+        renderRecords();
+        showToast(`Filtrando historial de usuario: ${matricula}`);
+        return;
+      }
+    }
+  }
+
   const button = event.target.closest("button[data-action]");
   if (!button) return;
 
@@ -3254,8 +3353,12 @@ async function init() {
   if (filterForm) {
     filterForm.addEventListener("submit", (event) => event.preventDefault());
   }
-  [els.filterDate, els.filterStatus, els.filterRisk, els.filterSearch].forEach((control) => {
+  [els.filterDate, els.filterStatus, els.filterRisk, els.filterSite, els.filterUser, els.filterSearch].forEach((control) => {
     if (control) {
+      control.addEventListener("change", () => {
+        syncDashboardFiltersFromUi();
+        renderRecords();
+      });
       control.addEventListener("input", () => {
         syncDashboardFiltersFromUi();
         renderRecords();
