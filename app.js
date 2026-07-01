@@ -1409,6 +1409,15 @@ function showGuidedPanel(kind) {
 }
 
 function showView(name) {
+  if (name === "records") {
+    const canViewRecordsTab = hasAnyPermission(["view_site_records", "view_all_records"]);
+    if (!canViewRecordsTab) {
+      console.warn("Navegación rechazada: permiso insuficiente para la vista de registros.");
+      showView("home");
+      return;
+    }
+  }
+
   hideGuidedPanels();
   document.querySelectorAll('[data-view]').forEach((view) => {
     view.classList.toggle("is-hidden", view.dataset.view !== name);
@@ -2523,18 +2532,58 @@ function lockAdmin() {
 }
 
 function updateAdminControls() {
+  // 1. Mostrar/ocultar elementos administrativos estándar
   document.querySelectorAll(".admin-control, .admin-only").forEach((element) => {
     element.classList.toggle("is-hidden", !state.isAdmin);
   });
-  els.unlockAdmin.classList.toggle("is-hidden", state.isAdmin);
-  els.lockAdmin.classList.toggle("is-hidden", !state.isAdmin);
-  els.adminStatus.classList.toggle("is-blocked", !state.isAdmin);
-  const role = getRoleDefinition();
-  els.adminStatus.textContent = state.isAdmin
-    ? `Modo administrativo activo (${role.label}). Las acciones sensibles quedaran registradas en auditoria.`
-    : CLOUD_ENABLED
-      ? `Lista global activa. Rol actual: ${role.label}. Los permisos sensibles requieren rol autorizado o clave.`
-      : "Modo local activo. Configura Supabase para lista global.";
+
+  // 2. Control de botones de bloqueo en la tabla de registros
+  // Si el rol es 'admin' o 'superadmin', se permite el toggle de bloqueo.
+  // Si es un usuario normal, ocultamos tanto unlockAdmin como lockAdmin.
+  const roleDef = getRoleDefinition();
+  const isAuthorizedToUnlock = ["admin", "superadmin"].includes(state.currentRole);
+  
+  if (els.unlockAdmin) {
+    els.unlockAdmin.classList.toggle("is-hidden", state.isAdmin || !isAuthorizedToUnlock);
+  }
+  if (els.lockAdmin) {
+    els.lockAdmin.classList.toggle("is-hidden", !state.isAdmin || !isAuthorizedToUnlock);
+  }
+  if (els.adminStatus) {
+    els.adminStatus.classList.toggle("is-blocked", !state.isAdmin);
+    els.adminStatus.textContent = state.isAdmin
+      ? `Modo administrativo activo (${roleDef.label}). Las acciones sensibles quedaran registradas en auditoria.`
+      : CLOUD_ENABLED
+        ? `Lista global activa. Rol actual: ${roleDef.label}. Los permisos sensibles requieren rol autorizado o clave.`
+        : "Modo local activo. Configura Supabase para lista global.";
+  }
+
+  // 3. Controlar la visibilidad de las pestañas en la barra lateral
+  // - Usuario normal: sólo ve Inicio (home), Entrada (entry), Salida (exit) y Perfil. No ve "Registros".
+  // - Supervisor: ve todas las pestañas, pero en "Registros" sólo ve los registros de su sitio (filtrado automáticamente).
+  // - Admin/Superadmin: ve todo.
+  const navRecordsBtn = document.querySelector('button.nav-button[data-target="records"]');
+  if (navRecordsBtn) {
+    const canViewRecordsTab = hasAnyPermission(["view_site_records", "view_all_records"]);
+    navRecordsBtn.classList.toggle("is-hidden", !canViewRecordsTab);
+  }
+  
+  // También ocultar la pestaña en la barra de pestañas secundarias si el usuario no tiene permisos
+  const tabRecordsBtn = document.querySelector('.tab-strip button[data-target="records"]');
+  if (tabRecordsBtn) {
+    const canViewRecordsTab = hasAnyPermission(["view_site_records", "view_all_records"]);
+    tabRecordsBtn.classList.toggle("is-hidden", !canViewRecordsTab);
+  }
+
+  // Ocultar paneles de configuración de sitios u organización en la vista de Registros si no es administrador
+  const orgAdminSection = document.querySelector(".org-admin-panel");
+  const siteAdminSection = document.querySelector(".site-admin-panel");
+  if (orgAdminSection) {
+    orgAdminSection.classList.toggle("is-hidden", !hasPermission("manage_organization"));
+  }
+  if (siteAdminSection) {
+    siteAdminSection.classList.toggle("is-hidden", !hasPermission("manage_site"));
+  }
 }
 
 function renderAdminAudit() {
