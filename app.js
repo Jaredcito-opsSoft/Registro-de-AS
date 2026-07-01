@@ -2999,18 +2999,46 @@ function handleUpdateProfile(event) {
     .then((authResult) => {
       console.log("handleUpdateProfile - Auth actualizado correctamente:", authResult);
       
-      // 2. Actualizar en la tabla de base de datos 'public.usuarios'
-      return supabaseRequest(`/rest/v1/usuarios?id=eq.${userId}`, {
-        method: "PATCH",
-        headers: {
-          "Content-Type": "application/json",
-          "Prefer": "return=representation"
-        },
-        body: JSON.stringify(data)
-      });
+      const updatePromises = [];
+
+      // 2a. Actualizar en la tabla 'public.usuarios' (esquema antiguo)
+      updatePromises.push(
+        supabaseRequest(`/rest/v1/usuarios?id=eq.${userId}`, {
+          method: "PATCH",
+          headers: {
+            "Content-Type": "application/json",
+            "Prefer": "return=representation"
+          },
+          body: JSON.stringify(data)
+        }).catch((err) => {
+          console.warn("No se pudo actualizar en la tabla 'usuarios' (esquema antiguo):", err);
+          return null;
+        })
+      );
+
+      // 2b. Actualizar en la tabla 'public.usuarios_app' (esquema nuevo)
+      updatePromises.push(
+        supabaseRequest(`/rest/v1/usuarios_app?auth_user_id=eq.${userId}`, {
+          method: "PATCH",
+          headers: {
+            "Content-Type": "application/json",
+            "Prefer": "return=representation"
+          },
+          body: JSON.stringify({
+            nombre: nombre,
+            matricula: matricula,
+            email: email
+          })
+        }).catch((err) => {
+          console.warn("No se pudo actualizar en la tabla 'usuarios_app' (esquema nuevo):", err);
+          return null;
+        })
+      );
+
+      return Promise.all(updatePromises);
     })
-    .then((dbResult) => {
-      console.log("handleUpdateProfile - Resultado de Supabase en base de datos:", dbResult);
+    .then((results) => {
+      console.log("handleUpdateProfile - Resultado de actualizaciones en BD:", results);
       
       // Actualizar el estado local con los nuevos metadatos
       state.currentUser.user_metadata = {
