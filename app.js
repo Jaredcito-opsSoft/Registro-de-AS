@@ -7,7 +7,7 @@ const QR_END = { hour: 17, minute: 10 };
 const QR_VALID_MINUTES = 5;
 const ACCESS_QR_URL = "https://registro-de-as.vercel.app/";
 const ACCESS_QR_MESSAGE = "Escanea para abrir el sistema de asistencia.";
-const FACE_MODEL_URL = "models";
+const FACE_MODEL_URL = window.location.origin + "/models";
 const DEFAULT_TIMEZONE = "America/Mexico_City";
 const FACE_DISTANCE_STRONG = 0.46;
 const FACE_DISTANCE_REVIEW = 0.62;
@@ -54,103 +54,107 @@ const state = {
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => Array.from(document.querySelectorAll(selector));
 
-const els = {
-  clockLabel: $("#clockLabel"),
-  qrWindowLabel: $("#qrWindowLabel"),
-  qrMessage: $("#qrMessage"),
-  qrBox: $("#qrBox"),
-  qrImage: $("#qrImage"),
-  qrDirectLink: $("#qrDirectLink"),
-  qrTokenLabel: $("#qrTokenLabel"),
-  demoMode: $("#demoMode"),
-  toast: $("#toast"),
-  faceStatus: $("#faceStatus"),
-  entryFaceStatus: $("#entryFaceStatus"),
-  exitFaceStatus: $("#exitFaceStatus"),
-  lifeChallenge: $("#lifeChallenge"),
-  entryLocationStatus: $("#entryLocationStatus"),
-  locationStatus: $("#locationStatus"),
-  entryVideo: $("#entryVideo"),
-  entryCanvas: $("#entryCanvas"),
-  entryPreview: $("#entryPreview"),
-  startEntryCamera: $("#startEntryCamera"),
-  takeEntryPhoto: $("#takeEntryPhoto"),
-  entryForm: $("#entryForm"),
-  entryName: $("#entryName"),
-  entryMatricula: $("#entryMatricula"),
-  exitGuard: $("#exitGuard"),
-  exitVideo: $("#exitVideo"),
-  exitCanvas: $("#exitCanvas"),
-  exitPreview: $("#exitPreview"),
-  startExitCamera: $("#startExitCamera"),
-  takeExitPhoto: $("#takeExitPhoto"),
-  exitForm: $("#exitForm"),
-  exitMatricula: $("#exitMatricula"),
-  exitLookupInfo: $("#exitLookupInfo"),
-  recordsBody: $("#recordsBody"),
-  emptyRecords: $("#emptyRecords"),
-  unlockAdmin: $("#unlockAdmin"),
-  lockAdmin: $("#lockAdmin"),
-  exportCsv: $("#exportCsv"),
-  clearRecords: $("#clearRecords"),
-  adminStatus: $("#adminStatus"),
-  adminAudit: $("#adminAudit"),
-  totalRecords: $("#totalRecords"),
-  completedRecords: $("#completedRecords"),
-  pendingRecords: $("#pendingRecords"),
-  totalProgress: $("#totalProgress"),
-  completedProgress: $("#completedProgress"),
-  pendingProgress: $("#pendingProgress"),
-  siteStatusBadge: $("#siteStatusBadge"),
-  siteStatusSummary: $("#siteStatusSummary"),
-  siteNameLabel: $("#siteNameLabel"),
-  siteAddressLabel: $("#siteAddressLabel"),
-  siteCoordsLabel: $("#siteCoordsLabel"),
-  siteRadiusLabel: $("#siteRadiusLabel"),
-  siteEntryHoursLabel: $("#siteEntryHoursLabel"),
-  siteExitHoursLabel: $("#siteExitHoursLabel"),
-  siteTimezoneLabel: $("#siteTimezoneLabel"),
-  sitePrecisionLabel: $("#sitePrecisionLabel"),
-  siteTestResult: $("#siteTestResult"),
-  siteForm: $("#siteForm"),
-  siteName: $("#siteName"),
-  siteAddress: $("#siteAddress"),
-  siteLat: $("#siteLat"),
-  siteLng: $("#siteLng"),
-  siteRadius: $("#siteRadius"),
-  siteEntryStart: $("#siteEntryStart"),
-  siteEntryEnd: $("#siteEntryEnd"),
-  siteExitStart: $("#siteExitStart"),
-  siteExitEnd: $("#siteExitEnd"),
-  siteTimezone: $("#siteTimezone"),
-  siteActive: $("#siteActive"),
-  useAdminLocation: $("#useAdminLocation"),
-  testAdminLocation: $("#testAdminLocation"),
-  evidenceModal: $("#evidenceModal"),
-  evidenceBody: $("#evidenceBody"),
-  closeEvidence: $("#closeEvidence"),
-  entrySuccessPanel: $("#entrySuccessPanel"),
-  exitSuccessPanel: $("#exitSuccessPanel"),
-  loginView: $("#login-view"),
-  appShell: $(".app-shell"),
-  authForm: $("#authForm"),
-  authEmail: $("#authEmail"),
-  authPassword: $("#authPassword"),
-  authName: $("#authName"),
-  authMatricula: $("#authMatricula"),
-  authSubmitBtn: $("#authSubmitBtn"),
-  toggleLoginBtn: $("#toggle-login-btn"),
-  toggleRegisterBtn: $("#toggle-register-btn"),
-  labelName: $("#label-name"),
-  labelMatricula: $("#label-matricula"),
-  loginTitle: $("#login-title"),
-  loginSubtitle: $("#login-subtitle"),
-  profileName: $("#profileName"),
-  profileMatricula: $("#profileMatricula"),
-  profileEmail: $("#profileEmail"),
-  userInitials: $("#userInitials"),
-  btnLogout: $("#btn-logout"),
-};
+const els = {};
+
+function populateElements() {
+  els.clockLabel = $("#clockLabel");
+  els.qrWindowLabel = $("#qrWindowLabel");
+  els.qrMessage = $("#qrMessage");
+  els.qrBox = $("#qrBox");
+  els.qrImage = $("#qrImage");
+  els.qrDirectLink = $("#qrDirectLink");
+  els.qrTokenLabel = $("#qrTokenLabel");
+  els.demoMode = $("#demoMode");
+  els.toast = $("#toast");
+  els.faceStatus = $("#faceStatus");
+  els.entryFaceStatus = $("#entryFaceStatus");
+  els.exitFaceStatus = $("#exitFaceStatus");
+  els.lifeChallenge = $("#lifeChallenge");
+  els.entryLocationStatus = $("#entryLocationStatus");
+  els.locationStatus = $("#locationStatus");
+  els.entryVideo = $("#entryVideo");
+  els.entryCanvas = $("#entryCanvas");
+  els.entryPreview = $("#entryPreview");
+  els.startEntryCamera = $("#startEntryCamera");
+  els.takeEntryPhoto = $("#takeEntryPhoto");
+  els.entryForm = $("#entryForm");
+  els.entryName = $("#entryName");
+  els.entryMatricula = $("#entryMatricula");
+  els.exitGuard = $("#exitGuard");
+  els.exitVideo = $("#exitVideo");
+  els.exitCanvas = $("#exitCanvas");
+  els.exitPreview = $("#exitPreview");
+  els.startExitCamera = $("#startExitCamera");
+  els.takeExitPhoto = $("#takeExitPhoto");
+  els.exitForm = $("#exitForm");
+  els.exitMatricula = $("#exitMatricula");
+  els.exitLookupInfo = $("#exitLookupInfo");
+  els.recordsBody = $("#recordsBody");
+  els.emptyRecords = $("#emptyRecords");
+  els.unlockAdmin = $("#unlockAdmin");
+  els.lockAdmin = $("#lockAdmin");
+  els.exportCsv = $("#exportCsv");
+  els.clearRecords = $("#clearRecords");
+  els.adminStatus = $("#adminStatus");
+  els.adminAudit = $("#adminAudit");
+  els.totalRecords = $("#totalRecords");
+  els.completedRecords = $("#completedRecords");
+  els.pendingRecords = $("#pendingRecords");
+  els.totalProgress = $("#totalProgress");
+  els.completedProgress = $("#completedProgress");
+  els.pendingProgress = $("#pendingProgress");
+  els.siteStatusBadge = $("#siteStatusBadge");
+  els.siteStatusSummary = $("#siteStatusSummary");
+  els.siteNameLabel = $("#siteNameLabel");
+  els.siteAddressLabel = $("#siteAddressLabel");
+  els.siteCoordsLabel = $("#siteCoordsLabel");
+  els.siteRadiusLabel = $("#siteRadiusLabel");
+  els.siteEntryHoursLabel = $("#siteEntryHoursLabel");
+  els.siteExitHoursLabel = $("#siteExitHoursLabel");
+  els.siteTimezoneLabel = $("#siteTimezoneLabel");
+  els.sitePrecisionLabel = $("#sitePrecisionLabel");
+  els.siteTestResult = $("#siteTestResult");
+  els.siteForm = $("#siteForm");
+  els.siteName = $("#siteName");
+  els.siteAddress = $("#siteAddress");
+  els.siteLat = $("#siteLat");
+  els.siteLng = $("#siteLng");
+  els.siteRadius = $("#siteRadius");
+  els.siteEntryStart = $("#siteEntryStart");
+  els.siteEntryEnd = $("#siteEntryEnd");
+  els.siteExitStart = $("#siteExitStart");
+  els.siteExitEnd = $("#siteExitEnd");
+  els.siteTimezone = $("#siteTimezone");
+  els.siteActive = $("#siteActive");
+  els.useAdminLocation = $("#useAdminLocation");
+  els.testAdminLocation = $("#testAdminLocation");
+  els.evidenceModal = $("#evidenceModal");
+  els.evidenceBody = $("#evidenceBody");
+  els.closeEvidence = $("#closeEvidence");
+  els.entrySuccessPanel = $("#entrySuccessPanel");
+  els.exitSuccessPanel = $("#exitSuccessPanel");
+  els.loginView = $("#login-view");
+  els.appShell = $(".app-shell");
+  els.authForm = $("#authForm");
+  els.authEmail = $("#authEmail");
+  els.authPassword = $("#authPassword");
+  els.authName = $("#authName");
+  els.authMatricula = $("#authMatricula");
+  els.authSubmitBtn = $("#authSubmitBtn");
+  els.toggleLoginBtn = $("#toggle-login-btn");
+  els.toggleRegisterBtn = $("#toggle-register-btn");
+  els.labelName = $("#label-name");
+  els.labelMatricula = $("#label-matricula");
+  els.loginTitle = $("#login-title");
+  els.loginSubtitle = $("#login-subtitle");
+  els.profileName = $("#profileName");
+  els.profileMatricula = $("#profileMatricula");
+  els.profileEmail = $("#profileEmail");
+  els.userInitials = $("#userInitials");
+  els.btnLogout = $("#btn-logout");
+  els.profileForm = $("#profileForm");
+  els.profileSubmitBtn = $("#save-profile-btn");
+}
 
 function loadLocalRecords() {
   try {
@@ -378,6 +382,8 @@ async function supabaseRequest(path, options = {}) {
   const text = await response.text();
   return text ? JSON.parse(text) : null;
 }
+
+
 
 function rowToRecord(row) {
   return normalizeRecord({
@@ -953,7 +959,7 @@ async function insertEntryRecord({ nombre, matricula, fotoEntrada, descriptorEnt
     return localRecord;
   }
 
-  const row = await callAdminRpc("registrar_entrada_segura", {
+  const payload = {
     p_nombre: nombre,
     p_matricula: matricula,
     p_foto_entrada_url: evidence.url,
@@ -976,7 +982,11 @@ async function insertEntryRecord({ nombre, matricula, fotoEntrada, descriptorEnt
     p_longitud_entrada: location.longitud ?? null,
     p_precision_entrada: location.precision ?? null,
     p_ubicacion_entrada_estado: location.estado || "ubicacion_denegada",
-  });
+  };
+
+  console.log("callAdminRpc - Enviando payload a registrar_entrada_segura:", payload);
+
+  const row = await callAdminRpc("registrar_entrada_segura", payload);
   return rowToRecord(row);
 }
 async function updateExitRecord(record, { fotoSalida, descriptorSalida, location, lifeChallenge }) {
@@ -1104,7 +1114,7 @@ function showGuidedPanel(kind) {
 
 function showView(name) {
   hideGuidedPanels();
-  $$('[data-view]').forEach((view) => {
+  document.querySelectorAll('[data-view]').forEach((view) => {
     view.classList.toggle("is-hidden", view.dataset.view !== name);
   });
 
@@ -1129,7 +1139,7 @@ function showView(name) {
 }
 
 function setActiveNavigation(name) {
-  $$(".nav-button").forEach((button) => {
+  document.querySelectorAll(".nav-button").forEach((button) => {
     button.classList.toggle("is-active", button.dataset.target === name);
   });
 }
@@ -1176,24 +1186,45 @@ function syncCaptureControls() {
 async function loadFaceModels() {
   if (!window.faceapi) {
     state.facialModelsError = true;
+    console.error("loadFaceModels - faceapi no está cargado en el objeto global window.");
     setFaceStatus(els.faceStatus, "Error al cargar modelos faciales.", "danger");
+    setFaceStatus(els.entryFaceStatus, "Error al cargar modelos faciales.", "danger");
+    setFaceStatus(els.exitFaceStatus, "Error al cargar modelos faciales.", "danger");
     syncCaptureControls();
     return;
   }
 
   try {
     setFaceStatus(els.faceStatus, "Cargando modelos de reconocimiento facial...", "pending");
+    setFaceStatus(els.entryFaceStatus, "Cargando modelos faciales...", "pending");
+    setFaceStatus(els.exitFaceStatus, "Cargando modelos faciales...", "pending");
     syncCaptureControls();
-    await Promise.all([
-      faceapi.nets.tinyFaceDetector.loadFromUri(FACE_MODEL_URL),
-      faceapi.nets.faceLandmark68Net.loadFromUri(FACE_MODEL_URL),
-      faceapi.nets.faceRecognitionNet.loadFromUri(FACE_MODEL_URL),
-    ]);
+    console.log("loadFaceModels - Cargando modelos face-api desde ruta absoluta:", FACE_MODEL_URL);
+    
+    console.log("loadFaceModels - Iniciando carga de tinyFaceDetector...");
+    await faceapi.nets.tinyFaceDetector.loadFromUri(FACE_MODEL_URL);
+    console.log("loadFaceModels - tinyFaceDetector cargado con éxito.");
+
+    console.log("loadFaceModels - Iniciando carga de faceLandmark68Net...");
+    await faceapi.nets.faceLandmark68Net.loadFromUri(FACE_MODEL_URL);
+    console.log("loadFaceModels - faceLandmark68Net cargado con éxito.");
+
+    console.log("loadFaceModels - Iniciando carga de faceRecognitionNet...");
+    await faceapi.nets.faceRecognitionNet.loadFromUri(FACE_MODEL_URL);
+    console.log("loadFaceModels - faceRecognitionNet cargado con éxito.");
+
     state.facialModelsLoaded = true;
     setFaceStatus(els.faceStatus, "Modelos cargados correctamente.", "success");
+    setFaceStatus(els.entryFaceStatus, "Listo para iniciar cámara.", "success");
+    setFaceStatus(els.exitFaceStatus, "Listo para iniciar cámara.", "success");
+    console.log("loadFaceModels - Modelos cargados con éxito.");
   } catch (error) {
     state.facialModelsError = true;
+    console.error("loadFaceModels - Error crítico al intentar cargar los modelos desde la ruta:", FACE_MODEL_URL);
+    console.error("loadFaceModels - Detalle del error de carga:", error);
     setFaceStatus(els.faceStatus, "Error al cargar modelos faciales.", "danger");
+    setFaceStatus(els.entryFaceStatus, "Error al cargar modelos faciales.", "danger");
+    setFaceStatus(els.exitFaceStatus, "Error al cargar modelos faciales.", "danger");
   } finally {
     syncCaptureControls();
   }
@@ -1826,8 +1857,83 @@ function closeEvidenceDetail() {
   els.evidenceModal.hidden = true;
   if (els.evidenceBody) els.evidenceBody.innerHTML = "";
 }
+function renderRecentActivity() {
+  const container = document.getElementById("recentActivityList");
+  if (!container) return;
+
+  container.innerHTML = "";
+
+  const actions = [];
+  state.records.forEach(record => {
+    if (record.horaEntrada) {
+      actions.push({
+        tipo: "entrada",
+        nombre: record.nombre,
+        matricula: record.matricula,
+        fecha: record.fecha,
+        hora: record.horaEntrada,
+      });
+    }
+    if (record.horaSalida && record.horaSalida !== "Pendiente") {
+      actions.push({
+        tipo: "salida",
+        nombre: record.nombre,
+        matricula: record.matricula,
+        fecha: record.fecha,
+        hora: record.horaSalida,
+      });
+    }
+  });
+
+  // Ordenar por fecha y hora descendente
+  actions.sort((a, b) => {
+    const keyA = `${a.fecha}T${a.hora}`;
+    const keyB = `${b.fecha}T${b.hora}`;
+    return keyB.localeCompare(keyA);
+  });
+
+  const recentActions = actions.slice(0, 3);
+
+  if (recentActions.length === 0) {
+    container.innerHTML = `<p style="opacity: 0.6; font-size: 0.9rem; margin: 8px 0;">No hay actividad reciente.</p>`;
+    return;
+  }
+
+  recentActions.forEach(action => {
+    const item = document.createElement("div");
+    item.style.cssText = "display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; background: var(--card); border-radius: var(--radius-soft); box-shadow: inset 0 0 0 1px var(--line); gap: 16px;";
+
+    const isEntrada = action.tipo === "entrada";
+    const iconBg = isEntrada ? "rgba(46, 204, 113, 0.1)" : "rgba(230, 126, 34, 0.1)";
+    const iconColor = isEntrada ? "#2ecc71" : "#e67e22";
+    const iconSvg = isEntrada 
+      ? `<svg viewBox="0 0 24 24" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="stroke: currentColor; fill: none; width: 16px; height: 16px;"><line x1="12" y1="5" x2="12" y2="19"></line><polyline points="19 12 12 19 5 12"></polyline></svg>`
+      : `<svg viewBox="0 0 24 24" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="stroke: currentColor; fill: none; width: 16px; height: 16px;"><line x1="12" y1="19" x2="12" y2="5"></line><polyline points="5 12 12 5 19 12"></polyline></svg>`;
+
+    const titleText = isEntrada ? "Entrada" : "Salida";
+    const dateStr = displayDate(action.fecha);
+
+    item.innerHTML = `
+      <div style="display: flex; align-items: center; gap: 12px; min-width: 0; flex-grow: 1;">
+        <div style="width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; background: ${iconBg}; color: ${iconColor}; flex-shrink: 0;">
+          ${iconSvg}
+        </div>
+        <div style="min-width: 0; flex-grow: 1;">
+          <span style="font-weight: 700; font-size: 0.9rem; color: var(--ink); display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${escapeHtml(titleText)} - ${escapeHtml(action.nombre)}</span>
+          <div style="font-size: 0.75rem; opacity: 0.6; margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">Matrícula: ${escapeHtml(action.matricula)} • ${escapeHtml(dateStr)}</div>
+        </div>
+      </div>
+      <div style="display: flex; align-items: center; gap: 16px; flex-shrink: 0;">
+        <span style="font-weight: 700; font-size: 0.95rem; color: var(--ink);">${escapeHtml(action.hora)}</span>
+        <span class="badge" style="background: rgba(46, 204, 113, 0.15); color: #27ae60; font-weight: 700; font-size: 0.75rem; padding: 4px 8px; border-radius: 4px; border: none;">Confirmado</span>
+      </div>
+    `;
+    container.appendChild(item);
+  });
+}
 function renderRecords() {
   updateSummary();
+  renderRecentActivity();
   els.recordsBody.innerHTML = "";
   els.emptyRecords.classList.toggle("is-hidden", state.records.length > 0);
 
@@ -1933,7 +2039,7 @@ function lockAdmin() {
 }
 
 function updateAdminControls() {
-  $$(".admin-control, .admin-only").forEach((element) => {
+  document.querySelectorAll(".admin-control, .admin-only").forEach((element) => {
     element.classList.toggle("is-hidden", !state.isAdmin);
   });
   els.unlockAdmin.classList.toggle("is-hidden", state.isAdmin);
@@ -2340,6 +2446,88 @@ async function handleAuthSubmit(event) {
   }
 }
 
+function handleUpdateProfile(event) {
+  event.preventDefault();
+
+  const nombre = els.profileName.value.trim();
+  const matricula = els.profileMatricula.value.trim();
+  const email = els.profileEmail.value.trim();
+
+  if (!nombre || !matricula || !email) {
+    showToast("Todos los campos del perfil son obligatorios.");
+    return;
+  }
+
+  els.profileSubmitBtn.disabled = true;
+  const originalText = els.profileSubmitBtn.textContent;
+  els.profileSubmitBtn.textContent = "Guardando...";
+
+  // Construimos el objeto de datos con las columnas que existen en la tabla public.usuarios.
+  // La tabla public.usuarios contiene únicamente las columnas: id, matricula, nombre, activo, created_at.
+  // El correo electrónico se gestiona exclusivamente en la cuenta de autenticación de Supabase (auth.users).
+  const data = {
+    nombre: nombre,
+    matricula: matricula
+  };
+
+  const userId = state.currentUser?.id;
+  
+  console.log("handleUpdateProfile - ID de usuario (userId):", userId);
+  console.log("handleUpdateProfile - Objeto de datos a enviar (data):", data);
+
+  if (!userId) {
+    showToast("Error: No se pudo obtener el ID del usuario autenticado.");
+    els.profileSubmitBtn.disabled = false;
+    els.profileSubmitBtn.textContent = originalText;
+    return;
+  }
+
+  // 1. Actualizar en Supabase Auth
+  actualizarPerfil(email, nombre, matricula)
+    .then((authResult) => {
+      console.log("handleUpdateProfile - Auth actualizado correctamente:", authResult);
+      
+      // 2. Actualizar en la tabla de base de datos 'public.usuarios'
+      return supabaseRequest(`/rest/v1/usuarios?id=eq.${userId}`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          "Prefer": "return=representation"
+        },
+        body: JSON.stringify(data)
+      });
+    })
+    .then((dbResult) => {
+      console.log("handleUpdateProfile - Resultado de Supabase en base de datos:", dbResult);
+      
+      // Actualizar el estado local con los nuevos metadatos
+      state.currentUser.user_metadata = {
+        ...state.currentUser.user_metadata,
+        nombre: nombre,
+        matricula: matricula
+      };
+      state.currentUser.email = email;
+
+      showToast("Perfil actualizado correctamente");
+
+      // Recargar las iniciales en el avatar
+      if (els.userInitials) {
+        const nombreUsuario = state.currentUser.user_metadata?.nombre || state.currentUser.user_metadata?.full_name || state.currentUser.email || "US";
+        const iniciales = nombreUsuario.split(" ").filter(Boolean).map(n => n[0].toUpperCase()).slice(0, 2).join("");
+        els.userInitials.textContent = iniciales || "US";
+      }
+      
+      els.profileSubmitBtn.disabled = false;
+      els.profileSubmitBtn.textContent = originalText;
+    })
+    .catch((error) => {
+      console.error("handleUpdateProfile - Error capturado en actualización:", error);
+      showToast(error.message || "Error de red o de permisos al actualizar el perfil.");
+      els.profileSubmitBtn.disabled = false;
+      els.profileSubmitBtn.textContent = originalText;
+    });
+}
+
 async function finishInitialization() {
   if (els.demoMode) els.demoMode.checked = state.demoMode;
   setFaceStatus(els.entryFaceStatus, "Espera a que carguen los modelos faciales.", "pending");
@@ -2360,27 +2548,11 @@ async function finishInitialization() {
   }
 }
 
-async function init() {
-  // Verificar sesión activa
-  const user = await verificarSesion();
-  if (user) {
-    showAppShell(user);
-    await finishInitialization();
-  } else {
-    showLoginView();
-  }
+function init() {
+  console.log("Inicializando manejadores y eventos de la aplicación...");
 
-  // Intervalos de actualización si está logueado
-  setInterval(() => {
-    if (state.currentUser) updateClockAndQr();
-  }, 1000);
-
-  setInterval(() => {
-    if (state.currentUser) refreshRecords({ silent: true });
-  }, 30000);
-
-  // Registro de manejadores de navegación
-  $('[data-target]').forEach((button) => {
+  // 1. Registro de manejadores de navegación (usando querySelectorAll para obtener una lista real)
+  document.querySelectorAll('[data-target]').forEach((button) => {
     button.addEventListener("click", () => {
       // Evitar que el perfil se marque en la navegación principal si es un botón especial
       if (button.dataset.target === "profile") {
@@ -2391,21 +2563,40 @@ async function init() {
     });
   });
 
-  // Manejadores de autenticación
+  // 2. Manejadores de autenticación
   if (els.toggleLoginBtn) {
     els.toggleLoginBtn.addEventListener("click", () => {
+      console.log("Cambiando modo de autenticación a: login");
       authMode = "login";
       updateAuthUI();
     });
   }
   if (els.toggleRegisterBtn) {
     els.toggleRegisterBtn.addEventListener("click", () => {
+      console.log("Cambiando modo de autenticación a: register");
       authMode = "register";
       updateAuthUI();
     });
   }
   if (els.authForm) {
-    els.authForm.addEventListener("submit", handleAuthSubmit);
+    console.log("Vinculando event listener para el submit de #authForm");
+    els.authForm.addEventListener("submit", (event) => {
+      console.log("¡Formulario de autenticación enviado (submit)!");
+      handleAuthSubmit(event);
+    });
+  }
+  if (els.profileForm) {
+    console.log("Vinculando event listener para el submit de #profileForm");
+    els.profileForm.addEventListener("submit", handleUpdateProfile);
+  }
+  if (els.profileSubmitBtn) {
+    console.log("Vinculando event listener para el click de save-profile-btn");
+    els.profileSubmitBtn.addEventListener("click", (event) => {
+      event.preventDefault(); // Evitar cualquier recarga o comportamiento de submit por defecto
+      console.log("Botón guardar presionado");
+      handleUpdateProfile(event);
+    });
+    console.log("Event listener vinculado exitosamente");
   }
   if (els.btnLogout) {
     els.btnLogout.addEventListener("click", async () => {
@@ -2414,46 +2605,84 @@ async function init() {
     });
   }
 
-  // Manejadores estándar de la app
-  els.startEntryCamera.addEventListener("click", () => startCamera("entry"));
-  els.takeEntryPhoto.addEventListener("click", () => takePhoto("entry"));
-  els.entryForm.addEventListener("submit", handleEntrySubmit);
 
-  els.exitMatricula.addEventListener("input", () => {
-    window.clearTimeout(validateExitMatricula.timer);
-    state.exitActiveRecord = null;
-    if (state.exitStream) stopCamera("exit");
-    clearCapturedFace("exit");
-    syncCaptureControls();
-    setExitLookupInfo("Validando entrada activa para esta matricula...", "neutral");
-    validateExitMatricula.timer = window.setTimeout(() => validateExitMatricula(), 450);
-  });
-  els.exitMatricula.addEventListener("blur", () => validateExitMatricula());
 
-  els.startExitCamera.addEventListener("click", async () => {
-    const record = state.exitActiveRecord || await validateExitMatricula({ showErrors: true });
-    if (!record) return;
-    startCamera("exit");
-  });
-  els.takeExitPhoto.addEventListener("click", () => takePhoto("exit"));
-  els.exitForm.addEventListener("submit", handleExitSubmit);
+  // 3. Manejadores estándar de la app
+  if (els.startEntryCamera) els.startEntryCamera.addEventListener("click", () => startCamera("entry"));
+  if (els.takeEntryPhoto) els.takeEntryPhoto.addEventListener("click", () => takePhoto("entry"));
+  if (els.entryForm) els.entryForm.addEventListener("submit", handleEntrySubmit);
 
-  els.unlockAdmin.addEventListener("click", requestAdminAccess);
-  els.lockAdmin.addEventListener("click", lockAdmin);
-  els.exportCsv.addEventListener("click", exportCsv);
-  els.clearRecords.addEventListener("click", clearRecords);
-  els.recordsBody.addEventListener("click", handleRecordAction);
-  els.closeEvidence?.addEventListener("click", closeEvidenceDetail);
-  els.evidenceModal?.addEventListener("click", (event) => {
-    if (event.target === els.evidenceModal) closeEvidenceDetail();
-  });
-  els.siteForm?.addEventListener("submit", handleSiteSubmit);
-  els.useAdminLocation?.addEventListener("click", useAdminLocation);
-  els.testAdminLocation?.addEventListener("click", testAdminLocation);
+  if (els.exitMatricula) {
+    els.exitMatricula.addEventListener("input", () => {
+      window.clearTimeout(validateExitMatricula.timer);
+      state.exitActiveRecord = null;
+      if (state.exitStream) stopCamera("exit");
+      clearCapturedFace("exit");
+      syncCaptureControls();
+      setExitLookupInfo("Validando entrada activa para esta matricula...", "neutral");
+      validateExitMatricula.timer = window.setTimeout(() => validateExitMatricula(), 450);
+    });
+    els.exitMatricula.addEventListener("blur", () => validateExitMatricula());
+  }
+
+  if (els.startExitCamera) {
+    els.startExitCamera.addEventListener("click", async () => {
+      const record = state.exitActiveRecord || await validateExitMatricula({ showErrors: true });
+      if (!record) return;
+      startCamera("exit");
+    });
+  }
+  if (els.takeExitPhoto) els.takeExitPhoto.addEventListener("click", () => takePhoto("exit"));
+  if (els.exitForm) els.exitForm.addEventListener("submit", handleExitSubmit);
+
+  if (els.unlockAdmin) els.unlockAdmin.addEventListener("click", requestAdminAccess);
+  if (els.lockAdmin) els.lockAdmin.addEventListener("click", lockAdmin);
+  if (els.exportCsv) els.exportCsv.addEventListener("click", exportCsv);
+  if (els.clearRecords) els.clearRecords.addEventListener("click", clearRecords);
+  if (els.recordsBody) els.recordsBody.addEventListener("click", handleRecordAction);
+  if (els.closeEvidence) els.closeEvidence.addEventListener("click", closeEvidenceDetail);
+  if (els.evidenceModal) {
+    els.evidenceModal.addEventListener("click", (event) => {
+      if (event.target === els.evidenceModal) closeEvidenceDetail();
+    });
+  }
+  if (els.siteForm) els.siteForm.addEventListener("submit", handleSiteSubmit);
+  if (els.useAdminLocation) els.useAdminLocation.addEventListener("click", useAdminLocation);
+  if (els.testAdminLocation) els.testAdminLocation.addEventListener("click", testAdminLocation);
 
   if (window.location.hash.startsWith("#salida")) {
     showView("exit");
   }
+
+  // 4. Intervalos de actualización si está logueado
+  setInterval(() => {
+    if (state.currentUser) updateClockAndQr();
+  }, 1000);
+
+  setInterval(() => {
+    if (state.currentUser) refreshRecords({ silent: true });
+  }, 30000);
+
+  // 5. Verificar sesión activa
+  console.log("Verificando sesión activa de Supabase...");
+  verificarSesion().then((user) => {
+    if (user) {
+      console.log("Sesión activa recuperada para:", user.email);
+      showAppShell(user);
+      finishInitialization();
+    } else {
+      console.log("Sin sesión activa, redirigiendo a vista de login.");
+      showLoginView();
+    }
+  }).catch((error) => {
+    console.error("Error al verificar la sesión:", error);
+    showLoginView();
+  });
 }
 
-init();
+// Inicializar la aplicación al cargar el DOM de manera segura
+document.addEventListener("DOMContentLoaded", () => {
+  console.log("DOMContentLoaded disparado. Inicializando elementos...");
+  populateElements();
+  init();
+});

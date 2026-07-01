@@ -28,10 +28,10 @@
         <button id="toggle-register-btn" class="toggle-btn" type="button">Registrarse</button>
       </div>
 
-      <form id="authForm" class="data-form" novalidate>
+      <form id="authForm" class="data-form" novalidate autocomplete="off">
         <label id="label-name" class="is-hidden">
           Nombre completo
-          <input id="authName" type="text" autocomplete="name" placeholder="Ej. Ana Lopez Perez" />
+          <input id="authName" type="text" autocomplete="off" placeholder="Ej. Ana Lopez Perez" />
         </label>
         <label id="label-matricula" class="is-hidden">
           Matrícula
@@ -39,11 +39,11 @@
         </label>
         <label id="label-email">
           Correo electrónico
-          <input id="authEmail" type="email" autocomplete="email" placeholder="Ej. ana.lopez@empresa.com" required />
+          <input id="authEmail" type="email" autocomplete="off" placeholder="Ej. ana.lopez@empresa.com" required />
         </label>
         <label id="label-password">
           Contraseña
-          <input id="authPassword" type="password" autocomplete="current-password" placeholder="••••••••" required />
+          <input id="authPassword" type="password" autocomplete="off" placeholder="••••••••" required />
         </label>
         <button id="authSubmitBtn" class="primary wide" type="submit" style="margin-top: 8px;">
           Ingresar
@@ -104,6 +104,14 @@
           </span>
           <span class="nav-label">Registros</span>
         </button>
+
+        <!-- QR Compacto reubicado debajo de Registros -->
+        <div id="qrBox" style="margin-top: 12px; padding-top: 12px; display: flex; flex-direction: column; align-items: center; gap: 4px; border-top: 1px solid rgba(255, 255, 255, 0.12); width: 100%; text-align: center;">
+          <img id="qrImage" alt="QR" style="width: 44px; height: 44px; background: #fff; border-radius: 4px; padding: 3px; box-shadow: 0 1px 4px rgba(0,0,0,0.3);" />
+          <p id="qrMessage" style="display: none;"></p>
+          <a id="qrDirectLink" href="#" style="display: none;"></a>
+          <small id="qrTokenLabel" style="display: none;"></small>
+        </div>
       </nav>
 
       <div class="sidebar-footer">
@@ -211,7 +219,7 @@
             </div>
           </section>
 
-          <div id="faceStatus" class="model-status" data-tone="pending">Cargando modelos de reconocimiento facial...
+          <div id="faceStatus" class="model-status" data-tone="pending" style="display: none;">Cargando modelos de reconocimiento facial...
           </div>
 
           <section class="panel activity-panel">
@@ -264,24 +272,22 @@
                 <span>Historial protegido</span>
                 <strong>Consulta de solo lectura</strong>
                 <p>Los registros quedan disponibles para auditoria sin permitir modificaciones no autorizadas.</p>
-              </article>
+            </div>
+
+            <!-- Widget de Actividad Reciente -->
+            <div class="recent-activity-widget" style="padding: 24px 34px 32px; border-top: 1px solid var(--line, rgba(0,0,0,0.08)); margin-top: 24px;">
+              <h3 style="font-size: 1.1rem; font-weight: 800; color: var(--ink); margin-bottom: 16px; display: flex; align-items: center; gap: 8px;">
+                <svg viewBox="0 0 24 24" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="stroke: var(--accent); fill: none; width: 18px; height: 18px;">
+                  <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />
+                </svg>
+                Actividad Reciente
+              </h3>
+              <div id="recentActivityList" class="recent-activity-list" style="display: flex; flex-direction: column; gap: 10px;">
+                <p style="opacity: 0.6; font-size: 0.9rem; margin: 8px 0;">No hay actividad reciente.</p>
+              </div>
             </div>
           </section>
 
-          <section class="panel qr-panel">
-            <div class="panel-menu">
-              <p class="section-kicker">QR de acceso</p>
-              <span aria-hidden="true">...</span>
-            </div>
-            <h2>Acceso al sistema</h2>
-            <p id="qrMessage">Escanea para abrir el sistema de asistencia.</p>
-
-            <div class="qr-box" id="qrBox">
-              <img id="qrImage" alt="Codigo QR de acceso" />
-              <a id="qrDirectLink" href="https://registro-de-as.vercel.app/">Abrir sistema</a>
-              <small id="qrTokenLabel">Acceso: registro-de-as.vercel.app</small>
-            </div>
-          </section>
         </section>
 
         <section class="panel form-panel is-hidden" data-view="entry">
@@ -574,24 +580,23 @@
           </div>
 
           <div class="capture-layout" style="display: block; max-width: 560px; margin: 0 auto;">
-            <div class="data-form">
+            <form id="profileForm" class="data-form" novalidate autocomplete="off">
               <label>
                 Nombre completo
-                <input id="profileName" type="text" readonly style="background: rgba(0,0,0,0.02); cursor: default;" />
+                <input id="profileName" type="text" placeholder="Ej. Ana Lopez Perez" required />
               </label>
               <label>
                 Matrícula
-                <input id="profileMatricula" type="text" readonly
-                  style="background: rgba(0,0,0,0.02); cursor: default;" />
+                <input id="profileMatricula" type="text" placeholder="Ej. A00125" required />
               </label>
               <label>
                 Correo electrónico
-                <input id="profileEmail" type="text" readonly style="background: rgba(0,0,0,0.02); cursor: default;" />
+                <input id="profileEmail" type="email" placeholder="Ej. ana.lopez@empresa.com" required />
               </label>
               <div class="form-actions" style="margin-top: 14px;">
-                <button class="primary wide back-button" data-target="home" type="button">Volver al inicio</button>
+                <button id="save-profile-btn" class="primary wide" type="submit">Guardar cambios</button>
               </div>
-            </div>
+            </form>
           </div>
         </section>
       </main>
@@ -609,8 +614,8 @@
       </section>
     </div>
 
-    <div id="toast" class="toast" role="status" aria-live="polite"></div>
   </div>
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
 
   <script src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
   <script src="supabase-config.js"></script>
