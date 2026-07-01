@@ -25,6 +25,81 @@ const CLOUD_ENABLED = Boolean(SUPABASE.url && SUPABASE.publishableKey && SUPABAS
 const PHOTO_BUCKET = SUPABASE.bucket || "attendance-photos";
 const GEO_PRECISION_MAX_METERS = 200;
 
+const ROLE_DEFINITIONS = {
+  usuario: {
+    label: "Usuario",
+    scope: "Puede registrar asistencia y consultar sus propios registros.",
+    rank: 10,
+    permissions: {
+      register_attendance: true,
+      view_own_records: true,
+      view_site_records: false,
+      view_all_records: false,
+      view_evidence: false,
+      export_records: false,
+      manage_records: false,
+      manage_site: false,
+      manage_organization: false,
+      manage_roles: false,
+      view_audit: false,
+    },
+  },
+  supervisor: {
+    label: "Supervisor",
+    scope: "Puede revisar registros y evidencia de su sitio operativo.",
+    rank: 20,
+    permissions: {
+      register_attendance: true,
+      view_own_records: true,
+      view_site_records: true,
+      view_all_records: false,
+      view_evidence: true,
+      export_records: false,
+      manage_records: false,
+      manage_site: false,
+      manage_organization: false,
+      manage_roles: false,
+      view_audit: false,
+    },
+  },
+  admin: {
+    label: "Administrador",
+    scope: "Puede administrar registros, sitio, exportaciones y auditoria.",
+    rank: 30,
+    permissions: {
+      register_attendance: true,
+      view_own_records: true,
+      view_site_records: true,
+      view_all_records: true,
+      view_evidence: true,
+      export_records: true,
+      manage_records: true,
+      manage_site: true,
+      manage_organization: false,
+      manage_roles: false,
+      view_audit: true,
+    },
+  },
+  superadmin: {
+    label: "Superadmin",
+    scope: "Puede administrar organizaciones, roles y todo el entorno empresarial.",
+    rank: 40,
+    permissions: {
+      register_attendance: true,
+      view_own_records: true,
+      view_site_records: true,
+      view_all_records: true,
+      view_evidence: true,
+      export_records: true,
+      manage_records: true,
+      manage_site: true,
+      manage_organization: true,
+      manage_roles: true,
+      view_audit: true,
+    },
+  },
+};
+
 const state = {
   records: loadLocalRecords(),
   adminLog: loadAdminLog(),
@@ -49,6 +124,16 @@ const state = {
   exitActiveRecord: null,
   exitLookupSeq: 0,
   currentUser: null,
+  currentAppUser: null,
+  currentRole: "usuario",
+  currentPermissions: { ...ROLE_DEFINITIONS.usuario.permissions },
+  recordFilters: {
+    date: "",
+    status: "all",
+    risk: "all",
+    query: "",
+  },
+  deferredInstallPrompt: null,
 };
 
 const $ = (selector) => document.querySelector(selector);
@@ -156,6 +241,61 @@ function populateElements() {
   els.profileSubmitBtn = $("#save-profile-btn");
 }
 
+
+function isStandaloneDisplay() {
+  return window.matchMedia("(display-mode: standalone)").matches || window.navigator.standalone === true;
+}
+
+function isIosSafari() {
+  const ua = window.navigator.userAgent || "";
+  const isIos = /iphone|ipad|ipod/i.test(ua);
+  const isWebKit = /safari/i.test(ua) && !/crios|fxios|edgios/i.test(ua);
+  return isIos && isWebKit;
+}
+
+function updatePwaInstallUi() {
+  if (!els.pwaInstallBanner) return;
+  const canInstall = Boolean(state.deferredInstallPrompt);
+  const showIosHelp = isIosSafari() && !isStandaloneDisplay();
+  const shouldShow = !isStandaloneDisplay() && (canInstall || showIosHelp);
+
+  els.pwaInstallBanner.classList.toggle("is-hidden", !shouldShow);
+  els.pwaInstallButton?.classList.toggle("is-hidden", !canInstall);
+  els.pwaInstallHelp?.classList.toggle("is-hidden", !showIosHelp);
+}
+
+function setupPwaInstall() {
+  if ("serviceWorker" in navigator) {
+    window.addEventListener("load", () => {
+      navigator.serviceWorker.register("/service-worker.js").catch(() => {
+        console.warn("No se pudo registrar el service worker.");
+      });
+    });
+  }
+
+  window.addEventListener("beforeinstallprompt", (event) => {
+    event.preventDefault();
+    state.deferredInstallPrompt = event;
+    updatePwaInstallUi();
+  });
+
+  window.addEventListener("appinstalled", () => {
+    state.deferredInstallPrompt = null;
+    updatePwaInstallUi();
+    showToast("Asistencia QR instalada correctamente.");
+  });
+
+  els.pwaInstallButton?.addEventListener("click", async () => {
+    if (!state.deferredInstallPrompt) return;
+    const promptEvent = state.deferredInstallPrompt;
+    state.deferredInstallPrompt = null;
+    promptEvent.prompt();
+    await promptEvent.userChoice.catch(() => null);
+    updatePwaInstallUi();
+  });
+
+  updatePwaInstallUi();
+}
 function loadLocalRecords() {
   try {
     return (JSON.parse(localStorage.getItem(STORAGE_KEY)) || []).map(normalizeRecord);
@@ -483,6 +623,135 @@ function normalizeTimeInput(value, fallback) {
 function getRpcFirstRow(result) {
   if (Array.isArray(result)) return result[0] || null;
   return result || null;
+}
+
+
+
+function normalizeAppRole(role) {
+  const value = String(role || "usuario").toLowerCase();
+  return ROLE_DEFINITIONS[value] ? value : "usuario";
+}
+
+function getRoleDefinition(role = state.currentRole) {
+  return ROLE_DEFINITIONS[normalizeAppRole(role)] || ROLE_DEFINITIONS.usuario;
+}
+
+function hasPermission(permission) {
+  return Boolean(state.currentPermissions?.[permission]);
+}
+
+function hasAnyPermission(permissions) {
+  return permissions.some((permission) => hasPermission(permission));
+}
+
+function canUseRoleAdminMode() {
+  return hasAnyPermission(["manage_records", "manage_site", "export_records", "manage_organization", "manage_roles", "view_audit"]);
+}
+
+function getCurrentUserMatricula() {
+  return normalizeMatricula(state.currentAppUser?.matricula || state.currentUser?.user_metadata?.matricula || "");
+}
+
+function canViewRecord(record) {
+  if (!state.currentUser) return false;
+  if (state.isAdmin || hasPermission("view_all_records")) return true;
+
+  if (hasPermission("view_site_records")) {
+    const assignedSite = state.currentAppUser?.sitio_id;
+    if (!assignedSite) return true;
+    return [record.sitioId, record.sitioEntradaId, record.sitioSalidaId].includes(assignedSite);
+  }
+
+  return hasPermission("view_own_records") && normalizeMatricula(record.matricula) === getCurrentUserMatricula();
+}
+
+function getVisibleRecords() {
+  return state.records.filter(canViewRecord);
+}
+
+function applyAppUserSession(appUser) {
+  state.currentAppUser = appUser || null;
+  state.currentRole = normalizeAppRole(appUser?.rol);
+  state.currentPermissions = {
+    ...getRoleDefinition(state.currentRole).permissions,
+    ...(appUser?.permisos || {}),
+  };
+  if (canUseRoleAdminMode()) state.isAdmin = true;
+  renderCurrentUserProfile();
+}
+
+function renderCurrentUserProfile() {
+  const appUser = state.currentAppUser;
+  const authUser = state.currentUser || {};
+  const metadata = authUser.user_metadata || {};
+  const role = getRoleDefinition(state.currentRole);
+  const nombre = appUser?.nombre || metadata.nombre || metadata.full_name || authUser.email || "Usuario";
+  const matricula = appUser?.matricula || metadata.matricula || "-";
+  const email = appUser?.email || authUser.email || "-";
+
+  if (els.userInitials) {
+    const initials = String(nombre).split(" ").filter(Boolean).map((part) => part[0].toUpperCase()).slice(0, 2).join("");
+    els.userInitials.textContent = initials || "US";
+  }
+  if (els.profileName) els.profileName.value = nombre;
+  if (els.profileMatricula) els.profileMatricula.value = matricula;
+  if (els.profileEmail) els.profileEmail.value = email;
+  if (els.profileRole) els.profileRole.value = role.label;
+  if (els.profileScope) els.profileScope.value = role.scope;
+}
+
+async function loadCurrentAppUser({ silent = false } = {}) {
+  if (!CLOUD_ENABLED || !state.currentUser) {
+    applyAppUserSession(null);
+    return null;
+  }
+
+  const metadata = state.currentUser.user_metadata || {};
+  try {
+    const result = await callAdminRpc("get_current_app_user", {
+      p_nombre: metadata.nombre || metadata.full_name || state.currentUser.email || "Usuario",
+      p_matricula: metadata.matricula || "",
+    });
+    const appUser = getRpcFirstRow(result);
+    applyAppUserSession(appUser);
+    return appUser;
+  } catch (error) {
+    applyAppUserSession(null);
+    if (!silent) showToast("No se pudo cargar el rol del usuario. Se aplicaran permisos basicos.");
+    return null;
+  }
+}
+function renderOrganizationContext(context) {
+  if (!els.orgNameLabel) return;
+  const configured = Boolean(context && context.organizacion_id);
+  els.orgStatusBadge.className = "badge " + (configured ? "success" : "warning");
+  els.orgStatusBadge.textContent = configured ? "Preparado" : "Pendiente";
+  els.orgFoundationSummary.textContent = configured
+    ? "Datos actuales agrupados para operar por organizacion sin obligar login todavia."
+    : "La base multiempresa se activara cuando Supabase este disponible.";
+  els.orgNameLabel.textContent = configured ? context.organizacion_nombre || "Organizacion principal" : "Organizacion principal";
+  els.orgTypeLabel.textContent = configured ? context.organizacion_tipo || "empresa" : "empresa";
+  els.orgSitesLabel.textContent = configured ? context.sitios_total ?? 0 : "0";
+  els.orgUsersLabel.textContent = configured ? context.usuarios_total ?? 0 : "0";
+  els.orgAttendancesLabel.textContent = configured ? context.asistencias_total ?? 0 : String(state.records.length || 0);
+}
+
+async function loadOrganizationContext({ silent = false } = {}) {
+  if (!CLOUD_ENABLED) {
+    renderOrganizationContext(null);
+    return null;
+  }
+
+  try {
+    const result = await callAdminRpc("get_organization_context", {});
+    const context = getRpcFirstRow(result);
+    renderOrganizationContext(context);
+    return context;
+  } catch (error) {
+    renderOrganizationContext(null);
+    if (!silent) showToast("No se pudo consultar la organizacion principal.");
+    return null;
+  }
 }
 
 function hasConfiguredSite(site = state.activeSite) {
@@ -1935,9 +2204,9 @@ function renderRecords() {
   updateSummary();
   renderRecentActivity();
   els.recordsBody.innerHTML = "";
-  els.emptyRecords.classList.toggle("is-hidden", state.records.length > 0);
+  els.emptyRecords.classList.toggle("is-hidden", filteredRecords.length > 0);
 
-  state.records.forEach((record) => {
+  filteredRecords.forEach((record) => {
     const row = document.createElement("tr");
     const statusClass = statusBadgeClass(record.estado);
     const identityClass = identityBadgeClass(record.validacionIdentidad);
@@ -1985,9 +2254,9 @@ function setProgressBar(element, value) {
   element.style.width = safeValue + "%";
 }
 
-function updateSummary() {
-  const total = state.records.length;
-  const completed = state.records.filter((record) => ["asistencia_completa", "Asistencia completa"].includes(record.estado)).length;
+function updateSummary(records = getVisibleRecords()) {
+  const total = records.length;
+  const completed = records.filter((record) => ["asistencia_completa", "Asistencia completa"].includes(record.estado)).length;
   const pending = total - completed;
   els.totalRecords.textContent = total;
   els.completedRecords.textContent = completed;
@@ -2012,12 +2281,23 @@ function escapeHtml(value) {
 
 function requestAdminAccess() {
   if (state.isAdmin) return true;
+  if (canUseRoleAdminMode()) {
+    state.isAdmin = true;
+    updateAdminControls();
+    renderRecords();
+    loadActiveSite({ silent: true });
+    loadOrganizationContext({ silent: true });
+    addAdminLog("Desbloqueo por rol", getRoleDefinition().label + " activo");
+    showToast("Permisos administrativos activados por rol.");
+    return true;
+  }
   const value = prompt("Ingresa la clave administrativa para continuar:");
   if (value === ADMIN_KEY) {
     state.isAdmin = true;
     updateAdminControls();
     renderRecords();
     loadActiveSite({ silent: true });
+    loadOrganizationContext({ silent: true });
     addAdminLog("Desbloqueo admin", "Modo administrativo activado");
     showToast("Modo administrativo desbloqueado.");
     return true;
@@ -2045,10 +2325,11 @@ function updateAdminControls() {
   els.unlockAdmin.classList.toggle("is-hidden", state.isAdmin);
   els.lockAdmin.classList.toggle("is-hidden", !state.isAdmin);
   els.adminStatus.classList.toggle("is-blocked", !state.isAdmin);
+  const role = getRoleDefinition();
   els.adminStatus.textContent = state.isAdmin
-    ? "Modo administrativo activo. Las acciones sensibles quedaran registradas en auditoria."
+    ? `Modo administrativo activo (${role.label}). Las acciones sensibles quedaran registradas en auditoria.`
     : CLOUD_ENABLED
-      ? "Lista global activa. Los usuarios pueden consultar registros; las acciones sensibles requieren clave."
+      ? `Lista global activa. Rol actual: ${role.label}. Los permisos sensibles requieren rol autorizado o clave.`
       : "Modo local activo. Configura Supabase para lista global.";
 }
 
@@ -2065,7 +2346,8 @@ function renderAdminAudit() {
 
 function exportCsv() {
   if (!requestAdminAccess()) return;
-  if (!state.records.length) {
+  const records = getVisibleRecords();
+  if (!records.length) {
     showToast("No hay registros para exportar.");
     return;
   }
@@ -2135,7 +2417,7 @@ function exportCsv() {
     "Modificado por administrativo",
   ];
 
-  const rows = state.records.map((record) => [
+  const rows = records.map((record) => [
     record.nombre,
     record.matricula,
     displayDate(record.fecha),
@@ -2325,6 +2607,10 @@ let authMode = "login"; // "login" o "register"
 // Función global requerida por auth.js para el redireccionamiento al cerrar sesión
 window.onLogoutSuccess = function () {
   state.currentUser = null;
+  state.currentAppUser = null;
+  state.currentRole = "usuario";
+  state.currentPermissions = { ...ROLE_DEFINITIONS.usuario.permissions };
+  state.isAdmin = false;
   if (els.loginView) els.loginView.classList.remove("is-hidden");
   if (els.appShell) els.appShell.classList.add("is-hidden");
 };
@@ -2338,23 +2624,38 @@ function showLoginView() {
 
 function showAppShell(user) {
   state.currentUser = user;
-
-  // Rellenar iniciales en el avatar
-  if (els.userInitials) {
-    const nombre = user.user_metadata?.nombre || user.user_metadata?.full_name || user.email || "US";
-    const iniciales = nombre.split(" ").filter(Boolean).map(n => n[0].toUpperCase()).slice(0, 2).join("");
-    els.userInitials.textContent = iniciales || "US";
-  }
-
-  // Rellenar campos de perfil
-  if (els.profileName) els.profileName.value = user.user_metadata?.nombre || user.user_metadata?.full_name || "-";
-  if (els.profileMatricula) els.profileMatricula.value = user.user_metadata?.matricula || "-";
-  if (els.profileEmail) els.profileEmail.value = user.email || "-";
+  applyAppUserSession(state.currentAppUser);
 
   if (els.loginView) els.loginView.classList.add("is-hidden");
   if (els.appShell) els.appShell.classList.remove("is-hidden");
 }
 
+
+async function continueAsOperationalGuest() {
+  const guestUser = {
+    id: "operational-guest",
+    email: "operativo@local.mvp",
+    user_metadata: {
+      nombre: "Usuario operativo",
+      matricula: "OPERATIVO",
+      rol: "usuario",
+    },
+    isGuest: true,
+  };
+  localStorage.removeItem("registro_asistencia_token");
+  state.currentUser = guestUser;
+  applyAppUserSession({
+    nombre: "Usuario operativo",
+    matricula: "OPERATIVO",
+    email: "operativo@local.mvp",
+    rol: "usuario",
+    permisos: { ...ROLE_DEFINITIONS.usuario.permissions },
+    activo: true,
+  });
+  showAppShell(guestUser);
+  await finishInitialization();
+  showToast("Modo operativo activo. Puedes registrar entrada y salida sin cuenta confirmada.");
+}
 function updateAuthUI() {
   if (!els.labelName || !els.labelMatricula || !els.loginTitle || !els.loginSubtitle || !els.authSubmitBtn) return;
 
@@ -2432,7 +2733,7 @@ async function handleAuthSubmit(event) {
           await finishInitialization();
         }
       } else {
-        showToast("Registro exitoso. Por favor, inicia sesión.");
+        showToast("Cuenta creada. Revisa tu correo para confirmar antes de iniciar sesion, o usa modo operativo temporal.");
         authMode = "login";
         updateAuthUI();
         els.authPassword.value = "";
@@ -2535,7 +2836,9 @@ async function finishInitialization() {
   syncCaptureControls();
   loadFaceModels();
   updateClockAndQr({ force: true });
+  await loadCurrentAppUser({ silent: true });
   loadActiveSite({ silent: true });
+  loadOrganizationContext({ silent: true });
   renderRecords();
   renderAdminAudit();
   updateAdminControls();
@@ -2598,6 +2901,7 @@ function init() {
     });
     console.log("Event listener vinculado exitosamente");
   }
+  els.guestAccessBtn?.addEventListener("click", continueAsOperationalGuest);
   if (els.btnLogout) {
     els.btnLogout.addEventListener("click", async () => {
       await cerrarSesion();

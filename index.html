@@ -6,7 +6,12 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta name="description"
     content="Sistema de control de asistencia con registro fotografico, codigo QR dinamico y validacion de ubicacion." />
+  <meta name="theme-color" content="#ef4ea0" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-title" content="Asistencia QR" />
   <title>Asistencia QR - Control Institucional</title>
+  <link rel="manifest" href="manifest.webmanifest" />
+  <link rel="apple-touch-icon" href="icons/icon-192.png" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="stylesheet"
@@ -45,9 +50,13 @@
           Contraseña
           <input id="authPassword" type="password" autocomplete="off" placeholder="••••••••" required />
         </label>
-        <button id="authSubmitBtn" class="primary wide" type="submit" style="margin-top: 8px;">
+                <button id="authSubmitBtn" class="primary wide" type="submit" style="margin-top: 8px;">
           Ingresar
         </button>
+        <button id="guestAccessBtn" class="ghost wide" type="button">
+          Continuar en modo operativo
+        </button>
+        <p class="auth-help">Usa modo operativo para registrar asistencia mientras se confirma el correo.</p>
       </form>
     </div>
   </div>
@@ -220,6 +229,15 @@
           </section>
 
           <div id="faceStatus" class="model-status" data-tone="pending" style="display: none;">Cargando modelos de reconocimiento facial...
+          </div>
+
+          <div id="pwaInstallBanner" class="install-card is-hidden" aria-live="polite">
+            <div>
+              <strong>Instalar asistencia QR</strong>
+              <span>Acceso rapido desde la pantalla de inicio para entrada, salida y consulta.</span>
+              <small id="pwaInstallHelp" class="is-hidden">En Safari, toca Compartir y luego Agregar a pantalla de inicio.</small>
+            </div>
+            <button id="pwaInstallButton" class="primary" type="button">Instalar app</button>
           </div>
 
           <section class="panel activity-panel">
@@ -437,6 +455,122 @@
             Modo lectura activo. No se pueden modificar horarios, fotos, estados ni eliminar registros.
           </div>
 
+          <section class="ops-dashboard" aria-labelledby="opsDashboardTitle">
+            <div class="ops-dashboard-head">
+              <div>
+                <p class="section-kicker">Dashboard operativo</p>
+                <h3 id="opsDashboardTitle">Corte de asistencia</h3>
+                <p id="dashboardScopeLabel">Mostrando registros permitidos por tu rol.</p>
+              </div>
+              <span id="dashboardCompletionRate" class="ops-rate">0% completo</span>
+            </div>
+
+            <div class="ops-metrics" aria-label="Indicadores de asistencia">
+              <article class="ops-metric is-primary">
+                <small>Total visible</small>
+                <strong id="dashboardVisibleTotal">0</strong>
+                <span>Registros filtrados</span>
+              </article>
+              <article class="ops-metric">
+                <small>Hoy</small>
+                <strong id="dashboardToday">0</strong>
+                <span>Asistencias del dia</span>
+              </article>
+              <article class="ops-metric">
+                <small>Completos</small>
+                <strong id="dashboardCompleted">0</strong>
+                <span>Entrada y salida</span>
+              </article>
+              <article class="ops-metric">
+                <small>Pendientes</small>
+                <strong id="dashboardPending">0</strong>
+                <span>Sin salida registrada</span>
+              </article>
+              <article class="ops-metric">
+                <small>Revision</small>
+                <strong id="dashboardReview">0</strong>
+                <span>Riesgo o estado alerta</span>
+              </article>
+              <article class="ops-metric">
+                <small>GPS / facial</small>
+                <strong id="dashboardIssues">0</strong>
+                <span>Validaciones por revisar</span>
+              </article>
+            </div>
+
+            <form class="ops-filters" aria-label="Filtros de registros">
+              <label>
+                Fecha
+                <input id="filterDate" type="date" />
+              </label>
+              <label>
+                Estado
+                <select id="filterStatus">
+                  <option value="all">Todos</option>
+                  <option value="entrada_registrada">Pendiente de salida</option>
+                  <option value="asistencia_completa">Asistencia completa</option>
+                  <option value="revision_requerida">Revision requerida</option>
+                  <option value="fallida">Fallida</option>
+                </select>
+              </label>
+              <label>
+                Riesgo
+                <select id="filterRisk">
+                  <option value="all">Todos</option>
+                  <option value="normal">Normal</option>
+                  <option value="revision">Revision</option>
+                  <option value="sospechoso">Sospechoso</option>
+                </select>
+              </label>
+              <label class="ops-search-field">
+                Buscar
+                <input id="filterSearch" type="search" autocomplete="off" placeholder="Nombre o matricula" />
+              </label>
+              <button id="clearDashboardFilters" class="ghost" type="button">Limpiar filtros</button>
+            </form>
+
+            <div id="dashboardAlerts" class="ops-alerts" aria-live="polite">
+              <span>Sin alertas operativas con los filtros actuales.</span>
+            </div>
+          </section>
+          <section class="org-admin-panel admin-control is-hidden" aria-labelledby="orgFoundationTitle">
+            <div class="site-admin-header">
+              <div>
+                <p class="section-kicker">Base multiempresa</p>
+                <h3 id="orgFoundationTitle">Organizacion principal</h3>
+                <p id="orgFoundationSummary">Estructura lista para organizaciones, sitios, usuarios y asistencias.</p>
+              </div>
+              <span id="orgStatusBadge" class="badge success">Preparado</span>
+            </div>
+
+            <div class="site-dashboard-grid org-dashboard-grid" aria-label="Estado multiempresa">
+              <article class="site-config-card">
+                <small>Organizacion</small>
+                <strong id="orgNameLabel">Organizacion principal</strong>
+                <span id="orgTypeLabel">empresa</span>
+              </article>
+              <article class="site-config-card">
+                <small>Sitios</small>
+                <strong id="orgSitesLabel">0</strong>
+                <span>Ubicaciones vinculadas</span>
+              </article>
+              <article class="site-config-card">
+                <small>Usuarios</small>
+                <strong id="orgUsersLabel">0</strong>
+                <span>Matriculas migradas</span>
+              </article>
+              <article class="site-config-card">
+                <small>Asistencias</small>
+                <strong id="orgAttendancesLabel">0</strong>
+                <span>Registros asignados</span>
+              </article>
+            </div>
+
+            <div class="auth-roadmap" aria-label="Siguiente fase de autenticacion">
+              <span>Login preparado</span>
+              <p>La app sigue funcionando por matricula. Supabase Auth y permisos por rol quedan como siguiente fase estable.</p>
+            </div>
+          </section>
           <section class="site-admin-panel admin-control is-hidden" aria-labelledby="siteConfigTitle">
             <div class="site-admin-header">
               <div>
@@ -592,6 +726,14 @@
               <label>
                 Correo electrónico
                 <input id="profileEmail" type="email" placeholder="Ej. ana.lopez@empresa.com" required />
+              </label>
+              <label>
+                Rol operativo
+                <input id="profileRole" type="text" readonly style="background: rgba(0,0,0,0.02); cursor: default;" />
+              </label>
+              <label>
+                Alcance de permisos
+                <textarea id="profileScope" rows="3" readonly style="background: rgba(0,0,0,0.02); cursor: default; resize: none;"></textarea>
               </label>
               <div class="form-actions" style="margin-top: 14px;">
                 <button id="save-profile-btn" class="primary wide" type="submit">Guardar cambios</button>

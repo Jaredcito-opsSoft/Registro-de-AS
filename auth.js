@@ -1,26 +1,13 @@
 /**
  * auth.js
- * 
- * Lógica de autenticación para el sistema de control de asistencia.
- * Realiza peticiones directas HTTP a la API de Supabase sin depender de su SDK.
- * Utiliza la configuración global window.SUPABASE_CONFIG.
+ * Autenticacion directa contra Supabase Auth sin SDK.
  */
 
-/**
- * Registra a un nuevo usuario en Supabase con metadata adicional.
- * Realiza un POST a /auth/v1/signup.
- * 
- * @param {string} email - Correo electrónico del usuario.
- * @param {string} password - Contraseña del usuario.
- * @param {string} nombre - Nombre completo del usuario.
- * @param {string} matricula - Matrícula única del usuario.
- * @returns {Promise<object>} - Datos del registro devueltos por Supabase.
- * @throws {Error} - Error si la petición falla o las credenciales no son válidas.
- */
-async function crearCuenta(email, password, nombre, matricula) {
+function assertSupabaseAuthConfig() {
   if (!window.SUPABASE_CONFIG || !window.SUPABASE_CONFIG.url || !window.SUPABASE_CONFIG.publishableKey) {
-    throw new Error("La configuración de Supabase no está definida en window.SUPABASE_CONFIG.");
+    throw new Error("La configuracion de Supabase no esta definida.");
   }
+}
 
   const cleanEmail = email.trim().toLowerCase();
   
@@ -33,18 +20,16 @@ async function crearCuenta(email, password, nombre, matricula) {
   try {
     const response = await fetch(url, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "apikey": window.SUPABASE_CONFIG.publishableKey
-      },
+      headers: authHeaders(),
       body: JSON.stringify({
         email: cleanEmail,
         password: password,
         data: {
-          nombre: nombre,
-          matricula: matricula
-        }
-      })
+          nombre,
+          matricula,
+          rol: "usuario",
+        },
+      }),
     });
 
     const data = await response.json();
@@ -71,16 +56,6 @@ async function crearCuenta(email, password, nombre, matricula) {
   }
 }
 
-/**
- * Inicia sesión con correo y contraseña en Supabase.
- * Realiza un POST a /auth/v1/token?grant_type=password.
- * Si tiene éxito, guarda el access_token en localStorage.
- * 
- * @param {string} email - Correo electrónico del usuario.
- * @param {string} password - Contraseña del usuario.
- * @returns {Promise<object>} - Datos de sesión devueltos por Supabase.
- * @throws {Error} - Error si faltan las credenciales, si la configuración es incorrecta o si falla la petición.
- */
 async function iniciarSesion(email, password) {
   if (!window.SUPABASE_CONFIG || !window.SUPABASE_CONFIG.url || !window.SUPABASE_CONFIG.publishableKey) {
     throw new Error("La configuración de Supabase no está definida en window.SUPABASE_CONFIG.");
@@ -133,6 +108,7 @@ async function iniciarSesion(email, password) {
       console.log("iniciarSesion - Sesión iniciada correctamente. Token guardado en localStorage. Usuario:", data.user?.email);
     }
 
+    if (data.access_token) localStorage.setItem("registro_asistencia_token", data.access_token);
     return data;
   } catch (error) {
     console.error("Error en iniciarSesion:", error);
@@ -140,12 +116,6 @@ async function iniciarSesion(email, password) {
   }
 }
 
-/**
- * Cierra la sesión activa del usuario.
- * Invalida el token en el servidor de Supabase, limpia el localStorage y redirige al login.
- * 
- * @returns {Promise<void>}
- */
 async function cerrarSesion() {
   const token = localStorage.getItem("registro_asistencia_token");
   localStorage.removeItem("registro_asistencia_token");
@@ -155,54 +125,32 @@ async function cerrarSesion() {
     try {
       await fetch(url, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "apikey": window.SUPABASE_CONFIG.publishableKey,
-          "Authorization": `Bearer ${token}`
-        }
+        headers: authHeaders(token),
       });
     } catch (error) {
-      console.warn("No se pudo invalidar la sesión en el servidor:", error);
+      console.warn("No se pudo invalidar la sesion en el servidor:", error);
     }
   }
 
-  // Notificar al controlador de la UI
   if (typeof onLogoutSuccess === "function") {
     onLogoutSuccess();
   } else {
-    // Redirección directa fallback si no está definida la función global de retorno
     document.querySelector(".app-shell")?.classList.add("is-hidden");
     document.getElementById("login-view")?.classList.remove("is-hidden");
   }
 }
 
-/**
- * Verifica si hay una sesión activa y válida en el localStorage.
- * Si existe un token, realiza un GET a /auth/v1/user para validar si sigue vivo.
- * Si el servidor responde con un error de autenticación, elimina el token del localStorage.
- * 
- * @returns {Promise<object|null>} - Datos del usuario si la sesión es válida, o null si no lo es o no existe.
- */
 async function verificarSesion() {
-  if (!window.SUPABASE_CONFIG || !window.SUPABASE_CONFIG.url || !window.SUPABASE_CONFIG.publishableKey) {
-    throw new Error("La configuración de Supabase no está definida en window.SUPABASE_CONFIG.");
-  }
-
+  assertSupabaseAuthConfig();
   const token = localStorage.getItem("registro_asistencia_token");
-  if (!token) {
-    return null;
-  }
+  if (!token) return null;
 
   const url = `${window.SUPABASE_CONFIG.url}/auth/v1/user`;
 
   try {
     const response = await fetch(url, {
       method: "GET",
-      headers: {
-        "Content-Type": "application/json",
-        "apikey": window.SUPABASE_CONFIG.publishableKey,
-        "Authorization": `Bearer ${token}`
-      }
+      headers: authHeaders(token),
     });
 
     if (!response.ok) {
@@ -210,8 +158,7 @@ async function verificarSesion() {
       return null;
     }
 
-    const userData = await response.json();
-    return userData;
+    return await parseAuthResponse(response);
   } catch (error) {
     console.error("Error en verificarSesion:", error);
     return null;
