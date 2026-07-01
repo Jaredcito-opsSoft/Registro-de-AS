@@ -29,6 +29,7 @@ function authErrorMessage(data, fallback) {
 
 async function crearCuenta(email, password, nombre, matricula) {
   assertSupabaseAuthConfig();
+  const cleanEmail = email.trim().toLowerCase();
   const url = `${window.SUPABASE_CONFIG.url}/auth/v1/signup`;
 
   try {
@@ -36,7 +37,7 @@ async function crearCuenta(email, password, nombre, matricula) {
       method: "POST",
       headers: authHeaders(),
       body: JSON.stringify({
-        email,
+        email: cleanEmail,
         password,
         data: {
           nombre,
@@ -71,13 +72,14 @@ async function crearCuenta(email, password, nombre, matricula) {
 
 async function iniciarSesion(email, password) {
   assertSupabaseAuthConfig();
+  const cleanEmail = email.trim().toLowerCase();
   const url = `${window.SUPABASE_CONFIG.url}/auth/v1/token?grant_type=password`;
 
   try {
     const response = await fetch(url, {
       method: "POST",
       headers: authHeaders(),
-      body: JSON.stringify({ email, password }),
+      body: JSON.stringify({ email: cleanEmail, password }),
     });
 
     const data = await parseAuthResponse(response);
@@ -151,5 +153,52 @@ async function verificarSesion() {
   } catch (error) {
     console.error("Error en verificarSesion:", error);
     return null;
+  }
+}
+
+/**
+ * Actualiza el perfil del usuario autenticado en Supabase.
+ * Realiza un PUT a /auth/v1/user.
+ * 
+ * @param {string} email - Nuevo correo electrónico.
+ * @param {string} nombre - Nuevo nombre completo.
+ * @param {string} matricula - Nueva matrícula.
+ * @returns {Promise<object>} - Datos del usuario actualizados devueltos por Supabase.
+ * @throws {Error} - Error si la petición falla.
+ */
+async function actualizarPerfil(email, nombre, matricula) {
+  assertSupabaseAuthConfig();
+
+  const token = localStorage.getItem("registro_asistencia_token");
+  if (!token) {
+    throw new Error("No hay una sesión activa para actualizar el perfil.");
+  }
+
+  const url = `${window.SUPABASE_CONFIG.url}/auth/v1/user`;
+  const cleanEmail = email.trim().toLowerCase();
+
+  try {
+    const response = await fetch(url, {
+      method: "PUT",
+      headers: authHeaders(token),
+      body: JSON.stringify({
+        email: cleanEmail,
+        data: {
+          nombre: nombre.trim(),
+          matricula: matricula.trim()
+        }
+      })
+    });
+
+    const data = await parseAuthResponse(response);
+
+    if (!response.ok) {
+      throw new Error(authErrorMessage(data, "Error al actualizar el perfil."));
+    }
+
+    return data;
+  } catch (error) {
+    console.error("Error en actualizarPerfil:", error);
+    throw error;
   }
 }
