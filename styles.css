@@ -2265,3 +2265,11 @@ tbody tr:hover {
     grid-column: auto;
   }
 }
+
+.auth-help {
+  margin-top: 10px;
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 650;
+  text-align: center;
+}

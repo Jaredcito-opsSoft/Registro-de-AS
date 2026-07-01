@@ -245,6 +245,7 @@ const els = {
   authName: $("#authName"),
   authMatricula: $("#authMatricula"),
   authSubmitBtn: $("#authSubmitBtn"),
+  guestAccessBtn: $("#guestAccessBtn"),
   toggleLoginBtn: $("#toggle-login-btn"),
   toggleRegisterBtn: $("#toggle-register-btn"),
   labelName: $("#label-name"),
@@ -2678,6 +2679,32 @@ function showAppShell(user) {
   if (els.appShell) els.appShell.classList.remove("is-hidden");
 }
 
+
+async function continueAsOperationalGuest() {
+  const guestUser = {
+    id: "operational-guest",
+    email: "operativo@local.mvp",
+    user_metadata: {
+      nombre: "Usuario operativo",
+      matricula: "OPERATIVO",
+      rol: "usuario",
+    },
+    isGuest: true,
+  };
+  localStorage.removeItem("registro_asistencia_token");
+  state.currentUser = guestUser;
+  applyAppUserSession({
+    nombre: "Usuario operativo",
+    matricula: "OPERATIVO",
+    email: "operativo@local.mvp",
+    rol: "usuario",
+    permisos: { ...ROLE_DEFINITIONS.usuario.permissions },
+    activo: true,
+  });
+  showAppShell(guestUser);
+  await finishInitialization();
+  showToast("Modo operativo activo. Puedes registrar entrada y salida sin cuenta confirmada.");
+}
 function updateAuthUI() {
   if (!els.labelName || !els.labelMatricula || !els.loginTitle || !els.loginSubtitle || !els.authSubmitBtn) return;
 
@@ -2755,7 +2782,7 @@ async function handleAuthSubmit(event) {
           await finishInitialization();
         }
       } else {
-        showToast("Registro exitoso. Por favor, inicia sesión.");
+        showToast("Cuenta creada. Revisa tu correo para confirmar antes de iniciar sesion, o usa modo operativo temporal.");
         authMode = "login";
         updateAuthUI();
         els.authPassword.value = "";
@@ -2839,6 +2866,7 @@ async function init() {
   if (els.authForm) {
     els.authForm.addEventListener("submit", handleAuthSubmit);
   }
+  els.guestAccessBtn?.addEventListener("click", continueAsOperationalGuest);
   if (els.btnLogout) {
     els.btnLogout.addEventListener("click", async () => {
       await cerrarSesion();
