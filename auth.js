@@ -36,7 +36,8 @@ async function crearCuenta(email, password, nombre, matricula) {
         password: password,
         data: {
           nombre: nombre,
-          matricula: matricula
+          matricula: matricula,
+          rol: "usuario"
         }
       })
     });
