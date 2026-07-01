@@ -444,6 +444,85 @@
           <div id="adminStatus" class="notice is-blocked" aria-live="polite">
             Modo lectura activo. No se pueden modificar horarios, fotos, estados ni eliminar registros.
           </div>
+
+          <section class="ops-dashboard" aria-labelledby="opsDashboardTitle">
+            <div class="ops-dashboard-head">
+              <div>
+                <p class="section-kicker">Dashboard operativo</p>
+                <h3 id="opsDashboardTitle">Corte de asistencia</h3>
+                <p id="dashboardScopeLabel">Mostrando registros permitidos por tu rol.</p>
+              </div>
+              <span id="dashboardCompletionRate" class="ops-rate">0% completo</span>
+            </div>
+
+            <div class="ops-metrics" aria-label="Indicadores de asistencia">
+              <article class="ops-metric is-primary">
+                <small>Total visible</small>
+                <strong id="dashboardVisibleTotal">0</strong>
+                <span>Registros filtrados</span>
+              </article>
+              <article class="ops-metric">
+                <small>Hoy</small>
+                <strong id="dashboardToday">0</strong>
+                <span>Asistencias del dia</span>
+              </article>
+              <article class="ops-metric">
+                <small>Completos</small>
+                <strong id="dashboardCompleted">0</strong>
+                <span>Entrada y salida</span>
+              </article>
+              <article class="ops-metric">
+                <small>Pendientes</small>
+                <strong id="dashboardPending">0</strong>
+                <span>Sin salida registrada</span>
+              </article>
+              <article class="ops-metric">
+                <small>Revision</small>
+                <strong id="dashboardReview">0</strong>
+                <span>Riesgo o estado alerta</span>
+              </article>
+              <article class="ops-metric">
+                <small>GPS / facial</small>
+                <strong id="dashboardIssues">0</strong>
+                <span>Validaciones por revisar</span>
+              </article>
+            </div>
+
+            <form class="ops-filters" aria-label="Filtros de registros">
+              <label>
+                Fecha
+                <input id="filterDate" type="date" />
+              </label>
+              <label>
+                Estado
+                <select id="filterStatus">
+                  <option value="all">Todos</option>
+                  <option value="entrada_registrada">Pendiente de salida</option>
+                  <option value="asistencia_completa">Asistencia completa</option>
+                  <option value="revision_requerida">Revision requerida</option>
+                  <option value="fallida">Fallida</option>
+                </select>
+              </label>
+              <label>
+                Riesgo
+                <select id="filterRisk">
+                  <option value="all">Todos</option>
+                  <option value="normal">Normal</option>
+                  <option value="revision">Revision</option>
+                  <option value="sospechoso">Sospechoso</option>
+                </select>
+              </label>
+              <label class="ops-search-field">
+                Buscar
+                <input id="filterSearch" type="search" autocomplete="off" placeholder="Nombre o matricula" />
+              </label>
+              <button id="clearDashboardFilters" class="ghost" type="button">Limpiar filtros</button>
+            </form>
+
+            <div id="dashboardAlerts" class="ops-alerts" aria-live="polite">
+              <span>Sin alertas operativas con los filtros actuales.</span>
+            </div>
+          </section>
           <section class="org-admin-panel admin-control is-hidden" aria-labelledby="orgFoundationTitle">
             <div class="site-admin-header">
               <div>

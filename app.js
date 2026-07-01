@@ -127,6 +127,12 @@ const state = {
   currentAppUser: null,
   currentRole: "usuario",
   currentPermissions: { ...ROLE_DEFINITIONS.usuario.permissions },
+  recordFilters: {
+    date: "",
+    status: "all",
+    risk: "all",
+    query: "",
+  },
   deferredInstallPrompt: null,
 };
 
@@ -180,6 +186,20 @@ const els = {
   totalProgress: $("#totalProgress"),
   completedProgress: $("#completedProgress"),
   pendingProgress: $("#pendingProgress"),
+  dashboardVisibleTotal: $("#dashboardVisibleTotal"),
+  dashboardToday: $("#dashboardToday"),
+  dashboardCompleted: $("#dashboardCompleted"),
+  dashboardPending: $("#dashboardPending"),
+  dashboardReview: $("#dashboardReview"),
+  dashboardIssues: $("#dashboardIssues"),
+  dashboardCompletionRate: $("#dashboardCompletionRate"),
+  dashboardScopeLabel: $("#dashboardScopeLabel"),
+  dashboardAlerts: $("#dashboardAlerts"),
+  filterDate: $("#filterDate"),
+  filterStatus: $("#filterStatus"),
+  filterRisk: $("#filterRisk"),
+  filterSearch: $("#filterSearch"),
+  clearDashboardFilters: $("#clearDashboardFilters"),
   orgStatusBadge: $("#orgStatusBadge"),
   orgFoundationSummary: $("#orgFoundationSummary"),
   orgNameLabel: $("#orgNameLabel"),
@@ -654,7 +674,7 @@ function getCurrentUserMatricula() {
 
 function canViewRecord(record) {
   if (!state.currentUser) return false;
-  if (hasPermission("view_all_records")) return true;
+  if (state.isAdmin || hasPermission("view_all_records")) return true;
 
   if (hasPermission("view_site_records")) {
     const assignedSite = state.currentAppUser?.sitio_id;
@@ -2101,13 +2121,140 @@ function closeEvidenceDetail() {
   els.evidenceModal.hidden = true;
   if (els.evidenceBody) els.evidenceBody.innerHTML = "";
 }
-function renderRecords() {
-  const visibleRecords = getVisibleRecords();
-  updateSummary(visibleRecords);
-  els.recordsBody.innerHTML = "";
-  els.emptyRecords.classList.toggle("is-hidden", visibleRecords.length > 0);
 
-  visibleRecords.forEach((record) => {
+function isCompleteRecord(record) {
+  return ["asistencia_completa", "Asistencia completa"].includes(record.estado) || Boolean(record.horaSalida);
+}
+
+function isPendingExitRecord(record) {
+  return !record.horaSalida || ["entrada_registrada", "Entrada registrada", "Pendiente de salida"].includes(record.estado);
+}
+
+function isReviewRecord(record) {
+  return record.estado === "revision_requerida"
+    || record.validacionIdentidad === "revision_administrativa"
+    || String(record.riesgo || "").startsWith("revision")
+    || record.riesgo === "sospechoso";
+}
+
+function hasLocationIssue(record) {
+  const entryIssue = record.latitudEntrada !== null && !record.ubicacionEntradaValidada;
+  const exitIssue = record.horaSalida && record.latitudSalida !== null && !record.ubicacionSalidaValidada;
+  return Boolean(entryIssue || exitIssue || String(record.riesgo || "").includes("ubicacion"));
+}
+
+function hasIdentityIssue(record) {
+  return ["revision_administrativa", "fallida"].includes(record.validacionIdentidad);
+}
+
+function statusFilterMatches(record, status) {
+  if (status === "all") return true;
+  if (status === "entrada_registrada") return isPendingExitRecord(record);
+  if (status === "asistencia_completa") return isCompleteRecord(record);
+  return record.estado === status;
+}
+
+function riskFilterMatches(record, risk) {
+  if (risk === "all") return true;
+  if (risk === "revision") return String(record.riesgo || "").startsWith("revision") || record.estado === "revision_requerida";
+  return (record.riesgo || "normal") === risk;
+}
+
+function recordMatchesDashboardFilters(record) {
+  const filters = state.recordFilters;
+  if (filters.date && record.fecha !== filters.date) return false;
+  if (!statusFilterMatches(record, filters.status)) return false;
+  if (!riskFilterMatches(record, filters.risk)) return false;
+
+  const query = normalizeMatricula(filters.query || "");
+  if (!query) return true;
+  return normalizeMatricula(record.nombre || "").includes(query)
+    || normalizeMatricula(record.matricula || "").includes(query);
+}
+
+function getFilteredRecords() {
+  return getVisibleRecords().filter(recordMatchesDashboardFilters);
+}
+
+function dashboardScopeText() {
+  const role = getRoleDefinition();
+  if (state.isAdmin && !hasPermission("view_all_records")) return "Modo administrativo temporal: vista global desbloqueada.";
+  if (hasPermission("view_all_records")) return `${role.label}: vista global permitida.`;
+  if (hasPermission("view_site_records")) return `${role.label}: registros del sitio asignado.`;
+  return `${role.label}: solo registros propios.`;
+}
+
+function renderDashboardAlerts(records) {
+  if (!els.dashboardAlerts) return;
+  const today = todayIso();
+  const alerts = [];
+  const pendingToday = records.filter((record) => record.fecha === today && isPendingExitRecord(record));
+  const identity = records.filter(hasIdentityIssue);
+  const location = records.filter(hasLocationIssue);
+  const suspicious = records.filter((record) => record.riesgo === "sospechoso");
+
+  if (pendingToday.length) alerts.push(["Pendientes de salida", `${pendingToday.length} matricula(s) con entrada activa hoy.`]);
+  if (identity.length) alerts.push(["Facial en revision", `${identity.length} registro(s) requieren validacion de identidad.`]);
+  if (location.length) alerts.push(["GPS por revisar", `${location.length} evidencia(s) fuera de radio o sin validacion completa.`]);
+  if (suspicious.length) alerts.push(["Riesgo alto", `${suspicious.length} registro(s) marcados como sospechosos.`]);
+
+  if (!alerts.length) {
+    els.dashboardAlerts.innerHTML = "<span>Sin alertas operativas con los filtros actuales.</span>";
+    return;
+  }
+
+  els.dashboardAlerts.innerHTML = alerts.slice(0, 4).map(([title, detail]) => `
+    <article>
+      <strong>${escapeHtml(title)}</strong>
+      <span>${escapeHtml(detail)}</span>
+    </article>
+  `).join("");
+}
+
+function renderOperationsDashboard(records = getFilteredRecords()) {
+  const today = todayIso();
+  const total = records.length;
+  const completed = records.filter(isCompleteRecord).length;
+  const pending = records.filter(isPendingExitRecord).length;
+  const review = records.filter(isReviewRecord).length;
+  const issues = records.filter((record) => hasLocationIssue(record) || hasIdentityIssue(record)).length;
+  const todayCount = getVisibleRecords().filter((record) => record.fecha === today).length;
+  const completionRate = total ? Math.round((completed / total) * 100) : 0;
+
+  if (els.dashboardVisibleTotal) els.dashboardVisibleTotal.textContent = total;
+  if (els.dashboardToday) els.dashboardToday.textContent = todayCount;
+  if (els.dashboardCompleted) els.dashboardCompleted.textContent = completed;
+  if (els.dashboardPending) els.dashboardPending.textContent = pending;
+  if (els.dashboardReview) els.dashboardReview.textContent = review;
+  if (els.dashboardIssues) els.dashboardIssues.textContent = issues;
+  if (els.dashboardCompletionRate) els.dashboardCompletionRate.textContent = `${completionRate}% completo`;
+  if (els.dashboardScopeLabel) els.dashboardScopeLabel.textContent = dashboardScopeText();
+  renderDashboardAlerts(records);
+}
+
+function syncDashboardFiltersFromUi() {
+  state.recordFilters.date = els.filterDate?.value || "";
+  state.recordFilters.status = els.filterStatus?.value || "all";
+  state.recordFilters.risk = els.filterRisk?.value || "all";
+  state.recordFilters.query = els.filterSearch?.value || "";
+}
+
+function resetDashboardFilters() {
+  state.recordFilters = { date: "", status: "all", risk: "all", query: "" };
+  if (els.filterDate) els.filterDate.value = "";
+  if (els.filterStatus) els.filterStatus.value = "all";
+  if (els.filterRisk) els.filterRisk.value = "all";
+  if (els.filterSearch) els.filterSearch.value = "";
+  renderRecords();
+}
+function renderRecords() {
+  const filteredRecords = getFilteredRecords();
+  renderOperationsDashboard(filteredRecords);
+  updateSummary(filteredRecords);
+  els.recordsBody.innerHTML = "";
+  els.emptyRecords.classList.toggle("is-hidden", filteredRecords.length > 0);
+
+  filteredRecords.forEach((record) => {
     const row = document.createElement("tr");
     const statusClass = statusBadgeClass(record.estado);
     const identityClass = identityBadgeClass(record.validacionIdentidad);
@@ -2728,6 +2875,14 @@ async function init() {
   els.exportCsv.addEventListener("click", exportCsv);
   els.clearRecords.addEventListener("click", clearRecords);
   els.recordsBody.addEventListener("click", handleRecordAction);
+  document.querySelector(".ops-filters")?.addEventListener("submit", (event) => event.preventDefault());
+  [els.filterDate, els.filterStatus, els.filterRisk, els.filterSearch].forEach((control) => {
+    control?.addEventListener("input", () => {
+      syncDashboardFiltersFromUi();
+      renderRecords();
+    });
+  });
+  els.clearDashboardFilters?.addEventListener("click", resetDashboardFilters);
   els.closeEvidence?.addEventListener("click", closeEvidenceDetail);
   els.evidenceModal?.addEventListener("click", (event) => {
     if (event.target === els.evidenceModal) closeEvidenceDetail();
