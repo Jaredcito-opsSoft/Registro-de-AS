@@ -444,7 +444,44 @@
           <div id="adminStatus" class="notice is-blocked" aria-live="polite">
             Modo lectura activo. No se pueden modificar horarios, fotos, estados ni eliminar registros.
           </div>
+          <section class="org-admin-panel admin-control is-hidden" aria-labelledby="orgFoundationTitle">
+            <div class="site-admin-header">
+              <div>
+                <p class="section-kicker">Base multiempresa</p>
+                <h3 id="orgFoundationTitle">Organizacion principal</h3>
+                <p id="orgFoundationSummary">Estructura lista para organizaciones, sitios, usuarios y asistencias.</p>
+              </div>
+              <span id="orgStatusBadge" class="badge success">Preparado</span>
+            </div>
 
+            <div class="site-dashboard-grid org-dashboard-grid" aria-label="Estado multiempresa">
+              <article class="site-config-card">
+                <small>Organizacion</small>
+                <strong id="orgNameLabel">Organizacion principal</strong>
+                <span id="orgTypeLabel">empresa</span>
+              </article>
+              <article class="site-config-card">
+                <small>Sitios</small>
+                <strong id="orgSitesLabel">0</strong>
+                <span>Ubicaciones vinculadas</span>
+              </article>
+              <article class="site-config-card">
+                <small>Usuarios</small>
+                <strong id="orgUsersLabel">0</strong>
+                <span>Matriculas migradas</span>
+              </article>
+              <article class="site-config-card">
+                <small>Asistencias</small>
+                <strong id="orgAttendancesLabel">0</strong>
+                <span>Registros asignados</span>
+              </article>
+            </div>
+
+            <div class="auth-roadmap" aria-label="Siguiente fase de autenticacion">
+              <span>Login preparado</span>
+              <p>La app sigue funcionando por matricula. Supabase Auth y permisos por rol quedan como siguiente fase estable.</p>
+            </div>
+          </section>
           <section class="site-admin-panel admin-control is-hidden" aria-labelledby="siteConfigTitle">
             <div class="site-admin-header">
               <div>

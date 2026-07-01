@@ -102,6 +102,13 @@ const els = {
   totalProgress: $("#totalProgress"),
   completedProgress: $("#completedProgress"),
   pendingProgress: $("#pendingProgress"),
+  orgStatusBadge: $("#orgStatusBadge"),
+  orgFoundationSummary: $("#orgFoundationSummary"),
+  orgNameLabel: $("#orgNameLabel"),
+  orgTypeLabel: $("#orgTypeLabel"),
+  orgSitesLabel: $("#orgSitesLabel"),
+  orgUsersLabel: $("#orgUsersLabel"),
+  orgAttendancesLabel: $("#orgAttendancesLabel"),
   siteStatusBadge: $("#siteStatusBadge"),
   siteStatusSummary: $("#siteStatusSummary"),
   siteNameLabel: $("#siteNameLabel"),
@@ -536,6 +543,40 @@ function normalizeTimeInput(value, fallback) {
 function getRpcFirstRow(result) {
   if (Array.isArray(result)) return result[0] || null;
   return result || null;
+}
+
+
+function renderOrganizationContext(context) {
+  if (!els.orgNameLabel) return;
+  const configured = Boolean(context && context.organizacion_id);
+  els.orgStatusBadge.className = "badge " + (configured ? "success" : "warning");
+  els.orgStatusBadge.textContent = configured ? "Preparado" : "Pendiente";
+  els.orgFoundationSummary.textContent = configured
+    ? "Datos actuales agrupados para operar por organizacion sin obligar login todavia."
+    : "La base multiempresa se activara cuando Supabase este disponible.";
+  els.orgNameLabel.textContent = configured ? context.organizacion_nombre || "Organizacion principal" : "Organizacion principal";
+  els.orgTypeLabel.textContent = configured ? context.organizacion_tipo || "empresa" : "empresa";
+  els.orgSitesLabel.textContent = configured ? context.sitios_total ?? 0 : "0";
+  els.orgUsersLabel.textContent = configured ? context.usuarios_total ?? 0 : "0";
+  els.orgAttendancesLabel.textContent = configured ? context.asistencias_total ?? 0 : String(state.records.length || 0);
+}
+
+async function loadOrganizationContext({ silent = false } = {}) {
+  if (!CLOUD_ENABLED) {
+    renderOrganizationContext(null);
+    return null;
+  }
+
+  try {
+    const result = await callAdminRpc("get_organization_context", {});
+    const context = getRpcFirstRow(result);
+    renderOrganizationContext(context);
+    return context;
+  } catch (error) {
+    renderOrganizationContext(null);
+    if (!silent) showToast("No se pudo consultar la organizacion principal.");
+    return null;
+  }
 }
 
 function hasConfiguredSite(site = state.activeSite) {
@@ -1971,6 +2012,7 @@ function requestAdminAccess() {
     updateAdminControls();
     renderRecords();
     loadActiveSite({ silent: true });
+    loadOrganizationContext({ silent: true });
     addAdminLog("Desbloqueo admin", "Modo administrativo activado");
     showToast("Modo administrativo desbloqueado.");
     return true;
@@ -2407,6 +2449,7 @@ async function finishInitialization() {
   loadFaceModels();
   updateClockAndQr({ force: true });
   loadActiveSite({ silent: true });
+  loadOrganizationContext({ silent: true });
   renderRecords();
   renderAdminAudit();
   updateAdminControls();
