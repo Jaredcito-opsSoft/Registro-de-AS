@@ -47,12 +47,12 @@ function authErrorMessage(data, fallback) {
   return raw || fallback;
 }
 
-async function crearCuenta(email, password, nombre, matricula, organizationKey = "") {
+async function crearCuenta(email, password, nombre, matricula, organizationKey = "", organizationSlug = "") {
   assertSupabaseAuthConfig();
   const cleanEmail = String(email || "").trim().toLowerCase();
   const cleanNombre = String(nombre || "").trim();
   const cleanMatricula = String(matricula || "").trim();
-  const cleanOrganizationKey = String(organizationKey || "").trim();
+  const cleanOrganizationKey = String(organizationKey || organizationSlug || "").trim();
 
   const response = await fetch(`${window.SUPABASE_CONFIG.url}/auth/v1/signup`, {
     method: "POST",

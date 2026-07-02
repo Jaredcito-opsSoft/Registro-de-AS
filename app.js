@@ -254,6 +254,7 @@ function populateElements() {
   els.authName = $("#authName");
   els.authMatricula = $("#authMatricula");
   els.authOrgKey = $("#authOrgKey");
+  els.authOrgSelect = $("#authOrgSelect");
   els.authSubmitBtn = $("#authSubmitBtn");
   els.guestAccessBtn = $("#guestAccessBtn");
   els.toggleLoginBtn = $("#toggle-login-btn");
@@ -298,11 +299,17 @@ function updatePwaInstallUi() {
   if (!els.pwaInstallBanner) return;
   const canInstall = Boolean(state.deferredInstallPrompt);
   const showIosHelp = isIosSafari() && !isStandaloneDisplay();
-  const shouldShow = !isStandaloneDisplay() && (canInstall || showIosHelp);
+  const shouldShow = !isStandaloneDisplay();
 
   els.pwaInstallBanner.classList.toggle("is-hidden", !shouldShow);
-  els.pwaInstallButton?.classList.toggle("is-hidden", !canInstall);
-  els.pwaInstallHelp?.classList.toggle("is-hidden", !showIosHelp);
+  els.pwaInstallButton?.classList.toggle("is-hidden", false);
+  if (els.pwaInstallButton) els.pwaInstallButton.disabled = false;
+  if (els.pwaInstallHelp) {
+    els.pwaInstallHelp.classList.toggle("is-hidden", false);
+    els.pwaInstallHelp.textContent = showIosHelp
+      ? "En Safari, toca Compartir y luego Agregar a pantalla de inicio."
+      : "Si tu navegador muestra el permiso de instalacion, usa el boton. Si no aparece, abre el menu del navegador y elige Instalar app.";
+  }
 }
 
 function setupPwaInstall() {
@@ -327,7 +334,10 @@ function setupPwaInstall() {
   });
 
   els.pwaInstallButton?.addEventListener("click", async () => {
-    if (!state.deferredInstallPrompt) return;
+    if (!state.deferredInstallPrompt) {
+      showToast("Abre el menu del navegador y elige Instalar app o Agregar a pantalla de inicio.");
+      return;
+    }
     const promptEvent = state.deferredInstallPrompt;
     state.deferredInstallPrompt = null;
     promptEvent.prompt();
@@ -2811,6 +2821,38 @@ async function continueAsOperationalGuest() {
   await finishInitialization();
   showToast("Modo operativo activo. Puedes registrar entrada y salida sin cuenta confirmada.");
 }
+async function loadOrganizationOptions() {
+  if (!els.authOrgSelect) return;
+  const selected = localStorage.getItem("registro_asistencia_org_slug") || "";
+
+  if (!CLOUD_ENABLED) {
+    els.authOrgSelect.innerHTML = `<option value="">Organizacion principal</option>`;
+    return;
+  }
+
+  try {
+    const rows = await supabaseRequest("/rest/v1/rpc/get_public_organization_options", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({}),
+    });
+
+    const options = (Array.isArray(rows) ? rows : []).map((org) => {
+      const slug = String(org.slug || "").trim();
+      const label = `${org.nombre || "Organizacion"} (${org.tipo || "sitio"})`;
+      return `<option value="${escapeHtml(slug)}" ${slug === selected ? "selected" : ""}>${escapeHtml(label)}</option>`;
+    });
+
+    els.authOrgSelect.innerHTML = `<option value="">Selecciona sitio afiliado</option>${options.join("")}`;
+  } catch (error) {
+    console.warn("No se pudo cargar la lista publica de sitios.", error);
+    els.authOrgSelect.innerHTML = `<option value="">Organizacion principal</option>`;
+  }
+}
+
+function selectedOrganizationSlug() {
+  return els.authOrgSelect?.value.trim() || localStorage.getItem("registro_asistencia_org_slug") || "";
+}
 function updateAuthUI() {
   if (!els.labelName || !els.labelMatricula || !els.loginTitle || !els.loginSubtitle || !els.authSubmitBtn) return;
 
@@ -2846,6 +2888,8 @@ async function handleAuthSubmit(event) {
 
   const email = els.authEmail.value.trim();
   const password = els.authPassword.value.trim();
+  const orgSlug = selectedOrganizationSlug();
+  if (orgSlug) localStorage.setItem("registro_asistencia_org_slug", orgSlug);
 
   if (!email || !password) {
     showToast("Por favor completa los campos obligatorios.");
@@ -2883,7 +2927,7 @@ async function handleAuthSubmit(event) {
 
       const orgKey = els.authOrgKey?.value.trim() || "";
       if (orgKey) localStorage.setItem("registro_asistencia_org_key", orgKey);
-      const data = await crearCuenta(email, password, nombre, matricula, orgKey);
+      const data = await crearCuenta(email, password, nombre, matricula, orgKey, orgSlug);
 
       // Si retorna sesión, entra directo. Si no, pide verificar correo o iniciar sesión
       if (localStorage.getItem("registro_asistencia_token")) {
@@ -3131,7 +3175,11 @@ function init() {
     if (state.currentUser) refreshRecords({ silent: true });
   }, 30000);
 
-  // 5. Verificar sesión activa
+  setupPwaInstall();
+  loadOrganizationOptions();
+  updatePwaInstallUi();
+
+  // 5. Verificar sesion activa
   console.log("Verificando sesión activa de Supabase...");
   verificarSesion().then((user) => {
     if (user) {
