@@ -42,6 +42,10 @@
           Matrícula
           <input id="authMatricula" type="text" autocomplete="off" placeholder="Ej. A00125" />
         </label>
+        <label id="label-org-key" class="is-hidden">
+          Clave de organización
+          <input id="authOrgKey" type="text" autocomplete="off" placeholder="Ej. DEMO-AS-2026" />
+        </label>
         <label id="label-email">
           Correo electrónico
           <input id="authEmail" type="email" autocomplete="off" placeholder="Ej. ana.lopez@empresa.com" required />
@@ -566,6 +570,35 @@
               </article>
             </div>
 
+            <form id="organizationForm" class="site-form-grid superadmin-only is-hidden" aria-label="Crear organizacion">
+              <label>
+                Nombre
+                <input id="orgCreateName" autocomplete="organization" placeholder="Ej. Colegio Central" />
+              </label>
+              <label>
+                Tipo
+                <select id="orgCreateType">
+                  <option value="empresa">Empresa</option>
+                  <option value="escuela">Escuela</option>
+                  <option value="negocio_local">Negocio</option>
+                  <option value="centro_trabajo">Centro de trabajo</option>
+                  <option value="otro">Otro</option>
+                </select>
+              </label>
+              <label>
+                Slug
+                <input id="orgCreateSlug" placeholder="colegio-central" />
+              </label>
+              <label>
+                Clave de acceso
+                <input id="orgCreateKey" placeholder="CENTRAL-2026" />
+              </label>
+              <div class="site-actions">
+                <button class="primary" type="submit">Crear organizacion</button>
+              </div>
+              <p class="site-test-result" data-tone="warning">Comparte esta clave solo con usuarios de esa organización.</p>
+            </form>
+            <div id="organizationList" class="organization-list" aria-label="Organizaciones disponibles"></div>
             <div class="auth-roadmap" aria-label="Siguiente fase de autenticacion">
               <span>Login preparado</span>
               <p>La app sigue funcionando por matricula. Supabase Auth y permisos por rol quedan como siguiente fase estable.</p>

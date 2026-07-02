@@ -9,111 +9,95 @@ function assertSupabaseAuthConfig() {
   }
 }
 
-  const cleanEmail = email.trim().toLowerCase();
-  
-  console.log("--- REGISTRO DE CUENTA (crearCuenta) ---");
-  console.log("crearCuenta - Correo recibido del formulario (crudo):", email);
-  console.log("crearCuenta - Correo a registrar (normalizado):", cleanEmail);
+function authHeaders(token = "") {
+  assertSupabaseAuthConfig();
+  const key = window.SUPABASE_CONFIG.publishableKey;
+  return {
+    "Content-Type": "application/json",
+    "apikey": key,
+    "Authorization": `Bearer ${token || key}`,
+  };
+}
 
-  const url = `${window.SUPABASE_CONFIG.url}/auth/v1/signup`;
+async function parseAuthResponse(response) {
+  const text = await response.text();
+  return text ? JSON.parse(text) : {};
+}
 
-  try {
-    const response = await fetch(url, {
-      method: "POST",
-      headers: authHeaders(),
-      body: JSON.stringify({
-        email: cleanEmail,
-        password: password,
-        data: {
-          nombre,
-          matricula,
-          rol: "usuario",
-        },
-      }),
-    });
+function authErrorMessage(data, fallback) {
+  const raw = data?.error_description || data?.error || data?.message || "";
+  const normalized = String(raw).toLowerCase();
 
-    const data = await response.json();
-    console.log("crearCuenta - Código de estado HTTP de respuesta:", response.status);
-    console.log("crearCuenta - Objeto retornado por Supabase:", data);
-
-    if (!response.ok) {
-      console.error("crearCuenta - Error al crear cuenta:", data.error_description || data.error || data.message);
-      throw new Error(data.error_description || data.error || data.message || "Error al crear la cuenta.");
-    }
-
-    // Si el auto-confirm de emails de Supabase está activo, puede retornar una sesión
-    if (data.access_token) {
-      localStorage.setItem("registro_asistencia_token", data.access_token);
-    } else if (data.session && data.session.access_token) {
-      localStorage.setItem("registro_asistencia_token", data.session.access_token);
-    }
-
-    console.log("crearCuenta - Cuenta creada exitosamente. Usuario:", data.user);
-    return data;
-  } catch (error) {
-    console.error("Error en crearCuenta:", error);
-    throw error;
+  if (normalized.includes("email not confirmed") || normalized.includes("email_not_confirmed") || normalized.includes("confirm your email")) {
+    return "Revisa tu correo para confirmar tu cuenta antes de iniciar sesion, o usa modo operativo temporal.";
   }
+
+  if (normalized.includes("invalid login credentials")) {
+    return "Credenciales invalidas. Verifica tu correo y contrasena.";
+  }
+
+  if (normalized.includes("email_address_invalid") || normalized.includes("invalid email")) {
+    return "El correo no es valido para Supabase Auth. Usa un correo real o un dominio permitido.";
+  }
+
+  if (normalized.includes("user already registered") || normalized.includes("already registered")) {
+    return "Ese correo ya esta registrado. Intenta iniciar sesion.";
+  }
+
+  return raw || fallback;
+}
+
+async function crearCuenta(email, password, nombre, matricula, organizationKey = "") {
+  assertSupabaseAuthConfig();
+  const cleanEmail = String(email || "").trim().toLowerCase();
+  const cleanNombre = String(nombre || "").trim();
+  const cleanMatricula = String(matricula || "").trim();
+  const cleanOrganizationKey = String(organizationKey || "").trim();
+
+  const response = await fetch(`${window.SUPABASE_CONFIG.url}/auth/v1/signup`, {
+    method: "POST",
+    headers: authHeaders(),
+    body: JSON.stringify({
+      email: cleanEmail,
+      password,
+      data: {
+        nombre: cleanNombre,
+        matricula: cleanMatricula,
+        rol: "usuario",
+        organization_key: cleanOrganizationKey,
+      },
+    }),
+  });
+
+  const data = await parseAuthResponse(response);
+
+  if (!response.ok) {
+    throw new Error(authErrorMessage(data, "Error al crear la cuenta."));
+  }
+
+  const token = data.access_token || data.session?.access_token;
+  if (token) localStorage.setItem("registro_asistencia_token", token);
+  return data;
 }
 
 async function iniciarSesion(email, password) {
-  if (!window.SUPABASE_CONFIG || !window.SUPABASE_CONFIG.url || !window.SUPABASE_CONFIG.publishableKey) {
-    throw new Error("La configuración de Supabase no está definida en window.SUPABASE_CONFIG.");
+  assertSupabaseAuthConfig();
+  const cleanEmail = String(email || "").trim().toLowerCase();
+
+  const response = await fetch(`${window.SUPABASE_CONFIG.url}/auth/v1/token?grant_type=password`, {
+    method: "POST",
+    headers: authHeaders(),
+    body: JSON.stringify({ email: cleanEmail, password }),
+  });
+
+  const data = await parseAuthResponse(response);
+
+  if (!response.ok) {
+    throw new Error(authErrorMessage(data, "Error al iniciar sesion."));
   }
 
-  const cleanEmail = email.trim().toLowerCase();
-  
-  console.log("--- INICIO DE SESIÓN (iniciarSesion) ---");
-  console.log("iniciarSesion - Correo recibido del formulario (crudo):", email);
-  console.log("iniciarSesion - Correo a buscar/validar (normalizado):", cleanEmail);
-  console.log("iniciarSesion - Validación de contraseña: Se envía en texto plano (canal seguro HTTPS) para validación y hash en el servidor de Supabase.");
-
-  const url = `${window.SUPABASE_CONFIG.url}/auth/v1/token?grant_type=password`;
-
-  try {
-    const response = await fetch(url, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "apikey": window.SUPABASE_CONFIG.publishableKey
-      },
-      body: JSON.stringify({ email: cleanEmail, password })
-    });
-
-    const data = await response.json();
-    console.log("iniciarSesion - Código de estado HTTP de respuesta:", response.status);
-    console.log("iniciarSesion - Objeto de sesión/usuario retornado por Supabase:", data);
-
-    if (!response.ok) {
-      console.error("iniciarSesion - Error al iniciar sesión:", data.error_description || data.error || data.message);
-      
-      if (response.status === 400) {
-        const errorDesc = data.error_description || data.error || data.message || "";
-        const errorCode = data.error || "";
-        if (
-          errorDesc.includes("Email not confirmed") || 
-          errorDesc.includes("confirm your email") || 
-          errorDesc.includes("email_not_confirmed") ||
-          errorCode === "email_not_confirmed"
-        ) {
-          throw new Error("Revisa tu correo para confirmar tu cuenta antes de iniciar sesión");
-        }
-        throw new Error("Credenciales inválidas. Por favor, verifica tu correo y contraseña.");
-      }
-      throw new Error(data.error_description || data.error || data.message || "Error al iniciar sesión.");
-    }
-
-    if (data.access_token) {
-      localStorage.setItem("registro_asistencia_token", data.access_token);
-      console.log("iniciarSesion - Sesión iniciada correctamente. Token guardado en localStorage. Usuario:", data.user?.email);
-    }
-
-    if (data.access_token) localStorage.setItem("registro_asistencia_token", data.access_token);
-    return data;
-  } catch (error) {
-    console.error("Error en iniciarSesion:", error);
-    throw error;
-  }
+  if (data.access_token) localStorage.setItem("registro_asistencia_token", data.access_token);
+  return data;
 }
 
 async function cerrarSesion() {
@@ -121,9 +105,8 @@ async function cerrarSesion() {
   localStorage.removeItem("registro_asistencia_token");
 
   if (window.SUPABASE_CONFIG && window.SUPABASE_CONFIG.url && token) {
-    const url = `${window.SUPABASE_CONFIG.url}/auth/v1/logout`;
     try {
-      await fetch(url, {
+      await fetch(`${window.SUPABASE_CONFIG.url}/auth/v1/logout`, {
         method: "POST",
         headers: authHeaders(token),
       });
@@ -145,10 +128,8 @@ async function verificarSesion() {
   const token = localStorage.getItem("registro_asistencia_token");
   if (!token) return null;
 
-  const url = `${window.SUPABASE_CONFIG.url}/auth/v1/user`;
-
   try {
-    const response = await fetch(url, {
+    const response = await fetch(`${window.SUPABASE_CONFIG.url}/auth/v1/user`, {
       method: "GET",
       headers: authHeaders(token),
     });
@@ -165,55 +146,34 @@ async function verificarSesion() {
   }
 }
 
-/**
- * Actualiza el perfil del usuario autenticado en Supabase.
- * Realiza un PUT a /auth/v1/user.
- * 
- * @param {string} email - Nuevo correo electrónico.
- * @param {string} nombre - Nuevo nombre completo.
- * @param {string} matricula - Nueva matrícula.
- * @returns {Promise<object>} - Datos del usuario actualizados devueltos por Supabase.
- * @throws {Error} - Error si la petición falla.
- */
 async function actualizarPerfil(email, nombre, matricula) {
-  if (!window.SUPABASE_CONFIG || !window.SUPABASE_CONFIG.url || !window.SUPABASE_CONFIG.publishableKey) {
-    throw new Error("La configuración de Supabase no está definida en window.SUPABASE_CONFIG.");
-  }
-
+  assertSupabaseAuthConfig();
   const token = localStorage.getItem("registro_asistencia_token");
-  if (!token) {
-    throw new Error("No hay una sesión activa para actualizar el perfil.");
-  }
+  if (!token) throw new Error("No hay una sesion activa para actualizar el perfil.");
 
-  const url = `${window.SUPABASE_CONFIG.url}/auth/v1/user`;
-  const cleanEmail = email.trim().toLowerCase();
-
-  try {
-    const response = await fetch(url, {
-      method: "PUT",
-      headers: {
-        "Content-Type": "application/json",
-        "apikey": window.SUPABASE_CONFIG.publishableKey,
-        "Authorization": `Bearer ${token}`
+  const response = await fetch(`${window.SUPABASE_CONFIG.url}/auth/v1/user`, {
+    method: "PUT",
+    headers: authHeaders(token),
+    body: JSON.stringify({
+      email: String(email || "").trim().toLowerCase(),
+      data: {
+        nombre: String(nombre || "").trim(),
+        matricula: String(matricula || "").trim(),
       },
-      body: JSON.stringify({
-        email: cleanEmail,
-        data: {
-          nombre: nombre.trim(),
-          matricula: matricula.trim()
-        }
-      })
-    });
+    }),
+  });
 
-    const data = await response.json();
+  const data = await parseAuthResponse(response);
 
-    if (!response.ok) {
-      throw new Error(data.error_description || data.error || data.message || "Error al actualizar el perfil.");
-    }
-
-    return data;
-  } catch (error) {
-    console.error("Error en actualizarPerfil:", error);
-    throw error;
+  if (!response.ok) {
+    throw new Error(authErrorMessage(data, "Error al actualizar el perfil."));
   }
+
+  return data;
 }
+
+window.crearCuenta = crearCuenta;
+window.iniciarSesion = iniciarSesion;
+window.cerrarSesion = cerrarSesion;
+window.verificarSesion = verificarSesion;
+window.actualizarPerfil = actualizarPerfil;

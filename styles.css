@@ -2338,3 +2338,45 @@ tbody tr:hover {
     grid-template-columns: 1fr;
   }
 }
+
+.organization-list {
+  display: grid;
+  gap: 10px;
+  margin: 14px 0;
+}
+
+.organization-item {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.organization-item div {
+  display: grid;
+  gap: 3px;
+}
+
+.organization-item strong {
+  color: var(--ink);
+  font-weight: 900;
+}
+
+.organization-item span,
+.organization-item small,
+.muted-note {
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+@media (max-width: 760px) {
+  .organization-item {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}

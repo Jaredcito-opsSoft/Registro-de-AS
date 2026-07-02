@@ -210,6 +210,12 @@ function populateElements() {
   els.orgSitesLabel = $("#orgSitesLabel");
   els.orgUsersLabel = $("#orgUsersLabel");
   els.orgAttendancesLabel = $("#orgAttendancesLabel");
+  els.organizationForm = $("#organizationForm");
+  els.organizationList = $("#organizationList");
+  els.orgCreateName = $("#orgCreateName");
+  els.orgCreateType = $("#orgCreateType");
+  els.orgCreateSlug = $("#orgCreateSlug");
+  els.orgCreateKey = $("#orgCreateKey");
   els.siteStatusBadge = $("#siteStatusBadge");
   els.siteStatusSummary = $("#siteStatusSummary");
   els.siteNameLabel = $("#siteNameLabel");
@@ -247,12 +253,14 @@ function populateElements() {
   els.authPassword = $("#authPassword");
   els.authName = $("#authName");
   els.authMatricula = $("#authMatricula");
+  els.authOrgKey = $("#authOrgKey");
   els.authSubmitBtn = $("#authSubmitBtn");
   els.guestAccessBtn = $("#guestAccessBtn");
   els.toggleLoginBtn = $("#toggle-login-btn");
   els.toggleRegisterBtn = $("#toggle-register-btn");
   els.labelName = $("#label-name");
   els.labelMatricula = $("#label-matricula");
+  els.labelOrgKey = $("#label-org-key");
   els.loginTitle = $("#login-title");
   els.loginSubtitle = $("#login-subtitle");
   els.profileName = $("#profileName");
@@ -774,6 +782,7 @@ async function loadCurrentAppUser({ silent = false } = {}) {
     const result = await callAdminRpc("get_current_app_user", {
       p_nombre: metadata.nombre || metadata.full_name || state.currentUser.email || "Usuario",
       p_matricula: metadata.matricula || "",
+      p_org_key: metadata.organization_key || metadata.org_key || localStorage.getItem("registro_asistencia_org_key") || "",
     });
     const appUser = getRpcFirstRow(result);
     applyAppUserSession(appUser);
@@ -785,6 +794,66 @@ async function loadCurrentAppUser({ silent = false } = {}) {
   }
 }
 
+
+async function loadOrganizations({ silent = false } = {}) {
+  if (!CLOUD_ENABLED || !state.currentUser || !localStorage.getItem("registro_asistencia_token") || !els.organizationList) return;
+  try {
+    const rows = await callAdminRpc("get_manageable_organizations", {});
+    renderOrganizations(rows || []);
+  } catch (error) {
+    if (!silent) showToast("No se pudo cargar organizaciones.");
+  }
+}
+
+function renderOrganizations(rows) {
+  if (!els.organizationList) return;
+  const canManageOrg = hasPermission("manage_organization");
+  document.querySelectorAll(".superadmin-only").forEach((element) => {
+    element.classList.toggle("is-hidden", !canManageOrg);
+  });
+  if (!rows.length) {
+    els.organizationList.innerHTML = `<p class="muted-note">Sin organizaciones disponibles para este rol.</p>`;
+    return;
+  }
+  els.organizationList.innerHTML = rows.map((org) => `
+    <article class="organization-item">
+      <div>
+        <strong>${escapeHtml(org.nombre || "Organizacion")}</strong>
+        <span>${escapeHtml(org.tipo || "empresa")} - ${escapeHtml(org.slug || "sin-slug")}</span>
+      </div>
+      <small>${Number(org.sitios_total || 0)} sitios - ${Number(org.usuarios_total || 0)} usuarios - ${Number(org.asistencias_total || 0)} asistencias</small>
+    </article>
+  `).join("");
+}
+
+async function handleOrganizationSubmit(event) {
+  event.preventDefault();
+  if (!hasPermission("manage_organization")) {
+    showToast("Solo superadmin puede crear organizaciones.");
+    return;
+  }
+  const nombre = els.orgCreateName?.value.trim() || "";
+  const clave = els.orgCreateKey?.value.trim() || "";
+  if (!nombre || !clave) {
+    showToast("Nombre y clave son obligatorios para crear una organizacion.");
+    return;
+  }
+  try {
+    await callAdminRpc("admin_create_organization", {
+      p_nombre: nombre,
+      p_tipo: els.orgCreateType?.value || "empresa",
+      p_slug: els.orgCreateSlug?.value.trim() || null,
+      p_clave: clave,
+      p_activo: true,
+    });
+    els.organizationForm?.reset();
+    await loadOrganizationContext({ silent: true });
+    await loadOrganizations({ silent: true });
+    showToast("Organizacion creada. Comparte su clave con sus usuarios.");
+  } catch (error) {
+    showToast("No se pudo crear la organizacion. Verifica permisos y slug.");
+  }
+}
 async function loadAttendanceStreak({ silent = false } = {}) {
   if (!CLOUD_ENABLED || !state.currentUser || !localStorage.getItem("registro_asistencia_token")) {
     state.attendanceStreak = null;
@@ -2371,6 +2440,7 @@ function requestAdminAccess() {
     renderRecords();
     loadActiveSite({ silent: true });
     loadOrganizationContext({ silent: true });
+  loadOrganizations({ silent: true });
     addAdminLog("Desbloqueo por rol", getRoleDefinition().label + " activo");
     showToast("Permisos administrativos activados por rol.");
     return true;
@@ -2382,6 +2452,7 @@ function requestAdminAccess() {
     renderRecords();
     loadActiveSite({ silent: true });
     loadOrganizationContext({ silent: true });
+  loadOrganizations({ silent: true });
     addAdminLog("Desbloqueo admin", "Modo administrativo activado");
     showToast("Modo administrativo desbloqueado.");
     return true;
@@ -2746,8 +2817,10 @@ function updateAuthUI() {
   if (authMode === "login") {
     els.labelName.classList.add("is-hidden");
     els.labelMatricula.classList.add("is-hidden");
+    els.labelOrgKey?.classList.add("is-hidden");
     els.authName.required = false;
     els.authMatricula.required = false;
+    if (els.authOrgKey) els.authOrgKey.required = false;
     els.loginTitle.textContent = "Iniciar Sesión";
     els.loginSubtitle.textContent = "Ingresa tus credenciales para acceder al control de asistencia.";
     els.authSubmitBtn.textContent = "Ingresar";
@@ -2756,8 +2829,10 @@ function updateAuthUI() {
   } else {
     els.labelName.classList.remove("is-hidden");
     els.labelMatricula.classList.remove("is-hidden");
+    els.labelOrgKey?.classList.remove("is-hidden");
     els.authName.required = true;
     els.authMatricula.required = true;
+    if (els.authOrgKey) els.authOrgKey.required = false;
     els.loginTitle.textContent = "Registrarse";
     els.loginSubtitle.textContent = "Crea una cuenta para registrar tu asistencia diaria.";
     els.authSubmitBtn.textContent = "Crear Cuenta";
@@ -2806,7 +2881,9 @@ async function handleAuthSubmit(event) {
         return;
       }
 
-      const data = await crearCuenta(email, password, nombre, matricula);
+      const orgKey = els.authOrgKey?.value.trim() || "";
+      if (orgKey) localStorage.setItem("registro_asistencia_org_key", orgKey);
+      const data = await crearCuenta(email, password, nombre, matricula, orgKey);
 
       // Si retorna sesión, entra directo. Si no, pide verificar correo o iniciar sesión
       if (localStorage.getItem("registro_asistencia_token")) {
@@ -2924,6 +3001,7 @@ async function finishInitialization() {
   loadAttendanceStreak({ silent: true });
   loadActiveSite({ silent: true });
   loadOrganizationContext({ silent: true });
+  loadOrganizations({ silent: true });
   renderRecords();
   renderAdminAudit();
   updateAdminControls();
@@ -3036,6 +3114,7 @@ function init() {
     });
   }
   if (els.siteForm) els.siteForm.addEventListener("submit", handleSiteSubmit);
+  if (els.organizationForm) els.organizationForm.addEventListener("submit", handleOrganizationSubmit);
   if (els.useAdminLocation) els.useAdminLocation.addEventListener("click", useAdminLocation);
   if (els.testAdminLocation) els.testAdminLocation.addEventListener("click", testAdminLocation);
 
