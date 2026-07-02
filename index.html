@@ -735,6 +735,21 @@
                 Alcance de permisos
                 <textarea id="profileScope" rows="3" readonly style="background: rgba(0,0,0,0.02); cursor: default; resize: none;"></textarea>
               </label>
+              <section class="streak-panel" aria-label="Racha y cumplimiento personal">
+                <div class="streak-metrics">
+                  <article>
+                    <span>Racha actual</span>
+                    <strong><span id="streakDays">--</span> dias</strong>
+                  </article>
+                  <article>
+                    <span>Cumplimiento</span>
+                    <strong id="streakCompliance">--</strong>
+                  </article>
+                </div>
+                <p id="streakSite" class="streak-site">Disponible al iniciar sesion</p>
+                <p id="streakSchedule" class="streak-schedule">Horario del sitio pendiente</p>
+                <p id="streakSummary" class="streak-summary">La racha y cumplimiento se calculan solo con una cuenta autenticada.</p>
+              </section>
               <div class="form-actions" style="margin-top: 14px;">
                 <button id="save-profile-btn" class="primary wide" type="submit">Guardar cambios</button>
               </div>

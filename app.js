@@ -127,6 +127,7 @@ const state = {
   currentAppUser: null,
   currentRole: "usuario",
   currentPermissions: { ...ROLE_DEFINITIONS.usuario.permissions },
+  attendanceStreak: null,
   recordFilters: {
     date: "",
     status: "all",
@@ -188,6 +189,27 @@ function populateElements() {
   els.totalProgress = $("#totalProgress");
   els.completedProgress = $("#completedProgress");
   els.pendingProgress = $("#pendingProgress");
+  els.dashboardVisibleTotal = $("#dashboardVisibleTotal");
+  els.dashboardToday = $("#dashboardToday");
+  els.dashboardCompleted = $("#dashboardCompleted");
+  els.dashboardPending = $("#dashboardPending");
+  els.dashboardReview = $("#dashboardReview");
+  els.dashboardIssues = $("#dashboardIssues");
+  els.dashboardCompletionRate = $("#dashboardCompletionRate");
+  els.dashboardScopeLabel = $("#dashboardScopeLabel");
+  els.dashboardAlerts = $("#dashboardAlerts");
+  els.filterDate = $("#filterDate");
+  els.filterStatus = $("#filterStatus");
+  els.filterRisk = $("#filterRisk");
+  els.filterSearch = $("#filterSearch");
+  els.clearDashboardFilters = $("#clearDashboardFilters");
+  els.orgStatusBadge = $("#orgStatusBadge");
+  els.orgFoundationSummary = $("#orgFoundationSummary");
+  els.orgNameLabel = $("#orgNameLabel");
+  els.orgTypeLabel = $("#orgTypeLabel");
+  els.orgSitesLabel = $("#orgSitesLabel");
+  els.orgUsersLabel = $("#orgUsersLabel");
+  els.orgAttendancesLabel = $("#orgAttendancesLabel");
   els.siteStatusBadge = $("#siteStatusBadge");
   els.siteStatusSummary = $("#siteStatusSummary");
   els.siteNameLabel = $("#siteNameLabel");
@@ -226,6 +248,7 @@ function populateElements() {
   els.authName = $("#authName");
   els.authMatricula = $("#authMatricula");
   els.authSubmitBtn = $("#authSubmitBtn");
+  els.guestAccessBtn = $("#guestAccessBtn");
   els.toggleLoginBtn = $("#toggle-login-btn");
   els.toggleRegisterBtn = $("#toggle-register-btn");
   els.labelName = $("#label-name");
@@ -235,10 +258,20 @@ function populateElements() {
   els.profileName = $("#profileName");
   els.profileMatricula = $("#profileMatricula");
   els.profileEmail = $("#profileEmail");
+  els.profileRole = $("#profileRole");
+  els.profileScope = $("#profileScope");
+  els.streakDays = $("#streakDays");
+  els.streakCompliance = $("#streakCompliance");
+  els.streakSite = $("#streakSite");
+  els.streakSchedule = $("#streakSchedule");
+  els.streakSummary = $("#streakSummary");
   els.userInitials = $("#userInitials");
   els.btnLogout = $("#btn-logout");
   els.profileForm = $("#profileForm");
   els.profileSubmitBtn = $("#save-profile-btn");
+  els.pwaInstallBanner = $("#pwaInstallBanner");
+  els.pwaInstallButton = $("#pwaInstallButton");
+  els.pwaInstallHelp = $("#pwaInstallHelp");
 }
 
 
@@ -658,7 +691,7 @@ function canViewRecord(record) {
 
   if (hasPermission("view_site_records")) {
     const assignedSite = state.currentAppUser?.sitio_id;
-    if (!assignedSite) return true;
+    if (!assignedSite) return false;
     return [record.sitioId, record.sitioEntradaId, record.sitioSalidaId].includes(assignedSite);
   }
 
@@ -698,6 +731,36 @@ function renderCurrentUserProfile() {
   if (els.profileEmail) els.profileEmail.value = email;
   if (els.profileRole) els.profileRole.value = role.label;
   if (els.profileScope) els.profileScope.value = role.scope;
+  renderAttendanceStreak();
+}
+
+function renderAttendanceStreak() {
+  const streak = state.attendanceStreak;
+  if (!els.streakDays) return;
+
+  if (!state.currentUser || !streak) {
+    els.streakDays.textContent = "--";
+    els.streakCompliance.textContent = "--";
+    els.streakSite.textContent = state.currentUser ? "Sin datos todavia" : "Disponible al iniciar sesion";
+    els.streakSchedule.textContent = "Horario del sitio pendiente";
+    els.streakSummary.textContent = state.currentUser
+      ? "Registra entrada y salida para calcular tu racha personal."
+      : "La racha y cumplimiento se calculan solo con una cuenta autenticada.";
+    return;
+  }
+
+  const compliance = Number(streak.cumplimiento_pct || 0);
+  const entryHours = streak.horario_entrada || "--:-- - --:--";
+  const exitHours = streak.horario_salida || "--:-- - --:--";
+  const totalDays = Number(streak.dias_con_registro || 0);
+  const completeDays = Number(streak.dias_cumplidos || 0);
+  const reviewDays = Number(streak.dias_revision || 0);
+
+  els.streakDays.textContent = String(streak.racha_actual || 0);
+  els.streakCompliance.textContent = `${compliance.toFixed(compliance % 1 === 0 ? 0 : 1)}%`;
+  els.streakSite.textContent = streak.sitio_nombre || "Sitio no asignado";
+  els.streakSchedule.textContent = `Entrada ${entryHours} | Salida ${exitHours}`;
+  els.streakSummary.textContent = `${completeDays} de ${totalDays} dias cumplidos. ${reviewDays} en revision.`;
 }
 
 async function loadCurrentAppUser({ silent = false } = {}) {
@@ -718,6 +781,26 @@ async function loadCurrentAppUser({ silent = false } = {}) {
   } catch (error) {
     applyAppUserSession(null);
     if (!silent) showToast("No se pudo cargar el rol del usuario. Se aplicaran permisos basicos.");
+    return null;
+  }
+}
+
+async function loadAttendanceStreak({ silent = false } = {}) {
+  if (!CLOUD_ENABLED || !state.currentUser || !localStorage.getItem("registro_asistencia_token")) {
+    state.attendanceStreak = null;
+    renderAttendanceStreak();
+    return null;
+  }
+
+  try {
+    const result = await callAdminRpc("get_attendance_streak", {});
+    state.attendanceStreak = getRpcFirstRow(result);
+    renderAttendanceStreak();
+    return state.attendanceStreak;
+  } catch (error) {
+    state.attendanceStreak = null;
+    renderAttendanceStreak();
+    if (!silent) showToast("No se pudo cargar tu racha de asistencia.");
     return null;
   }
 }
@@ -1030,19 +1113,20 @@ async function handleSiteSubmit(event) {
   }
 }
 async function refreshRecords({ silent = false } = {}) {
-  if (!CLOUD_ENABLED) {
+  if (!CLOUD_ENABLED || !localStorage.getItem("registro_asistencia_token")) {
     renderRecords();
     return;
   }
 
   try {
     state.loadingRecords = true;
-    const rows = await supabaseRequest("/rest/v1/asistencias?select=*&order=fecha.desc,hora_entrada.desc");
+    const rows = await callAdminRpc("get_visible_asistencias", {});
     state.records = (rows || []).map(rowToRecord);
     persistLocalSnapshot();
     renderRecords();
+    loadAttendanceStreak({ silent: true });
   } catch (error) {
-    if (!silent) showToast("No se pudo cargar la lista global. Revisa la conexion.");
+    if (!silent) showToast("No se pudo cargar tu lista de registros permitidos. Revisa la conexion.");
     renderRecords();
   } finally {
     state.loadingRecords = false;
@@ -2837,6 +2921,7 @@ async function finishInitialization() {
   loadFaceModels();
   updateClockAndQr({ force: true });
   await loadCurrentAppUser({ silent: true });
+  loadAttendanceStreak({ silent: true });
   loadActiveSite({ silent: true });
   loadOrganizationContext({ silent: true });
   renderRecords();
