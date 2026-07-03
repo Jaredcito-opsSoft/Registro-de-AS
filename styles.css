@@ -2381,3 +2381,74 @@ tbody tr:hover {
     flex-direction: column;
   }
 }
+
+
+.admin-directory-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  margin-top: 18px;
+}
+
+.admin-directory-section {
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: var(--card);
+  padding: 16px;
+  box-shadow: var(--shadow-soft);
+}
+
+.site-admin-header.compact {
+  margin-bottom: 12px;
+  align-items: flex-start;
+}
+
+.site-admin-header.compact h3 {
+  margin: 2px 0 4px;
+  font-size: 1rem;
+}
+
+.site-admin-header.compact p:last-child {
+  color: var(--muted);
+  font-size: 0.84rem;
+  line-height: 1.35;
+}
+
+.compact-list {
+  display: grid;
+  gap: 10px;
+  max-height: 360px;
+  overflow: auto;
+  padding-right: 4px;
+}
+
+.directory-item {
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.directory-actions {
+  display: flex;
+  align-items: flex-end;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 120px;
+  text-align: right;
+}
+
+.directory-actions .mini {
+  min-height: 34px;
+  padding: 8px 12px;
+}
+
+@media (max-width: 960px) {
+  .admin-directory-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .directory-item,
+  .directory-actions {
+    align-items: stretch;
+    text-align: left;
+  }
+}

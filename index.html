@@ -123,6 +123,17 @@
           </span>
           <span class="nav-label">Registros</span>
         </button>
+        <button class="nav-button admin-nav is-hidden" data-target="admin" type="button" aria-label="Panel admin">
+          <span class="nav-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="3" y="4" width="18" height="16" rx="2" />
+              <path d="M8 9h8" />
+              <path d="M8 13h5" />
+              <path d="M16 17h2" />
+            </svg>
+          </span>
+          <span class="nav-label">Admin</span>
+        </button>
 
         <!-- QR Compacto reubicado debajo de Registros -->
         <div id="qrBox" style="margin-top: 12px; padding-top: 12px; display: flex; flex-direction: column; align-items: center; gap: 4px; border-top: 1px solid rgba(255, 255, 255, 0.12); width: 100%; text-align: center;">
@@ -446,15 +457,15 @@
         <section class="panel records-panel is-hidden" data-view="records">
           <div class="panel-heading">
             <div>
-              <p class="section-kicker">Historial</p>
-              <h2>Tabla de asistencia</h2>
-              <p class="read-only-note">
-                Vista de solo lectura. Las acciones sensibles requieren clave administrativa.
+              <p id="recordsKicker" class="section-kicker">Historial</p>
+              <h2 id="recordsTitle">Tabla de asistencia</h2>
+              <p id="recordsSubtitle" class="read-only-note">
+                Vista de solo lectura segun tu rol. Los usuarios normales solo ven sus propios registros.
               </p>
             </div>
             <div class="button-row toolbar-actions">
               <button class="back-button" data-target="home" type="button">Volver al inicio</button>
-              <button id="unlockAdmin" class="secondary" type="button">Desbloquear admin</button>
+              <button id="unlockAdmin" class="secondary is-hidden" type="button">Desbloquear admin</button>
               <button id="lockAdmin" class="ghost is-hidden" type="button">Bloquear admin</button>
               <button id="exportCsv" class="secondary admin-control is-hidden" type="button">Exportar CSV</button>
               <button id="clearRecords" class="danger admin-control is-hidden" type="button">Limpiar datos</button>
@@ -605,9 +616,31 @@
               <p class="site-test-result" data-tone="warning">Comparte esta clave solo con usuarios de esa organización.</p>
             </form>
             <div id="organizationList" class="organization-list" aria-label="Organizaciones disponibles"></div>
-            <div class="auth-roadmap" aria-label="Siguiente fase de autenticacion">
-              <span>Login preparado</span>
-              <p>La app sigue funcionando por matricula. Supabase Auth y permisos por rol quedan como siguiente fase estable.</p>
+            <div class="admin-directory-grid" aria-label="Directorios administrativos">
+              <section class="admin-directory-section">
+                <div class="site-admin-header compact">
+                  <div>
+                    <p class="section-kicker">Sitios gestionables</p>
+                    <h3>Ubicaciones y llaves</h3>
+                    <p>Controla sitios activos, horarios, radios GPS y llave especial por sitio.</p>
+                  </div>
+                </div>
+                <div id="siteDirectory" class="organization-list compact-list" aria-label="Sitios gestionables"></div>
+              </section>
+              <section class="admin-directory-section">
+                <div class="site-admin-header compact">
+                  <div>
+                    <p class="section-kicker">Usuarios gestionables</p>
+                    <h3>Personas y roles</h3>
+                    <p>Superadmin ve todo. Administrador de sitio solo ve usuarios de su alcance.</p>
+                  </div>
+                </div>
+                <div id="userDirectory" class="organization-list compact-list" aria-label="Usuarios gestionables"></div>
+              </section>
+            </div>
+            <div class="auth-roadmap" aria-label="Politica de administracion">
+              <span>Separacion activa</span>
+              <p>El acceso administrativo se decide por rol en Supabase, no por botones de desbloqueo visibles.</p>
             </div>
           </section>
           <section class="site-admin-panel admin-control is-hidden" aria-labelledby="siteConfigTitle">
@@ -684,6 +717,10 @@
                 Salida fin
                 <input id="siteExitEnd" type="time" value="17:10" required />
               </label>
+              <label>
+                Llave especial del sitio
+                <input id="siteKey" type="text" autocomplete="off" placeholder="Ej. PLANTA-A-2026" />
+              </label>
               <label class="inline-check">
                 <input id="siteActive" type="checkbox" checked />
                 Mantener como sitio activo
@@ -736,7 +773,7 @@
             </div>
           </div>
 
-          <div class="audit-box">
+          <div class="audit-box admin-control is-hidden">
             <h3>Auditoria administrativa</h3>
             <p id="adminAudit">No hay acciones administrativas registradas.</p>
           </div>

@@ -64,13 +64,13 @@ const ROLE_DEFINITIONS = {
   },
   admin: {
     label: "Administrador",
-    scope: "Puede administrar registros, sitio, exportaciones y auditoria.",
+    scope: "Administra su sitio u organizacion: registros, usuarios, ubicacion, fotos y auditoria local.",
     rank: 30,
     permissions: {
       register_attendance: true,
       view_own_records: true,
       view_site_records: true,
-      view_all_records: true,
+      view_all_records: false,
       view_evidence: true,
       export_records: true,
       manage_records: true,
@@ -105,6 +105,7 @@ const state = {
   adminLog: loadAdminLog(),
   demoMode: localStorage.getItem(DEMO_KEY) === "true",
   isAdmin: false,
+  manualAdminUnlocked: false,
   entryPhoto: "",
   exitPhoto: "",
   entryStream: null,
@@ -183,6 +184,9 @@ function populateElements() {
   els.clearRecords = $("#clearRecords");
   els.adminStatus = $("#adminStatus");
   els.adminAudit = $("#adminAudit");
+  els.recordsKicker = $("#recordsKicker");
+  els.recordsTitle = $("#recordsTitle");
+  els.recordsSubtitle = $("#recordsSubtitle");
   els.totalRecords = $("#totalRecords");
   els.completedRecords = $("#completedRecords");
   els.pendingRecords = $("#pendingRecords");
@@ -212,6 +216,8 @@ function populateElements() {
   els.orgAttendancesLabel = $("#orgAttendancesLabel");
   els.organizationForm = $("#organizationForm");
   els.organizationList = $("#organizationList");
+  els.siteDirectory = $("#siteDirectory");
+  els.userDirectory = $("#userDirectory");
   els.orgCreateName = $("#orgCreateName");
   els.orgCreateType = $("#orgCreateType");
   els.orgCreateSlug = $("#orgCreateSlug");
@@ -238,6 +244,7 @@ function populateElements() {
   els.siteExitStart = $("#siteExitStart");
   els.siteExitEnd = $("#siteExitEnd");
   els.siteTimezone = $("#siteTimezone");
+  els.siteKey = $("#siteKey");
   els.siteActive = $("#siteActive");
   els.useAdminLocation = $("#useAdminLocation");
   els.testAdminLocation = $("#testAdminLocation");
@@ -699,18 +706,25 @@ function canUseRoleAdminMode() {
   return hasAnyPermission(["manage_records", "manage_site", "export_records", "manage_organization", "manage_roles", "view_audit"]);
 }
 
+function isRoleAdminSession() {
+  return canUseRoleAdminMode();
+}
+
 function getCurrentUserMatricula() {
   return normalizeMatricula(state.currentAppUser?.matricula || state.currentUser?.user_metadata?.matricula || "");
 }
 
 function canViewRecord(record) {
   if (!state.currentUser) return false;
-  if (state.isAdmin || hasPermission("view_all_records")) return true;
+  if (state.manualAdminUnlocked || hasPermission("view_all_records")) return true;
 
   if (hasPermission("view_site_records")) {
     const assignedSite = state.currentAppUser?.sitio_id;
-    if (!assignedSite) return false;
-    return [record.sitioId, record.sitioEntradaId, record.sitioSalidaId].includes(assignedSite);
+    if (assignedSite) return [record.sitioId, record.sitioEntradaId, record.sitioSalidaId].includes(assignedSite);
+
+    const assignedOrg = state.currentAppUser?.organizacion_id;
+    if (assignedOrg && record.organizacionId) return record.organizacionId === assignedOrg;
+    return false;
   }
 
   return hasPermission("view_own_records") && normalizeMatricula(record.matricula) === getCurrentUserMatricula();
@@ -727,7 +741,7 @@ function applyAppUserSession(appUser) {
     ...getRoleDefinition(state.currentRole).permissions,
     ...(appUser?.permisos || {}),
   };
-  if (canUseRoleAdminMode()) state.isAdmin = true;
+  state.isAdmin = canUseRoleAdminMode() || state.manualAdminUnlocked;
   renderCurrentUserProfile();
 }
 
@@ -836,6 +850,109 @@ function renderOrganizations(rows) {
   `).join("");
 }
 
+function renderManagedSites(rows = []) {
+  if (!els.siteDirectory) return;
+  if (!canUseRoleAdminMode()) {
+    els.siteDirectory.innerHTML = `<p class="muted-note">Sin permisos para administrar sitios.</p>`;
+    return;
+  }
+  if (!rows.length) {
+    els.siteDirectory.innerHTML = `<p class="muted-note">No hay sitios registrados en tu alcance.</p>`;
+    return;
+  }
+  const canDeleteSite = hasPermission("manage_site") || hasPermission("manage_organization") || state.manualAdminUnlocked;
+  els.siteDirectory.innerHTML = rows.map((site) => {
+    const schedule = `${site.hora_entrada_inicio || "--:--"} - ${site.hora_entrada_fin || "--:--"} / ${site.hora_salida_inicio || "--:--"} - ${site.hora_salida_fin || "--:--"}`;
+    const status = site.activo ? "Activo" : "Inactivo";
+    const keyState = site.tiene_clave ? "Llave configurada" : "Llave pendiente";
+    return `
+      <article class="organization-item directory-item">
+        <div>
+          <strong>${escapeHtml(site.nombre || "Sitio sin nombre")}</strong>
+          <span>${escapeHtml(site.organizacion_nombre || "Organizacion")} - ${escapeHtml(status)} - ${escapeHtml(keyState)}</span>
+          <small>${escapeHtml(site.direccion || "Direccion pendiente")} - Radio ${escapeHtml(formatMeters(site.radio_metros))} - ${escapeHtml(schedule)}</small>
+        </div>
+        <div class="directory-actions">
+          <small>${Number(site.usuarios_total || 0)} usuarios / ${Number(site.asistencias_total || 0)} asistencias</small>
+          ${canDeleteSite ? `<button class="danger mini" type="button" data-site-action="delete" data-site-id="${escapeHtml(site.id)}">Desactivar</button>` : ""}
+        </div>
+      </article>
+    `;
+  }).join("");
+}
+
+function renderManagedUsers(rows = []) {
+  if (!els.userDirectory) return;
+  if (!canUseRoleAdminMode()) {
+    els.userDirectory.innerHTML = `<p class="muted-note">Sin permisos para consultar usuarios.</p>`;
+    return;
+  }
+  if (!rows.length) {
+    els.userDirectory.innerHTML = `<p class="muted-note">No hay usuarios registrados en tu alcance.</p>`;
+    return;
+  }
+  els.userDirectory.innerHTML = rows.map((user) => {
+    const role = getRoleDefinition(user.rol);
+    const active = user.activo ? "Activo" : "Inactivo";
+    return `
+      <article class="organization-item directory-item">
+        <div>
+          <strong>${escapeHtml(user.nombre || user.email || user.matricula || "Usuario")}</strong>
+          <span>${escapeHtml(user.matricula || "Sin matricula")} - ${escapeHtml(user.email || "Sin correo")}</span>
+          <small>${escapeHtml(user.organizacion_nombre || "Organizacion")} / ${escapeHtml(user.sitio_nombre || "Sin sitio asignado")}</small>
+        </div>
+        <div class="directory-actions">
+          <span class="badge ${user.activo ? "success" : "danger"}">${escapeHtml(active)}</span>
+          <span class="badge ${user.rol === "superadmin" ? "admin" : "default"}">${escapeHtml(role.label)}</span>
+        </div>
+      </article>
+    `;
+  }).join("");
+}
+
+async function loadAdminDirectories({ silent = false } = {}) {
+  if (!CLOUD_ENABLED || !state.currentUser || !localStorage.getItem("registro_asistencia_token") || !canUseRoleAdminMode()) {
+    renderManagedSites([]);
+    renderManagedUsers([]);
+    return;
+  }
+  try {
+    const [sites, users] = await Promise.all([
+      callAdminRpc("get_manageable_sites", {}),
+      callAdminRpc("get_manageable_users", {}),
+    ]);
+    renderManagedSites(sites || []);
+    renderManagedUsers(users || []);
+  } catch (error) {
+    if (!silent) showToast("No se pudieron cargar sitios o usuarios administrables.");
+    renderManagedSites([]);
+    renderManagedUsers([]);
+  }
+}
+
+async function deleteManagedSite(siteId) {
+  if (!siteId || !hasPermission("manage_site")) {
+    showToast("No tienes permisos para modificar sitios.");
+    return;
+  }
+  if (!confirm("Este sitio se desactivara si tiene asistencias historicas. Continuar?")) return;
+  try {
+    const result = await callAdminRpc("admin_delete_site", { p_site_id: siteId });
+    const status = getRpcFirstRow(result);
+    addAdminLog("Sitio desactivado/eliminado", status?.message || siteId);
+    showToast(status?.message || "Sitio actualizado.");
+    await loadActiveSite({ silent: true });
+    await loadAdminDirectories({ silent: true });
+  } catch (error) {
+    showToast("No se pudo desactivar/eliminar el sitio.");
+  }
+}
+
+function handleSiteDirectoryAction(event) {
+  const button = event.target.closest("[data-site-action]");
+  if (!button) return;
+  if (button.dataset.siteAction === "delete") deleteManagedSite(button.dataset.siteId);
+}
 async function handleOrganizationSubmit(event) {
   event.preventDefault();
   if (!hasPermission("manage_organization")) {
@@ -1020,6 +1137,7 @@ function fillSiteForm(site) {
   els.siteExitStart.value = normalizeTimeInput(configured ? site.hora_salida_inicio : "", "16:30");
   els.siteExitEnd.value = normalizeTimeInput(configured ? site.hora_salida_fin : "", "17:10");
   els.siteTimezone.value = configured ? site.zona_horaria || "America/Mexico_City" : "America/Mexico_City";
+  if (els.siteKey) els.siteKey.value = "";
   els.siteActive.checked = configured ? Boolean(site.activo) : true;
 }
 
@@ -1160,6 +1278,7 @@ async function handleSiteSubmit(event) {
     horaSalidaFin: normalizeTimeInput(els.siteExitEnd.value, "17:10"),
     zonaHoraria: els.siteTimezone.value.trim() || "America/Mexico_City",
     activo: els.siteActive.checked,
+    claveSitio: els.siteKey?.value.trim() || "",
   };
   const error = validateSiteForm(data);
   if (error) {
@@ -1185,6 +1304,12 @@ async function handleSiteSubmit(event) {
     });
     addAdminLog("Sitio actualizado", data.nombre + " (" + data.radio + " m)");
     await loadActiveSite({ silent: true });
+    if (data.claveSitio && state.activeSite?.id) {
+      await callAdminRpc("admin_set_site_key", { p_site_id: state.activeSite.id, p_clave: data.claveSitio });
+      if (els.siteKey) els.siteKey.value = "";
+      addAdminLog("Llave de sitio actualizada", data.nombre);
+    }
+    await loadAdminDirectories({ silent: true });
     await updateClockAndQr({ force: true });
     showToast("Configuracion del sitio guardada.");
   } catch (error) {
@@ -1546,17 +1671,26 @@ function showGuidedPanel(kind) {
 
 function showView(name) {
   hideGuidedPanels();
+  let targetName = name;
+
+  if (targetName === "admin" && !canUseRoleAdminMode()) {
+    showToast("Tu rol no tiene panel administrativo.");
+    targetName = "home";
+  }
+
+  const actualView = targetName === "admin" ? "records" : targetName;
   document.querySelectorAll('[data-view]').forEach((view) => {
-    view.classList.toggle("is-hidden", view.dataset.view !== name);
+    view.classList.toggle("is-hidden", view.dataset.view !== actualView);
   });
 
-  setActiveNavigation(name);
-  if (name !== "entry") stopCamera("entry");
-  if (name !== "exit") stopCamera("exit");
-  if (name === "entry") {
+  setActiveNavigation(targetName);
+  renderRolePanelCopy(targetName);
+  if (actualView !== "entry") stopCamera("entry");
+  if (actualView !== "exit") stopCamera("exit");
+  if (actualView === "entry") {
     setEntryLocationStatus("La ubicacion se solicitara al guardar entrada.");
   }
-  if (name === "exit") {
+  if (actualView === "exit") {
     pickLifeChallenge();
     setLocationStatus("La ubicacion se solicitara al guardar salida.");
     if (els.exitMatricula.value.trim()) {
@@ -1566,7 +1700,8 @@ function showView(name) {
     }
     updateClockAndQr({ force: true });
   }
-  if (name === "records" || name === "home") refreshRecords({ silent: true });
+  if (actualView === "records" || actualView === "home") refreshRecords({ silent: true });
+  if (targetName === "admin") loadAdminDirectories({ silent: true });
   window.scrollTo({ top: 0, behavior: "smooth" });
 }
 
@@ -1574,6 +1709,29 @@ function setActiveNavigation(name) {
   document.querySelectorAll(".nav-button").forEach((button) => {
     button.classList.toggle("is-active", button.dataset.target === name);
   });
+}
+
+function renderRolePanelCopy(activeTarget = "records") {
+  const role = getRoleDefinition();
+  const isAdminTarget = activeTarget === "admin" || canUseRoleAdminMode();
+  if (els.recordsKicker) els.recordsKicker.textContent = isAdminTarget ? "Panel operativo" : "Historial";
+  if (els.recordsTitle) {
+    els.recordsTitle.textContent = isAdminTarget
+      ? (hasPermission("manage_organization") ? "Administracion central" : "Administracion del sitio")
+      : "Mis registros de asistencia";
+  }
+  if (els.recordsSubtitle) {
+    els.recordsSubtitle.textContent = isAdminTarget
+      ? role.scope
+      : "Solo puedes consultar registros asociados a tu propia matricula.";
+  }
+  if (els.dashboardScopeLabel) {
+    els.dashboardScopeLabel.textContent = hasPermission("view_all_records")
+      ? "Mostrando todas las organizaciones permitidas para superadmin."
+      : hasPermission("view_site_records")
+        ? "Mostrando registros del sitio u organizacion asignada."
+        : "Mostrando solo tus registros personales.";
+  }
 }
 
 function showToast(message) {
@@ -2375,6 +2533,13 @@ function renderRecords() {
     const identityClass = identityBadgeClass(record.validacionIdentidad);
     const riskClass = riskBadgeClass(record.riesgo);
     const adminClass = record.modificado_por_admin ? "admin" : "default";
+    const canViewEvidence = hasPermission("view_evidence") || state.manualAdminUnlocked;
+    const canManageRecords = hasPermission("manage_records") || state.manualAdminUnlocked;
+    const actionButtons = [
+      canViewEvidence ? `<button class="secondary mini" data-action="view-evidence" data-id="${record.id}">Ver evidencia</button>` : "",
+      canManageRecords ? `<button class="ghost mini" data-action="edit-observation" data-id="${record.id}">Observacion</button>` : "",
+      canManageRecords ? `<button class="danger mini" data-action="delete-record" data-id="${record.id}">Eliminar</button>` : "",
+    ].filter(Boolean).join("");
     row.innerHTML = `
       <td>${imageCell(record.fotoEntrada, "Entrada")}</td>
       <td>${imageCell(record.fotoSalida, "Salida")}</td>
@@ -2398,12 +2563,8 @@ function renderRecords() {
       <td>${escapeHtml(record.observacion || record.observaciones || "Sin observacion")}</td>
       <td>${escapeHtml(record.observacion_admin || "Sin observacion")}</td>
       <td><span class="badge ${adminClass}">${record.modificado_por_admin ? "Si" : "No"}</span></td>
-      <td class="admin-only ${state.isAdmin ? "" : "is-hidden"}">
-        <div class="row-actions">
-          <button class="secondary mini" data-action="view-evidence" data-id="${record.id}">Ver evidencia</button>
-          <button class="ghost mini" data-action="edit-observation" data-id="${record.id}">Observacion</button>
-          <button class="danger mini" data-action="delete-record" data-id="${record.id}">Eliminar</button>
-        </div>
+      <td class="admin-only ${actionButtons ? "" : "is-hidden"}">
+        <div class="row-actions">${actionButtons}</div>
       </td>
     `;
     els.recordsBody.appendChild(row);
@@ -2443,28 +2604,26 @@ function escapeHtml(value) {
 }
 
 function requestAdminAccess() {
-  if (state.isAdmin) return true;
-  if (canUseRoleAdminMode()) {
+  if (isRoleAdminSession()) {
     state.isAdmin = true;
     updateAdminControls();
-    renderRecords();
-    loadActiveSite({ silent: true });
-    loadOrganizationContext({ silent: true });
-  loadOrganizations({ silent: true });
-    addAdminLog("Desbloqueo por rol", getRoleDefinition().label + " activo");
-    showToast("Permisos administrativos activados por rol.");
     return true;
   }
-  const value = prompt("Ingresa la clave administrativa para continuar:");
+
+  if (state.manualAdminUnlocked) return true;
+
+  const value = prompt("Ingresa la clave administrativa para soporte operativo temporal:");
   if (value === ADMIN_KEY) {
+    state.manualAdminUnlocked = true;
     state.isAdmin = true;
     updateAdminControls();
     renderRecords();
     loadActiveSite({ silent: true });
     loadOrganizationContext({ silent: true });
-  loadOrganizations({ silent: true });
-    addAdminLog("Desbloqueo admin", "Modo administrativo activado");
-    showToast("Modo administrativo desbloqueado.");
+    loadOrganizations({ silent: true });
+    loadAdminDirectories({ silent: true });
+    addAdminLog("Desbloqueo admin temporal", "Modo administrativo manual activado");
+    showToast("Modo administrativo temporal desbloqueado.");
     return true;
   }
   if (value !== null) {
@@ -2477,25 +2636,72 @@ function requestAdminAccess() {
 }
 
 function lockAdmin() {
+  if (isRoleAdminSession()) {
+    state.isAdmin = true;
+    updateAdminControls();
+    showToast("Tu acceso administrativo esta activo por rol de Supabase.");
+    return;
+  }
+  state.manualAdminUnlocked = false;
   state.isAdmin = false;
   updateAdminControls();
   renderRecords();
-  showToast("Modo administrativo bloqueado.");
+  showToast("Modo administrativo temporal bloqueado.");
 }
 
 function updateAdminControls() {
-  document.querySelectorAll(".admin-control, .admin-only").forEach((element) => {
-    element.classList.toggle("is-hidden", !state.isAdmin);
+  const roleAdmin = isRoleAdminSession();
+  if (roleAdmin) state.isAdmin = true;
+  if (!roleAdmin && !state.manualAdminUnlocked) state.isAdmin = false;
+
+  const canManageOrg = hasPermission("manage_organization") || state.manualAdminUnlocked;
+  const canManageSite = hasPermission("manage_site") || state.manualAdminUnlocked;
+  const canManageRecords = hasPermission("manage_records") || state.manualAdminUnlocked;
+  const canExport = hasPermission("export_records") || state.manualAdminUnlocked;
+  const canViewAudit = hasPermission("view_audit") || state.manualAdminUnlocked;
+  const hasAdminSurface = roleAdmin || state.manualAdminUnlocked;
+
+  document.querySelectorAll(".admin-nav").forEach((element) => {
+    element.classList.toggle("is-hidden", !roleAdmin);
   });
-  els.unlockAdmin.classList.toggle("is-hidden", state.isAdmin);
-  els.lockAdmin.classList.toggle("is-hidden", !state.isAdmin);
-  els.adminStatus.classList.toggle("is-blocked", !state.isAdmin);
-  const role = getRoleDefinition();
-  els.adminStatus.textContent = state.isAdmin
-    ? `Modo administrativo activo (${role.label}). Las acciones sensibles quedaran registradas en auditoria.`
-    : CLOUD_ENABLED
-      ? `Lista global activa. Rol actual: ${role.label}. Los permisos sensibles requieren rol autorizado o clave.`
-      : "Modo local activo. Configura Supabase para lista global.";
+  document.querySelectorAll(".admin-control, .admin-only").forEach((element) => {
+    element.classList.toggle("is-hidden", !hasAdminSurface);
+  });
+  document.querySelectorAll(".superadmin-only").forEach((element) => {
+    element.classList.toggle("is-hidden", !canManageOrg);
+  });
+  document.querySelectorAll(".site-admin-panel").forEach((element) => {
+    element.classList.toggle("is-hidden", !canManageSite);
+  });
+  document.querySelectorAll(".org-admin-panel").forEach((element) => {
+    element.classList.toggle("is-hidden", !(canManageOrg || canManageSite));
+  });
+  document.querySelectorAll(".audit-box").forEach((element) => {
+    element.classList.toggle("is-hidden", !canViewAudit);
+  });
+
+  els.unlockAdmin?.classList.add("is-hidden");
+  els.lockAdmin?.classList.toggle("is-hidden", roleAdmin || !state.manualAdminUnlocked);
+  els.exportCsv?.classList.toggle("is-hidden", !canExport);
+  els.clearRecords?.classList.toggle("is-hidden", !canManageOrg);
+
+  document.querySelectorAll("th.admin-only").forEach((element) => {
+    element.classList.toggle("is-hidden", !canManageRecords && !hasPermission("view_evidence") && !state.manualAdminUnlocked);
+  });
+
+  if (els.adminStatus) {
+    els.adminStatus.classList.toggle("is-blocked", !hasAdminSurface);
+    const role = getRoleDefinition();
+    els.adminStatus.textContent = hasAdminSurface
+      ? hasPermission("manage_organization")
+        ? "Superadmin activo: administras organizaciones, sitios, usuarios, registros y auditoria global."
+        : "Administrador de sitio activo: administras solo tu sitio u organizacion asignada."
+      : CLOUD_ENABLED
+        ? "Modo usuario: solo puedes registrar asistencia y consultar tus propios registros."
+        : "Modo local activo. Configura Supabase para lista global.";
+  }
+
+  renderRolePanelCopy();
 }
 
 function renderAdminAudit() {
@@ -2667,6 +2873,10 @@ function csvCell(value) {
 }
 
 async function clearRecords() {
+  if (!hasPermission("manage_organization") && !state.manualAdminUnlocked) {
+    showToast("Solo superadmin puede limpiar datos globales.");
+    return;
+  }
   if (!requestAdminAccess()) return;
   if (!state.records.length) {
     showToast("No hay datos para limpiar.");
@@ -2753,14 +2963,26 @@ function handleRecordAction(event) {
   if (!button) return;
 
   if (button.dataset.action === "view-evidence") {
+    if (!hasPermission("view_evidence") && !state.manualAdminUnlocked) {
+      showToast("Tu rol no puede ver evidencia protegida.");
+      return;
+    }
     showEvidenceDetail(button.dataset.id);
   }
 
   if (button.dataset.action === "edit-observation") {
+    if (!hasPermission("manage_records") && !state.manualAdminUnlocked) {
+      showToast("Tu rol no puede modificar registros.");
+      return;
+    }
     editAdminObservation(button.dataset.id);
   }
 
   if (button.dataset.action === "delete-record") {
+    if (!hasPermission("manage_records") && !state.manualAdminUnlocked) {
+      showToast("Tu rol no puede eliminar registros.");
+      return;
+    }
     deleteRecord(button.dataset.id);
   }
 }
@@ -2776,6 +2998,7 @@ window.onLogoutSuccess = function () {
   state.currentRole = "usuario";
   state.currentPermissions = { ...ROLE_DEFINITIONS.usuario.permissions };
   state.isAdmin = false;
+  state.manualAdminUnlocked = false;
   if (els.loginView) els.loginView.classList.remove("is-hidden");
   if (els.appShell) els.appShell.classList.add("is-hidden");
 };
@@ -3046,9 +3269,11 @@ async function finishInitialization() {
   loadActiveSite({ silent: true });
   loadOrganizationContext({ silent: true });
   loadOrganizations({ silent: true });
+  loadAdminDirectories({ silent: true });
   renderRecords();
   renderAdminAudit();
   updateAdminControls();
+  showView(canUseRoleAdminMode() ? "admin" : "home");
 
   if (CLOUD_ENABLED) {
     await refreshRecords({ silent: true });
@@ -3159,6 +3384,7 @@ function init() {
   }
   if (els.siteForm) els.siteForm.addEventListener("submit", handleSiteSubmit);
   if (els.organizationForm) els.organizationForm.addEventListener("submit", handleOrganizationSubmit);
+  if (els.siteDirectory) els.siteDirectory.addEventListener("click", handleSiteDirectoryAction);
   if (els.useAdminLocation) els.useAdminLocation.addEventListener("click", useAdminLocation);
   if (els.testAdminLocation) els.testAdminLocation.addEventListener("click", testAdminLocation);
 
