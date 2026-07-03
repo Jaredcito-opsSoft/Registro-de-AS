@@ -465,7 +465,7 @@ function addAdminLog(action, detail) {
   renderAdminAudit();
   if (CLOUD_ENABLED && state.isAdmin) {
     callAdminRpc("admin_log_event", {
-      p_admin_key: ADMIN_KEY,
+      p_admin_key: getAdminRpcKey(),
       p_accion: action,
       p_detalle: detail,
       p_resultado: "ok",
@@ -702,12 +702,34 @@ function hasAnyPermission(permissions) {
   return permissions.some((permission) => hasPermission(permission));
 }
 
+function isProductionEnvironment() {
+  const host = window.location.hostname;
+  if (!host || window.location.protocol === "file:") return false;
+  return !["localhost", "127.0.0.1", "::1"].includes(host);
+}
+
+function canUseDemoAdminKey() {
+  return !isProductionEnvironment() && state.demoMode;
+}
+
+function isDemoAdminUnlocked() {
+  return canUseDemoAdminKey() && state.manualAdminUnlocked;
+}
+
+function getAdminRpcKey() {
+  return canUseDemoAdminKey() ? ADMIN_KEY : "";
+}
+
+function hasAdminRole() {
+  return getRoleDefinition(state.currentRole).rank >= ROLE_DEFINITIONS.admin.rank;
+}
+
 function canUseRoleAdminMode() {
   return hasAnyPermission(["manage_records", "manage_site", "export_records", "manage_organization", "manage_roles", "view_audit"]);
 }
 
 function isRoleAdminSession() {
-  return canUseRoleAdminMode();
+  return Boolean(state.currentUser && !state.currentUser.isGuest && state.currentAppUser && hasAdminRole() && canUseRoleAdminMode());
 }
 
 function getCurrentUserMatricula() {
@@ -716,7 +738,7 @@ function getCurrentUserMatricula() {
 
 function canViewRecord(record) {
   if (!state.currentUser) return false;
-  if (state.manualAdminUnlocked || hasPermission("view_all_records")) return true;
+  if (isDemoAdminUnlocked() || hasPermission("view_all_records")) return true;
 
   if (hasPermission("view_site_records")) {
     const assignedSite = state.currentAppUser?.sitio_id;
@@ -741,7 +763,7 @@ function applyAppUserSession(appUser) {
     ...getRoleDefinition(state.currentRole).permissions,
     ...(appUser?.permisos || {}),
   };
-  state.isAdmin = canUseRoleAdminMode() || state.manualAdminUnlocked;
+  state.isAdmin = isRoleAdminSession() || isDemoAdminUnlocked();
   renderCurrentUserProfile();
 }
 
@@ -852,7 +874,7 @@ function renderOrganizations(rows) {
 
 function renderManagedSites(rows = []) {
   if (!els.siteDirectory) return;
-  if (!canUseRoleAdminMode()) {
+  if (!isRoleAdminSession() && !isDemoAdminUnlocked()) {
     els.siteDirectory.innerHTML = `<p class="muted-note">Sin permisos para administrar sitios.</p>`;
     return;
   }
@@ -860,7 +882,7 @@ function renderManagedSites(rows = []) {
     els.siteDirectory.innerHTML = `<p class="muted-note">No hay sitios registrados en tu alcance.</p>`;
     return;
   }
-  const canDeleteSite = hasPermission("manage_site") || hasPermission("manage_organization") || state.manualAdminUnlocked;
+  const canDeleteSite = hasPermission("manage_site") || hasPermission("manage_organization") || isDemoAdminUnlocked();
   els.siteDirectory.innerHTML = rows.map((site) => {
     const schedule = `${site.hora_entrada_inicio || "--:--"} - ${site.hora_entrada_fin || "--:--"} / ${site.hora_salida_inicio || "--:--"} - ${site.hora_salida_fin || "--:--"}`;
     const status = site.activo ? "Activo" : "Inactivo";
@@ -883,7 +905,7 @@ function renderManagedSites(rows = []) {
 
 function renderManagedUsers(rows = []) {
   if (!els.userDirectory) return;
-  if (!canUseRoleAdminMode()) {
+  if (!isRoleAdminSession() && !isDemoAdminUnlocked()) {
     els.userDirectory.innerHTML = `<p class="muted-note">Sin permisos para consultar usuarios.</p>`;
     return;
   }
@@ -911,7 +933,7 @@ function renderManagedUsers(rows = []) {
 }
 
 async function loadAdminDirectories({ silent = false } = {}) {
-  if (!CLOUD_ENABLED || !state.currentUser || !localStorage.getItem("registro_asistencia_token") || !canUseRoleAdminMode()) {
+  if (!CLOUD_ENABLED || !state.currentUser || !localStorage.getItem("registro_asistencia_token") || (!isRoleAdminSession() && !isDemoAdminUnlocked())) {
     renderManagedSites([]);
     renderManagedUsers([]);
     return;
@@ -1289,7 +1311,7 @@ async function handleSiteSubmit(event) {
   setSiteMessage("Guardando configuracion del sitio...", "warning");
   try {
     await callAdminRpc("upsert_site_config", {
-      p_admin_key: ADMIN_KEY,
+      p_admin_key: getAdminRpcKey(),
       p_nombre: data.nombre,
       p_direccion: data.direccion,
       p_latitud: data.latitud,
@@ -1673,8 +1695,8 @@ function showView(name) {
   hideGuidedPanels();
   let targetName = name;
 
-  if (targetName === "admin" && !canUseRoleAdminMode()) {
-    showToast("Tu rol no tiene panel administrativo.");
+  if (targetName === "admin" && !isRoleAdminSession() && !isDemoAdminUnlocked()) {
+    showToast("Para acciones administrativas inicia sesi\u00f3n con una cuenta admin.");
     targetName = "home";
   }
 
@@ -1713,7 +1735,7 @@ function setActiveNavigation(name) {
 
 function renderRolePanelCopy(activeTarget = "records") {
   const role = getRoleDefinition();
-  const isAdminTarget = activeTarget === "admin" || canUseRoleAdminMode();
+  const isAdminTarget = activeTarget === "admin" || isRoleAdminSession() || isDemoAdminUnlocked();
   if (els.recordsKicker) els.recordsKicker.textContent = isAdminTarget ? "Panel operativo" : "Historial";
   if (els.recordsTitle) {
     els.recordsTitle.textContent = isAdminTarget
@@ -2533,8 +2555,8 @@ function renderRecords() {
     const identityClass = identityBadgeClass(record.validacionIdentidad);
     const riskClass = riskBadgeClass(record.riesgo);
     const adminClass = record.modificado_por_admin ? "admin" : "default";
-    const canViewEvidence = hasPermission("view_evidence") || state.manualAdminUnlocked;
-    const canManageRecords = hasPermission("manage_records") || state.manualAdminUnlocked;
+    const canViewEvidence = hasPermission("view_evidence") || isDemoAdminUnlocked();
+    const canManageRecords = hasPermission("manage_records") || isDemoAdminUnlocked();
     const actionButtons = [
       canViewEvidence ? `<button class="secondary mini" data-action="view-evidence" data-id="${record.id}">Ver evidencia</button>` : "",
       canManageRecords ? `<button class="ghost mini" data-action="edit-observation" data-id="${record.id}">Observacion</button>` : "",
@@ -2603,6 +2625,21 @@ function escapeHtml(value) {
     .replaceAll("'", "&#039;");
 }
 
+function recordFailedAdminAttempt(detail = "Acceso administrativo denegado") {
+  const entry = { ...nowParts(), action: "Intento admin fallido", detail };
+  state.adminLog.unshift(entry);
+  state.adminLog = state.adminLog.slice(0, 8);
+  saveAdminLog();
+  renderAdminAudit();
+  if (CLOUD_ENABLED) {
+    callAdminRpc("log_security_event", {
+      p_accion: "Intento admin fallido",
+      p_detalle: detail,
+      p_resultado: "denied",
+    }).catch(() => undefined);
+  }
+}
+
 function requestAdminAccess() {
   if (isRoleAdminSession()) {
     state.isAdmin = true;
@@ -2610,28 +2647,32 @@ function requestAdminAccess() {
     return true;
   }
 
-  if (state.manualAdminUnlocked) return true;
+  if (isDemoAdminUnlocked()) return true;
 
-  const value = prompt("Ingresa la clave administrativa para soporte operativo temporal:");
-  if (value === ADMIN_KEY) {
-    state.manualAdminUnlocked = true;
-    state.isAdmin = true;
-    updateAdminControls();
-    renderRecords();
-    loadActiveSite({ silent: true });
-    loadOrganizationContext({ silent: true });
-    loadOrganizations({ silent: true });
-    loadAdminDirectories({ silent: true });
-    addAdminLog("Desbloqueo admin temporal", "Modo administrativo manual activado");
-    showToast("Modo administrativo temporal desbloqueado.");
-    return true;
+  if (canUseDemoAdminKey()) {
+    const value = prompt("Ingresa la clave administrativa para soporte operativo temporal:");
+    if (value === ADMIN_KEY) {
+      state.manualAdminUnlocked = true;
+      state.isAdmin = true;
+      updateAdminControls();
+      renderRecords();
+      loadActiveSite({ silent: true });
+      loadOrganizationContext({ silent: true });
+      loadOrganizations({ silent: true });
+      loadAdminDirectories({ silent: true });
+      addAdminLog("Desbloqueo admin demo", "Modo administrativo local/demo activado");
+      showToast("Modo administrativo demo desbloqueado.");
+      return true;
+    }
+    if (value !== null) {
+      recordFailedAdminAttempt("Clave demo incorrecta");
+      showToast("Clave administrativa incorrecta.");
+    }
+    return false;
   }
-  if (value !== null) {
-    state.adminLog.unshift({ ...nowParts(), action: "Intento admin fallido", detail: "Clave incorrecta" });
-    saveAdminLog();
-    renderAdminAudit();
-    showToast("Clave administrativa incorrecta.");
-  }
+
+  recordFailedAdminAttempt(`Usuario ${state.currentUser?.email || "sin sesi\u00f3n"} sin rol admin intent\u00f3 acceso administrativo`);
+  showToast("Para acciones administrativas inicia sesi\u00f3n con una cuenta admin.");
   return false;
 }
 
@@ -2651,18 +2692,19 @@ function lockAdmin() {
 
 function updateAdminControls() {
   const roleAdmin = isRoleAdminSession();
+  const demoAdmin = isDemoAdminUnlocked();
   if (roleAdmin) state.isAdmin = true;
-  if (!roleAdmin && !state.manualAdminUnlocked) state.isAdmin = false;
+  if (!roleAdmin && !demoAdmin) state.isAdmin = false;
 
-  const canManageOrg = hasPermission("manage_organization") || state.manualAdminUnlocked;
-  const canManageSite = hasPermission("manage_site") || state.manualAdminUnlocked;
-  const canManageRecords = hasPermission("manage_records") || state.manualAdminUnlocked;
-  const canExport = hasPermission("export_records") || state.manualAdminUnlocked;
-  const canViewAudit = hasPermission("view_audit") || state.manualAdminUnlocked;
-  const hasAdminSurface = roleAdmin || state.manualAdminUnlocked;
+  const canManageOrg = hasPermission("manage_organization") || demoAdmin;
+  const canManageSite = hasPermission("manage_site") || demoAdmin;
+  const canManageRecords = hasPermission("manage_records") || demoAdmin;
+  const canExport = hasPermission("export_records") || demoAdmin;
+  const canViewAudit = hasPermission("view_audit") || demoAdmin;
+  const hasAdminSurface = roleAdmin || demoAdmin;
 
   document.querySelectorAll(".admin-nav").forEach((element) => {
-    element.classList.toggle("is-hidden", !roleAdmin);
+    element.classList.toggle("is-hidden", !hasAdminSurface);
   });
   document.querySelectorAll(".admin-control, .admin-only").forEach((element) => {
     element.classList.toggle("is-hidden", !hasAdminSurface);
@@ -2681,21 +2723,22 @@ function updateAdminControls() {
   });
 
   els.unlockAdmin?.classList.add("is-hidden");
-  els.lockAdmin?.classList.toggle("is-hidden", roleAdmin || !state.manualAdminUnlocked);
+  els.lockAdmin?.classList.toggle("is-hidden", roleAdmin || !demoAdmin);
   els.exportCsv?.classList.toggle("is-hidden", !canExport);
   els.clearRecords?.classList.toggle("is-hidden", !canManageOrg);
 
   document.querySelectorAll("th.admin-only").forEach((element) => {
-    element.classList.toggle("is-hidden", !canManageRecords && !hasPermission("view_evidence") && !state.manualAdminUnlocked);
+    element.classList.toggle("is-hidden", !canManageRecords && !hasPermission("view_evidence") && !demoAdmin);
   });
 
   if (els.adminStatus) {
     els.adminStatus.classList.toggle("is-blocked", !hasAdminSurface);
-    const role = getRoleDefinition();
     els.adminStatus.textContent = hasAdminSurface
       ? hasPermission("manage_organization")
         ? "Superadmin activo: administras organizaciones, sitios, usuarios, registros y auditoria global."
-        : "Administrador de sitio activo: administras solo tu sitio u organizacion asignada."
+        : roleAdmin
+          ? "Administrador de sitio activo: administras solo tu sitio u organizacion asignada."
+          : "Modo demo local: acceso administrativo temporal sin permisos de produccion."
       : CLOUD_ENABLED
         ? "Modo usuario: solo puedes registrar asistencia y consultar tus propios registros."
         : "Modo local activo. Configura Supabase para lista global.";
@@ -2873,7 +2916,7 @@ function csvCell(value) {
 }
 
 async function clearRecords() {
-  if (!hasPermission("manage_organization") && !state.manualAdminUnlocked) {
+  if (!hasPermission("manage_organization") && !isDemoAdminUnlocked()) {
     showToast("Solo superadmin puede limpiar datos globales.");
     return;
   }
@@ -2887,7 +2930,7 @@ async function clearRecords() {
 
   try {
     if (CLOUD_ENABLED) {
-      const deleted = await callAdminRpc("admin_clear_asistencias", { p_admin_key: ADMIN_KEY });
+      const deleted = await callAdminRpc("admin_clear_asistencias", { p_admin_key: getAdminRpcKey() });
       addAdminLog("Limpieza global", `${deleted || state.records.length} registros eliminados`);
       await refreshRecords({ silent: true });
     } else {
@@ -2918,7 +2961,7 @@ async function editAdminObservation(id) {
     if (CLOUD_ENABLED) {
       await callAdminRpc("admin_update_observacion_asistencia", {
         p_id: id,
-        p_admin_key: ADMIN_KEY,
+        p_admin_key: getAdminRpcKey(),
         p_observacion: value.trim(),
       });
       await refreshRecords({ silent: true });
@@ -2944,7 +2987,7 @@ async function deleteRecord(id) {
 
   try {
     if (CLOUD_ENABLED) {
-      await callAdminRpc("admin_delete_asistencia", { p_id: id, p_admin_key: ADMIN_KEY });
+      await callAdminRpc("admin_delete_asistencia", { p_id: id, p_admin_key: getAdminRpcKey() });
       await refreshRecords({ silent: true });
     } else {
       state.records = state.records.filter((item) => item.id !== id);
@@ -2963,7 +3006,7 @@ function handleRecordAction(event) {
   if (!button) return;
 
   if (button.dataset.action === "view-evidence") {
-    if (!hasPermission("view_evidence") && !state.manualAdminUnlocked) {
+    if (!hasPermission("view_evidence") && !isDemoAdminUnlocked()) {
       showToast("Tu rol no puede ver evidencia protegida.");
       return;
     }
@@ -2971,7 +3014,7 @@ function handleRecordAction(event) {
   }
 
   if (button.dataset.action === "edit-observation") {
-    if (!hasPermission("manage_records") && !state.manualAdminUnlocked) {
+    if (!hasPermission("manage_records") && !isDemoAdminUnlocked()) {
       showToast("Tu rol no puede modificar registros.");
       return;
     }
@@ -2979,7 +3022,7 @@ function handleRecordAction(event) {
   }
 
   if (button.dataset.action === "delete-record") {
-    if (!hasPermission("manage_records") && !state.manualAdminUnlocked) {
+    if (!hasPermission("manage_records") && !isDemoAdminUnlocked()) {
       showToast("Tu rol no puede eliminar registros.");
       return;
     }
@@ -3273,7 +3316,7 @@ async function finishInitialization() {
   renderRecords();
   renderAdminAudit();
   updateAdminControls();
-  showView(canUseRoleAdminMode() ? "admin" : "home");
+  showView(isRoleAdminSession() ? "admin" : "home");
 
   if (CLOUD_ENABLED) {
     await refreshRecords({ silent: true });
