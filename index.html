@@ -5,7 +5,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta name="description"
-    content="Sistema de control de asistencia con registro fotografico, codigo QR dinamico y validacion de ubicacion." />
+    content="Sistema mobile-first de asistencia multiempresa con evidencia fotografica, ubicacion y reportes controlados." />
   <meta name="theme-color" content="#ef4ea0" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-title" content="Asistencia QR" />
@@ -135,13 +135,6 @@
           <span class="nav-label">Admin</span>
         </button>
 
-        <!-- QR Compacto reubicado debajo de Registros -->
-        <div id="qrBox" style="margin-top: 12px; padding-top: 12px; display: flex; flex-direction: column; align-items: center; gap: 4px; border-top: 1px solid rgba(255, 255, 255, 0.12); width: 100%; text-align: center;">
-          <img id="qrImage" alt="QR" style="width: 44px; height: 44px; background: #fff; border-radius: 4px; padding: 3px; box-shadow: 0 1px 4px rgba(0,0,0,0.3);" />
-          <p id="qrMessage" style="display: none;"></p>
-          <a id="qrDirectLink" href="#" style="display: none;"></a>
-          <small id="qrTokenLabel" style="display: none;"></small>
-        </div>
       </nav>
 
       <div class="sidebar-footer">
@@ -182,6 +175,11 @@
       </header>
 
       <main>
+        <div id="appStatusBanner" class="app-status-banner is-hidden" data-tone="warning" role="status" aria-live="polite">
+          <strong>Sin conexion</strong>
+          <span>La app queda en modo lectura local. No se enviaran asistencias hasta recuperar conexion.</span>
+        </div>
+
         <section class="dashboard-grid" data-view="home">
           <section class="hero-panel">
             <div class="hero-topline">
@@ -261,6 +259,22 @@
             <button id="pwaInstallButton" class="primary" type="button">Instalar app</button>
           </div>
 
+          <section class="panel qr-panel" aria-labelledby="accessQrTitle">
+            <div class="panel-menu">
+              <div>
+                <p class="section-kicker">Acceso rapido</p>
+                <h3 id="accessQrTitle">QR para abrir la app</h3>
+              </div>
+              <span aria-hidden="true">...</span>
+            </div>
+            <div id="qrBox" class="qr-box">
+              <img id="qrImage" alt="QR para abrir el sistema de asistencia" />
+              <p id="qrMessage">Escanea para abrir el sistema de asistencia.</p>
+              <a id="qrDirectLink" href="#" target="_blank" rel="noopener">Abrir enlace</a>
+              <small id="qrTokenLabel">QR solo de acceso; no valida salida.</small>
+            </div>
+          </section>
+
           <section class="panel activity-panel">
             <div class="tab-strip" aria-label="Acciones principales">
               <button class="is-active" data-target="home" type="button">Inicio</button>
@@ -273,7 +287,7 @@
               <p class="section-kicker">Sistema activo</p>
               <h2>Registro rapido, evidencia visual protegida.</h2>
               <p>
-                Captura entrada con foto, valida salida por matricula y conserva el historial en modo lectura
+                Captura entrada con foto, valida salida por identificador y conserva el historial en modo lectura
                 para evitar cambios no autorizados.
               </p>
             </div>
@@ -281,12 +295,12 @@
               <div>
                 <strong>01</strong>
                 <span>Registrar entrada</span>
-                <small>Captura foto, matricula y GPS.</small>
+                <small>Captura foto, identificador y GPS.</small>
               </div>
               <div>
                 <strong>02</strong>
                 <span>Registrar salida</span>
-                <small>Usa matricula, foto final y ubicacion.</small>
+                <small>Usa identificador, foto final y ubicacion.</small>
               </div>
               <div>
                 <strong>03</strong>
@@ -304,7 +318,7 @@
               </article>
               <article>
                 <span>Salida segura</span>
-                <strong>Salida por matricula</strong>
+                <strong>Salida por identificador</strong>
                 <p>La salida se habilita con entrada activa, prueba de vida y ubicacion dentro del rango permitido.</p>
               </article>
               <article>
@@ -545,7 +559,7 @@
               </label>
               <label class="ops-search-field">
                 Buscar
-                <input id="filterSearch" type="search" autocomplete="off" placeholder="Nombre o matricula" />
+                <input id="filterSearch" type="search" autocomplete="off" placeholder="Nombre o identificador" />
               </label>
               <button id="clearDashboardFilters" class="ghost" type="button">Limpiar filtros</button>
             </form>
@@ -773,6 +787,17 @@
             </div>
           </div>
 
+          <section class="mobile-records-shell" aria-labelledby="mobileRecordsTitle">
+            <div class="mobile-records-head">
+              <div>
+                <p class="section-kicker">Vista movil</p>
+                <h3 id="mobileRecordsTitle">Registros en tarjetas</h3>
+              </div>
+              <span id="mobileRecordsCount" class="badge default">0 visibles</span>
+            </div>
+            <div id="recordsMobileCards" class="records-mobile-cards" aria-live="polite"></div>
+          </section>
+
           <div class="audit-box admin-control is-hidden">
             <h3>Auditoria administrativa</h3>
             <p id="adminAudit">No hay acciones administrativas registradas.</p>
@@ -851,9 +876,9 @@
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
 
   <script src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
-  <script src="supabase-config.js"></script>
-  <script src="auth.js"></script>
-  <script src="app.js"></script>
+  <script src="supabase-config.js?v=f0-mobile-shell"></script>
+  <script src="auth.js?v=f0-mobile-shell"></script>
+  <script src="app.js?v=f0-mobile-shell"></script>
 </body>
 
 </html>

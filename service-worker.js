@@ -1,9 +1,10 @@
-const CACHE_VERSION = "asistencia-qr-static-v1";
+const CACHE_VERSION = "asistencia-qr-static-v2";
 const STATIC_ASSETS = [
   "/",
   "/index.html",
   "/styles.css",
   "/app.js",
+  "/auth.js",
   "/supabase-config.js",
   "/manifest.webmanifest",
   "/icons/icon-192.png",

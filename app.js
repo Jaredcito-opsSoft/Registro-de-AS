@@ -177,6 +177,8 @@ function populateElements() {
   els.exitMatricula = $("#exitMatricula");
   els.exitLookupInfo = $("#exitLookupInfo");
   els.recordsBody = $("#recordsBody");
+  els.recordsMobileCards = $("#recordsMobileCards");
+  els.mobileRecordsCount = $("#mobileRecordsCount");
   els.emptyRecords = $("#emptyRecords");
   els.unlockAdmin = $("#unlockAdmin");
   els.lockAdmin = $("#lockAdmin");
@@ -288,6 +290,7 @@ function populateElements() {
   els.pwaInstallBanner = $("#pwaInstallBanner");
   els.pwaInstallButton = $("#pwaInstallButton");
   els.pwaInstallHelp = $("#pwaInstallHelp");
+  els.appStatusBanner = $("#appStatusBanner");
 }
 
 
@@ -353,6 +356,29 @@ function setupPwaInstall() {
   });
 
   updatePwaInstallUi();
+}
+
+function updateConnectionUi() {
+  if (!els.appStatusBanner) return;
+  const isOnline = window.navigator.onLine !== false;
+
+  els.appStatusBanner.classList.toggle("is-hidden", isOnline);
+  els.appStatusBanner.dataset.tone = isOnline ? "success" : "warning";
+  els.appStatusBanner.innerHTML = isOnline
+    ? `<strong>Conexion recuperada</strong><span>La app puede volver a sincronizar cuando el backend este disponible.</span>`
+    : `<strong>Sin conexion</strong><span>Modo lectura local. No se deben registrar asistencias productivas hasta recuperar conexion.</span>`;
+}
+
+function setupConnectionStatus() {
+  updateConnectionUi();
+  window.addEventListener("online", () => {
+    updateConnectionUi();
+    showToast("Conexion recuperada.");
+  });
+  window.addEventListener("offline", () => {
+    updateConnectionUi();
+    showToast("Sin conexion. Revisa la red antes de registrar asistencia.");
+  });
 }
 function loadLocalRecords() {
   try {
@@ -1666,6 +1692,7 @@ function updateAccessQr() {
   els.qrDirectLink.hidden = false;
   els.qrTokenLabel.textContent = "Acceso: registro-de-as.vercel.app";
   els.qrDirectLink.href = accessUrl;
+  els.qrDirectLink.textContent = "Abrir sistema de asistencia";
   els.qrImage.src = `https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(accessUrl)}`;
   els.exitGuard.textContent = "Ingresa tu matricula para buscar tu entrada activa.";
   els.exitGuard.classList.remove("is-blocked");
@@ -2546,10 +2573,11 @@ function renderRecentActivity() {
 function renderRecords() {
   updateSummary();
   renderRecentActivity();
+  const visibleRecords = getVisibleRecords();
   els.recordsBody.innerHTML = "";
-  els.emptyRecords.classList.toggle("is-hidden", filteredRecords.length > 0);
+  els.emptyRecords.classList.toggle("is-hidden", visibleRecords.length > 0);
 
-  filteredRecords.forEach((record) => {
+  visibleRecords.forEach((record) => {
     const row = document.createElement("tr");
     const statusClass = statusBadgeClass(record.estado);
     const identityClass = identityBadgeClass(record.validacionIdentidad);
@@ -2592,7 +2620,71 @@ function renderRecords() {
     els.recordsBody.appendChild(row);
   });
 
+  renderMobileRecordCards(visibleRecords);
   updateAdminControls();
+}
+
+function mobileRecordField(label, value) {
+  return `
+    <div class="mobile-record-card-row">
+      <span>${escapeHtml(label)}</span>
+      <strong>${escapeHtml(value || "-")}</strong>
+    </div>
+  `;
+}
+
+function renderMobileRecordCards(records = []) {
+  if (!els.recordsMobileCards) return;
+
+  if (els.mobileRecordsCount) {
+    els.mobileRecordsCount.textContent = `${records.length} visibles`;
+  }
+
+  if (!records.length) {
+    els.recordsMobileCards.innerHTML = `
+      <div class="mobile-record-empty">
+        No hay registros con los filtros actuales.
+      </div>
+    `;
+    return;
+  }
+
+  const canViewEvidence = hasPermission("view_evidence") || isDemoAdminUnlocked();
+  const canManageRecords = hasPermission("manage_records") || isDemoAdminUnlocked();
+
+  els.recordsMobileCards.innerHTML = records.map((record) => {
+    const statusClass = statusBadgeClass(record.estado);
+    const riskClass = riskBadgeClass(record.riesgo);
+    const actionButtons = [
+      canViewEvidence ? `<button class="secondary mini" data-action="view-evidence" data-id="${record.id}">Evidencia</button>` : "",
+      canManageRecords ? `<button class="ghost mini" data-action="edit-observation" data-id="${record.id}">Observacion</button>` : "",
+      canManageRecords ? `<button class="danger mini" data-action="delete-record" data-id="${record.id}">Eliminar</button>` : "",
+    ].filter(Boolean).join("");
+
+    return `
+      <article class="mobile-record-card">
+        <div class="mobile-record-card-head">
+          <div class="mobile-record-card-title">
+            <strong>${escapeHtml(record.nombre || "Usuario sin nombre")}</strong>
+            <span>Identificador: ${escapeHtml(record.matricula || "-")}</span>
+          </div>
+          <span class="badge ${statusClass}">${escapeHtml(statusLabel(record.estado))}</span>
+        </div>
+        <div class="mobile-record-card-grid">
+          ${mobileRecordField("Sitio", record.sitioNombre || "Sin sitio")}
+          ${mobileRecordField("Fecha", displayDate(record.fecha))}
+          ${mobileRecordField("Entrada", record.horaEntrada)}
+          ${mobileRecordField("Salida", record.horaSalida || "Pendiente")}
+          ${mobileRecordField("Riesgo", riskLabel(record.riesgo))}
+          ${mobileRecordField("Ubicacion", record.ubicacionEntradaValidada && (record.horaSalida ? record.ubicacionSalidaValidada : true) ? "Correcta" : "Revision")}
+        </div>
+        <div class="mobile-record-card-head">
+          <span class="badge ${riskClass}">${escapeHtml(riskLabel(record.riesgo))}</span>
+          <div class="mobile-record-actions">${actionButtons}</div>
+        </div>
+      </article>
+    `;
+  }).join("");
 }
 function setProgressBar(element, value) {
   if (!element) return;
@@ -3419,6 +3511,7 @@ function init() {
   if (els.exportCsv) els.exportCsv.addEventListener("click", exportCsv);
   if (els.clearRecords) els.clearRecords.addEventListener("click", clearRecords);
   if (els.recordsBody) els.recordsBody.addEventListener("click", handleRecordAction);
+  if (els.recordsMobileCards) els.recordsMobileCards.addEventListener("click", handleRecordAction);
   if (els.closeEvidence) els.closeEvidence.addEventListener("click", closeEvidenceDetail);
   if (els.evidenceModal) {
     els.evidenceModal.addEventListener("click", (event) => {
@@ -3445,6 +3538,7 @@ function init() {
   }, 30000);
 
   setupPwaInstall();
+  setupConnectionStatus();
   loadOrganizationOptions();
   updatePwaInstallUi();
 
