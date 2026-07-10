@@ -6,7 +6,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta name="description"
     content="Sistema de control de asistencia con registro fotografico, codigo QR dinamico y validacion de ubicacion." />
-  <meta name="theme-color" content="#ef4ea0" />
+  <meta name="theme-color" content="#E8262D" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-title" content="Asistencia QR" />
   <title>Asistencia QR - Control Institucional</title>
@@ -16,13 +16,21 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="stylesheet"
     href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" />
-  <link rel="stylesheet" href="styles.css" />
+  <link rel="stylesheet" href="styles.css?v=2.2" />
 </head>
 
 <body>
   <div id="login-view" class="login-wrapper">
     <div class="login-card">
       <div class="login-header">
+        <div class="login-mark-wrap">
+          <div class="login-mark">
+            <svg width="18" height="18" viewBox="0 0 24 24" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+              <polyline points="9 22 9 12 15 12 15 22" />
+            </svg>
+          </div>
+        </div>
         <p class="eyebrow">Acceso al sistema</p>
         <h1 id="login-title">Iniciar Sesión</h1>
         <p id="login-subtitle">Ingresa tus credenciales para acceder al control de asistencia.</p>
@@ -111,7 +119,17 @@
               <line x1="3" y1="18" x2="3.01" y2="18" />
             </svg>
           </span>
-          <span class="nav-label">Registros</span>
+          <span class="nav-label">Mis registros</span>
+        </button>
+
+        <button class="nav-button is-hidden" data-target="admin" type="button" aria-label="Admin" id="btn-admin">
+          <span class="nav-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="stroke: currentColor; fill: none;">
+              <circle cx="12" cy="12" r="3" />
+              <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+            </svg>
+          </span>
+          <span class="nav-label">Admin</span>
         </button>
 
         <!-- QR Compacto reubicado debajo de Registros -->
@@ -125,7 +143,13 @@
 
       <div class="sidebar-footer">
         <button class="sidebar-user-btn" data-target="profile" type="button" aria-label="Perfil" id="btn-profile">
-          <div class="sidebar-user" id="userInitials">AS</div>
+          <div class="sidebar-user" id="userInitials">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
+              <circle cx="12" cy="7" r="4"/>
+            </svg>
+          </div>
+          <span class="nav-label sidebar-profile-label">Perfil</span>
         </button>
         <button class="nav-button" id="btn-logout" type="button" aria-label="Cerrar Sesión"
           style="color: var(--danger-ink, #ef4444); border: none; background: none; cursor: pointer;">
@@ -145,7 +169,7 @@
     <div class="workspace">
       <header class="topbar">
         <div class="brand-block">
-          <p class="eyebrow">Control institucional</p>
+          <p class="eyebrow">Control de asistencia</p>
           <h1>Asistencia QR</h1>
         </div>
 
@@ -154,7 +178,7 @@
             <span class="sys-dot is-live" aria-hidden="true"></span>
             Sistema activo
           </span>
-          <span id="headerFaceState" class="sys-qr-chip" data-tone="pending" style="display: inline-flex;">Facial:
+          <span id="headerFaceState" class="sys-qr-chip" data-tone="pending">Facial:
             cargando</span>
           <span id="headerQrState" class="sys-qr-chip" data-tone="inactive">QR: verificando…</span>
         </div>
@@ -165,7 +189,7 @@
           <section class="hero-panel">
             <div class="hero-topline">
               <span>Hora del sistema</span>
-              <b aria-hidden="true">...</b>
+              <span class="hero-live-dot"><span class="sys-dot is-live" aria-hidden="true" style="background:#fff;box-shadow:0 0 0 3px rgba(255,255,255,0.3)"></span> En vivo</span>
             </div>
             <div class="status-card" aria-live="polite">
               <small>Hora del sistema</small>
@@ -173,21 +197,10 @@
               <em id="qrWindowLabel">Validando horario...</em>
             </div>
 
-            <div class="hero-visual" aria-hidden="true">
-              <span></span>
-              <span></span>
-              <span></span>
-              <span></span>
-            </div>
-
             <div class="hero-meta" aria-label="Estado operativo">
               <div>
-                <small>Status</small>
+                <small>Modo</small>
                 <strong>QR/Manual</strong>
-              </div>
-              <div>
-                <small>Locacion</small>
-                <strong>Institucional</strong>
               </div>
               <div>
                 <small>Ventana</small>
@@ -245,7 +258,7 @@
               <button class="is-active" data-target="home" type="button">Inicio</button>
               <button data-target="entry" type="button">Entrada</button>
               <button data-target="exit" type="button">Salida</button>
-              <button data-target="records" type="button">Registros</button>
+              <button data-target="records" type="button">Mis registros</button>
             </div>
 
             <div class="hero-copy">
@@ -256,22 +269,18 @@
                 para evitar cambios no autorizados.
               </p>
             </div>
-            <div class="operation-strip" aria-label="Flujo de operacion">
-              <div>
-                <strong>01</strong>
-                <span>Registrar entrada</span>
-                <small>Captura foto, matricula y GPS.</small>
+            <div class="streak-widget" aria-label="Resumen personal de asistencia">
+              <div class="streak-orb" aria-hidden="true">
+                <svg viewBox="0 0 24 24">
+                  <path d="M13.5 2.5c.2 2.6 1.5 4.4 3.1 6.2 1.7 1.9 3 3.9 3 6.6A7.1 7.1 0 0 1 12.5 22 7.4 7.4 0 0 1 5 14.6c0-2.9 1.7-5.1 3.5-6.9.8 2.4 2.1 3.8 3.4 4.6-.4-3.5.4-6.8 1.6-9.8Z" />
+                </svg>
               </div>
               <div>
-                <strong>02</strong>
-                <span>Registrar salida</span>
-                <small>Usa matricula, foto final y ubicacion.</small>
+                <span>Racha personal</span>
+                <strong id="streakDays">0 dias activos</strong>
+                <p id="streakHours">0 h acumuladas esta semana</p>
               </div>
-              <div>
-                <strong>03</strong>
-                <span>Ver registros</span>
-                <small>Revisa evidencia, riesgos y estado.</small>
-              </div>
+              <button data-target="records" type="button">Ver mis registros</button>
             </div>
 
 
@@ -287,21 +296,22 @@
                 <p>La salida se habilita con entrada activa, prueba de vida y ubicacion dentro del rango permitido.</p>
               </article>
               <article>
-                <span>Historial protegido</span>
-                <strong>Consulta de solo lectura</strong>
-                <p>Los registros quedan disponibles para auditoria sin permitir modificaciones no autorizadas.</p>
+                <span>Historial personal</span>
+                <strong>Consulta tus evidencias</strong>
+                <p>Revisa tus entradas, salidas, fotos y estados sin acceder a datos de otros usuarios.</p>
+              </article>
             </div>
 
             <!-- Widget de Actividad Reciente -->
-            <div class="recent-activity-widget" style="padding: 24px 34px 32px; border-top: 1px solid var(--line, rgba(0,0,0,0.08)); margin-top: 24px;">
-              <h3 style="font-size: 1.1rem; font-weight: 800; color: var(--ink); margin-bottom: 16px; display: flex; align-items: center; gap: 8px;">
-                <svg viewBox="0 0 24 24" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="stroke: var(--accent); fill: none; width: 18px; height: 18px;">
+            <div class="recent-activity-widget">
+              <h3>
+                <svg viewBox="0 0 24 24" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
                   <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />
                 </svg>
                 Actividad Reciente
               </h3>
-              <div id="recentActivityList" class="recent-activity-list" style="display: flex; flex-direction: column; gap: 10px;">
-                <p style="opacity: 0.6; font-size: 0.9rem; margin: 8px 0;">No hay actividad reciente.</p>
+              <div id="recentActivityList" class="recent-activity-list">
+                <p class="recent-empty">No hay actividad reciente.</p>
               </div>
             </div>
           </section>
@@ -437,9 +447,103 @@
           <div class="panel-heading">
             <div>
               <p class="section-kicker">Historial</p>
-              <h2>Tabla de asistencia</h2>
+              <h2>Mis registros</h2>
               <p class="read-only-note">
-                Vista de solo lectura. Las acciones sensibles requieren clave administrativa.
+                Consulta tus entradas, salidas y evidencias registradas.
+              </p>
+            </div>
+            <div class="button-row toolbar-actions">
+              <button class="back-button" data-target="home" type="button">Volver al inicio</button>
+            </div>
+          </div>
+
+          <form class="ops-filters records-filters" aria-label="Filtros de registros">
+            <label>
+              Fecha
+              <input id="filterDate" type="date" />
+            </label>
+            <label>
+              Estado
+              <select id="filterStatus">
+                <option value="all">Todos</option>
+                <option value="entrada_registrada">Pendiente de salida</option>
+                <option value="asistencia_completa">Asistencia completa</option>
+                <option value="revision_requerida">Revision requerida</option>
+                <option value="fallida">Fallida</option>
+              </select>
+            </label>
+            <label>
+              Riesgo
+              <select id="filterRisk">
+                <option value="all">Todos</option>
+                <option value="normal">Normal</option>
+                <option value="revision">Revision</option>
+                <option value="sospechoso">Sospechoso</option>
+              </select>
+            </label>
+            <label>
+              Sitio
+              <select id="filterSite">
+                <option value="all">Todos los sitios</option>
+              </select>
+            </label>
+            <label>
+              Usuario
+              <select id="filterUser">
+                <option value="all">Todos los usuarios</option>
+              </select>
+            </label>
+            <label class="ops-search-field">
+              Buscar
+              <input id="filterSearch" type="search" autocomplete="off" placeholder="Nombre o matricula" />
+            </label>
+            <button id="clearDashboardFilters" class="ghost filter-clear" type="button">Limpiar filtros</button>
+          </form>
+
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Foto entrada</th>
+                  <th>Foto salida</th>
+                  <th>Nombre</th>
+                  <th>Matricula</th>
+                  <th>Sitio</th>
+                  <th>Radio</th>
+                  <th>Fecha</th>
+                  <th>Hora entrada</th>
+                  <th>Hora salida</th>
+                  <th>Estado</th>
+                  <th>Identidad</th>
+                  <th>Similitud</th>
+                  <th>QR</th>
+                  <th>Ubicacion</th>
+                  <th>Precision</th>
+                  <th>Distancia</th>
+                  <th>Reto</th>
+                  <th>Riesgo</th>
+                  <th>Evidencia</th>
+                  <th>Observacion</th>
+                  <th>Obs. admin</th>
+                  <th>Mod. admin</th>
+                </tr>
+              </thead>
+              <tbody id="recordsBody"></tbody>
+            </table>
+            <div id="emptyRecords" class="empty-state">
+              <div class="empty-state-icon" aria-hidden="true"></div>
+              <p>Todavia no hay registros guardados.</p>
+            </div>
+          </div>
+        </section>
+
+        <section class="panel admin-panel is-hidden" data-view="admin">
+          <div class="panel-heading">
+            <div>
+              <p class="section-kicker">Consola</p>
+              <h2>Administración del sistema</h2>
+              <p class="read-only-note">
+                Configuración global, resumen operativo y auditoría.
               </p>
             </div>
             <div class="button-row toolbar-actions">
@@ -455,6 +559,7 @@
             Modo lectura activo. No se pueden modificar horarios, fotos, estados ni eliminar registros.
           </div>
 
+          <!-- Resumen: Dashboard métrico -->
           <section class="ops-dashboard" aria-labelledby="opsDashboardTitle">
             <div class="ops-dashboard-head">
               <div>
@@ -462,7 +567,9 @@
                 <h3 id="opsDashboardTitle">Corte de asistencia</h3>
                 <p id="dashboardScopeLabel">Mostrando registros permitidos por tu rol.</p>
               </div>
-              <span id="dashboardCompletionRate" class="ops-rate">0% completo</span>             <div class="ops-metrics" aria-label="Indicadores de asistencia">
+              <span id="dashboardCompletionRate" class="ops-rate">0% completo</span>
+            </div>
+            <div class="ops-metrics" aria-label="Indicadores de asistencia">
               <article class="ops-metric is-primary">
                 <small>Total visible</small>
                 <strong id="dashboardVisibleTotal">0</strong>
@@ -504,15 +611,25 @@
                 <span>Validaciones por revisar</span>
               </article>
             </div>
+            <div id="dashboardAlerts" class="ops-alerts" aria-live="polite">
+              <span>Sin alertas operativas con los filtros actuales.</span>
+            </div>
+          </section>
 
-            <form class="ops-filters" aria-label="Filtros de registros" style="grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));">
+          <!-- Asistencias en Administración -->
+          <div class="table-wrap admin-control is-hidden">
+            <div class="ops-dashboard-head admin-records-head">
+              <h3>Asistencias registradas</h3>
+            </div>
+
+            <form class="ops-filters admin-filters" aria-label="Filtros de administracion">
               <label>
                 Fecha
-                <input id="filterDate" type="date" />
+                <input id="adminFilterDate" type="date" />
               </label>
               <label>
                 Estado
-                <select id="filterStatus">
+                <select id="adminFilterStatus">
                   <option value="all">Todos</option>
                   <option value="entrada_registrada">Pendiente de salida</option>
                   <option value="asistencia_completa">Asistencia completa</option>
@@ -522,7 +639,7 @@
               </label>
               <label>
                 Riesgo
-                <select id="filterRisk">
+                <select id="adminFilterRisk">
                   <option value="all">Todos</option>
                   <option value="normal">Normal</option>
                   <option value="revision">Revision</option>
@@ -531,27 +648,60 @@
               </label>
               <label>
                 Sitio
-                <select id="filterSite">
+                <select id="adminFilterSite">
                   <option value="all">Todos los sitios</option>
                 </select>
               </label>
               <label>
                 Usuario
-                <select id="filterUser">
+                <select id="adminFilterUser">
                   <option value="all">Todos los usuarios</option>
                 </select>
               </label>
               <label class="ops-search-field">
                 Buscar
-                <input id="filterSearch" type="search" autocomplete="off" placeholder="Nombre o matricula" />
+                <input id="adminFilterSearch" type="search" autocomplete="off" placeholder="Nombre o matricula" />
               </label>
-              <button id="clearDashboardFilters" class="ghost" type="button" style="align-self: flex-end; margin-bottom: 4px;">Limpiar filtros</button>
+              <button id="adminClearDashboardFilters" class="ghost filter-clear" type="button">Limpiar filtros</button>
             </form>
 
-            <div id="dashboardAlerts" class="ops-alerts" aria-live="polite">
-              <span>Sin alertas operativas con los filtros actuales.</span>
+            <table>
+              <thead>
+                <tr>
+                  <th>Foto entrada</th>
+                  <th>Foto salida</th>
+                  <th>Nombre</th>
+                  <th>Matricula</th>
+                  <th>Sitio</th>
+                  <th>Radio</th>
+                  <th>Fecha</th>
+                  <th>Hora entrada</th>
+                  <th>Hora salida</th>
+                  <th>Estado</th>
+                  <th>Identidad</th>
+                  <th>Similitud</th>
+                  <th>QR</th>
+                  <th>Ubicacion</th>
+                  <th>Precision</th>
+                  <th>Distancia</th>
+                  <th>Reto</th>
+                  <th>Riesgo</th>
+                  <th>Evidencia</th>
+                  <th>Observacion</th>
+                  <th>Obs. admin</th>
+                  <th>Mod. admin</th>
+                  <th class="admin-only">Acciones</th>
+                </tr>
+              </thead>
+              <tbody id="adminRecordsBody"></tbody>
+            </table>
+            <div id="adminEmptyRecords" class="empty-state">
+              <div class="empty-state-icon" aria-hidden="true"></div>
+              <p>Todavia no hay registros guardados.</p>
             </div>
-          </section>
+          </div>
+
+          <!-- Organización -->
           <section class="org-admin-panel admin-control is-hidden" aria-labelledby="orgFoundationTitle">
             <div class="site-admin-header">
               <div>
@@ -590,6 +740,8 @@
               <p>La app sigue funcionando por matricula. Supabase Auth y permisos por rol quedan como siguiente fase estable.</p>
             </div>
           </section>
+
+          <!-- Configuración de Sitio -->
           <section class="site-admin-panel admin-control is-hidden" aria-labelledby="siteConfigTitle">
             <div class="site-admin-header">
               <div>
@@ -673,50 +825,12 @@
                 <button id="testAdminLocation" class="secondary" type="button">Probar ubicacion</button>
                 <button class="primary" type="submit">Guardar sitio</button>
               </div>
-              <p id="siteTestResult" class="site-test-result" data-tone="warning">Captura nombre, coordenadas, radio y
-                horarios.</p>
+              <p id="siteTestResult" class="site-test-result" data-tone="warning">Captura nombre, coordenadas, radio y horarios.</p>
             </form>
           </section>
 
-          <div class="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>Foto entrada</th>
-                  <th>Foto salida</th>
-                  <th>Nombre</th>
-                  <th>Matricula</th>
-                  <th>Sitio</th>
-                  <th>Radio</th>
-                  <th>Fecha</th>
-                  <th>Hora entrada</th>
-                  <th>Hora salida</th>
-                  <th>Estado</th>
-                  <th>Identidad</th>
-                  <th>Similitud</th>
-                  <th>QR</th>
-                  <th>Ubicacion</th>
-                  <th>Precision</th>
-                  <th>Distancia</th>
-                  <th>Reto</th>
-                  <th>Riesgo</th>
-                  <th>Evidencia</th>
-                  <th>Observacion</th>
-                  <th>Obs. admin</th>
-                  <th>Mod. admin</th>
-                  <th class="admin-only is-hidden">Acciones</th>
-                </tr>
-              </thead>
-              <tbody id="recordsBody"></tbody>
-            </table>
-            <div id="emptyRecords" class="empty-state">
-              <div class="empty-state-icon" aria-hidden="true"></div>
-              <p>Todavia no hay registros guardados.</p>
-              <p>Usa <strong>Registrar entrada</strong> para agregar el primero.</p>
-            </div>
-          </div>
-
-          <div class="audit-box">
+          <!-- Auditoría -->
+          <div class="audit-box admin-control is-hidden">
             <h3>Auditoria administrativa</h3>
             <p id="adminAudit">No hay acciones administrativas registradas.</p>
           </div>
@@ -732,7 +846,7 @@
             <button class="back-button" data-target="home" type="button">Volver al inicio</button>
           </div>
 
-          <div class="capture-layout" style="display: block; max-width: 560px; margin: 0 auto;">
+          <div class="profile-layout">
             <form id="profileForm" class="data-form" novalidate autocomplete="off">
               <label>
                 Nombre completo
@@ -748,14 +862,15 @@
               </label>
               <label>
                 Rol operativo
-                <input id="profileRole" type="text" readonly style="background: rgba(0,0,0,0.02); cursor: default;" />
+                <input id="profileRole" type="text" readonly class="readonly-field" />
               </label>
               <label>
                 Alcance de permisos
-                <textarea id="profileScope" rows="3" readonly style="background: rgba(0,0,0,0.02); cursor: default; resize: none;"></textarea>
+                <textarea id="profileScope" rows="3" readonly class="readonly-field profile-scope"></textarea>
               </label>
-              <div class="form-actions" style="margin-top: 14px;">
+              <div class="form-actions profile-actions">
                 <button id="save-profile-btn" class="primary wide" type="submit">Guardar cambios</button>
+                <button id="btn-logout-profile" class="danger wide mobile-logout-btn" type="button">Cerrar Sesión</button>
               </div>
             </form>
           </div>

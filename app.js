@@ -206,6 +206,15 @@ function populateElements() {
   els.filterUser = $("#filterUser");
   els.filterSearch = $("#filterSearch");
   els.clearDashboardFilters = $("#clearDashboardFilters");
+  els.adminRecordsBody = $("#adminRecordsBody");
+  els.adminEmptyRecords = $("#adminEmptyRecords");
+  els.adminFilterDate = $("#adminFilterDate");
+  els.adminFilterStatus = $("#adminFilterStatus");
+  els.adminFilterRisk = $("#adminFilterRisk");
+  els.adminFilterSite = $("#adminFilterSite");
+  els.adminFilterUser = $("#adminFilterUser");
+  els.adminFilterSearch = $("#adminFilterSearch");
+  els.adminClearDashboardFilters = $("#adminClearDashboardFilters");
   els.dashboardLate = $("#dashboardLate");
   els.dashboardNoExit = $("#dashboardNoExit");
   els.orgStatusBadge = $("#orgStatusBadge");
@@ -267,11 +276,14 @@ function populateElements() {
   els.profileScope = $("#profileScope");
   els.userInitials = $("#userInitials");
   els.btnLogout = $("#btn-logout");
+  els.btnLogoutProfile = $("#btn-logout-profile");
   els.pwaInstallBanner = $("#pwaInstallBanner");
   els.pwaInstallButton = $("#pwaInstallButton");
   els.pwaInstallHelp = $("#pwaInstallHelp");
   els.profileForm = $("#profileForm");
   els.profileSubmitBtn = $("#save-profile-btn");
+  els.streakDays = $("#streakDays");
+  els.streakHours = $("#streakHours");
 }
 
 
@@ -446,6 +458,12 @@ function addAdminLog(action, detail) {
       p_resultado: "ok",
     }).catch(() => undefined);
   }
+}
+
+function isLocalDemoEnvironment() {
+  const host = window.location.hostname;
+  const isLocalHost = ["localhost", "127.0.0.1", "::1"].includes(host);
+  return isLocalHost || state.demoMode === true;
 }
 
 function getOperationalTimezone() {
@@ -1416,9 +1434,18 @@ function showGuidedPanel(kind) {
 
 function showView(name) {
   if (name === "records") {
-    const canViewRecordsTab = hasAnyPermission(["view_site_records", "view_all_records"]);
+    const canViewRecordsTab = hasAnyPermission(["view_own_records", "view_site_records", "view_all_records"]);
     if (!canViewRecordsTab) {
       console.warn("Navegación rechazada: permiso insuficiente para la vista de registros.");
+      showView("home");
+      return;
+    }
+  }
+
+  if (name === "admin") {
+    const isAdminOrSuper = ["admin", "superadmin"].includes(state.currentRole);
+    if (!isAdminOrSuper) {
+      console.warn("Navegación rechazada: permiso insuficiente para la vista de administración.");
       showView("home");
       return;
     }
@@ -1445,12 +1472,12 @@ function showView(name) {
     }
     updateClockAndQr({ force: true });
   }
-  if (name === "records" || name === "home") refreshRecords({ silent: true });
+  if (name === "records" || name === "admin" || name === "home") refreshRecords({ silent: true });
   window.scrollTo({ top: 0, behavior: "smooth" });
 }
 
 function setActiveNavigation(name) {
-  document.querySelectorAll(".nav-button").forEach((button) => {
+  document.querySelectorAll(".nav-button, .sidebar-user-btn").forEach((button) => {
     button.classList.toggle("is-active", button.dataset.target === name);
   });
 }
@@ -1831,7 +1858,7 @@ async function validateExitMatricula({ showErrors = false } = {}) {
   const record = todayRecordByMatricula(matricula);
 
   if (!record || !record.horaEntrada) {
-    const message = "No existe una entrada activa para esta matr�cula el d�a de hoy.";
+    const message = "No existe una entrada activa para esta matricula el dia de hoy.";
     resetExitActiveRecord(message);
     els.exitLookupInfo.dataset.tone = "danger";
     if (showErrors) showToast(message);
@@ -1839,7 +1866,7 @@ async function validateExitMatricula({ showErrors = false } = {}) {
   }
 
   if (record.horaSalida) {
-    const message = "Esta matr�cula ya registr� salida el d�a de hoy.";
+    const message = "Esta matricula ya registro salida el dia de hoy.";
     resetExitActiveRecord(message);
     els.exitLookupInfo.dataset.tone = "danger";
     if (showErrors) showToast(message);
@@ -2168,6 +2195,62 @@ function closeEvidenceDetail() {
   els.evidenceModal.hidden = true;
   if (els.evidenceBody) els.evidenceBody.innerHTML = "";
 }
+
+function recordDateKey(record) {
+  const value = String(record.fecha || "").trim();
+  const match = value.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  if (match) return `${match[3]}-${match[2]}-${match[1]}`;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return value;
+  return "";
+}
+
+function parseRecordTimeToMinutes(value) {
+  const match = String(value || "").match(/(\d{1,2}):(\d{2})/);
+  if (!match) return null;
+  let hour = Number(match[1]);
+  const minute = Number(match[2]);
+  const lower = String(value).toLowerCase();
+  if (lower.includes("p") && hour < 12) hour += 12;
+  if (lower.includes("a") && hour === 12) hour = 0;
+  return hour * 60 + minute;
+}
+
+function attendanceDurationHours(record) {
+  if (!record.horaEntrada || !record.horaSalida || record.horaSalida === "Pendiente") return 0;
+  const start = parseRecordTimeToMinutes(record.horaEntrada);
+  const end = parseRecordTimeToMinutes(record.horaSalida);
+  if (start === null || end === null || end <= start) return 0;
+  return (end - start) / 60;
+}
+
+function renderStreakWidget(records = getVisibleRecords()) {
+  if (!els.streakDays || !els.streakHours) return;
+  const activeDays = new Set(records.filter((record) => record.horaEntrada).map(recordDateKey).filter(Boolean));
+  let streak = 0;
+  const cursor = new Date();
+
+  while (activeDays.has(cursor.toISOString().slice(0, 10))) {
+    streak += 1;
+    cursor.setDate(cursor.getDate() - 1);
+  }
+
+  const now = new Date();
+  const weekStart = new Date(now);
+  weekStart.setHours(0, 0, 0, 0);
+  weekStart.setDate(now.getDate() - ((now.getDay() + 6) % 7));
+
+  const weekHours = records.reduce((total, record) => {
+    const key = recordDateKey(record);
+    if (!key) return total;
+    const date = new Date(`${key}T00:00:00`);
+    if (date < weekStart) return total;
+    return total + attendanceDurationHours(record);
+  }, 0);
+
+  els.streakDays.textContent = `${streak} ${streak === 1 ? "dia activo" : "dias activos"}`;
+  els.streakHours.textContent = `${weekHours.toFixed(1).replace(".0", "")} h acumuladas esta semana`;
+}
+
 function renderRecentActivity() {
   const container = document.getElementById("recentActivityList");
   if (!container) return;
@@ -2175,7 +2258,7 @@ function renderRecentActivity() {
   container.innerHTML = "";
 
   const actions = [];
-  state.records.forEach(record => {
+  getVisibleRecords().forEach(record => {
     if (record.horaEntrada) {
       actions.push({
         tipo: "entrada",
@@ -2206,37 +2289,35 @@ function renderRecentActivity() {
   const recentActions = actions.slice(0, 3);
 
   if (recentActions.length === 0) {
-    container.innerHTML = `<p style="opacity: 0.6; font-size: 0.9rem; margin: 8px 0;">No hay actividad reciente.</p>`;
+    container.innerHTML = `<p class="recent-empty">No hay actividad reciente.</p>`;
     return;
   }
 
   recentActions.forEach(action => {
     const item = document.createElement("div");
-    item.style.cssText = "display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; background: var(--card); border-radius: var(--radius-soft); box-shadow: inset 0 0 0 1px var(--line); gap: 16px;";
+    item.className = "recent-activity-item";
 
     const isEntrada = action.tipo === "entrada";
-    const iconBg = isEntrada ? "rgba(46, 204, 113, 0.1)" : "rgba(230, 126, 34, 0.1)";
-    const iconColor = isEntrada ? "#2ecc71" : "#e67e22";
     const iconSvg = isEntrada 
-      ? `<svg viewBox="0 0 24 24" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="stroke: currentColor; fill: none; width: 16px; height: 16px;"><line x1="12" y1="5" x2="12" y2="19"></line><polyline points="19 12 12 19 5 12"></polyline></svg>`
-      : `<svg viewBox="0 0 24 24" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="stroke: currentColor; fill: none; width: 16px; height: 16px;"><line x1="12" y1="19" x2="12" y2="5"></line><polyline points="5 12 12 5 19 12"></polyline></svg>`;
+      ? `<svg viewBox="0 0 24 24" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><polyline points="19 12 12 19 5 12"></polyline></svg>`
+      : `<svg viewBox="0 0 24 24" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="19" x2="12" y2="5"></line><polyline points="5 12 12 5 19 12"></polyline></svg>`;
 
     const titleText = isEntrada ? "Entrada" : "Salida";
     const dateStr = displayDate(action.fecha);
 
     item.innerHTML = `
-      <div style="display: flex; align-items: center; gap: 12px; min-width: 0; flex-grow: 1;">
-        <div style="width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; background: ${iconBg}; color: ${iconColor}; flex-shrink: 0;">
+      <div class="recent-activity-main">
+        <div class="recent-activity-icon ${isEntrada ? "is-entry" : "is-exit"}">
           ${iconSvg}
         </div>
-        <div style="min-width: 0; flex-grow: 1;">
-          <span style="font-weight: 700; font-size: 0.9rem; color: var(--ink); display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${escapeHtml(titleText)} - ${escapeHtml(action.nombre)}</span>
-          <div style="font-size: 0.75rem; opacity: 0.6; margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">Matrícula: ${escapeHtml(action.matricula)} • ${escapeHtml(dateStr)}</div>
+        <div class="recent-activity-text">
+          <strong>${escapeHtml(titleText)} - ${escapeHtml(action.nombre)}</strong>
+          <span>Matricula: ${escapeHtml(action.matricula)} - ${escapeHtml(dateStr)}</span>
         </div>
       </div>
-      <div style="display: flex; align-items: center; gap: 16px; flex-shrink: 0;">
-        <span style="font-weight: 700; font-size: 0.95rem; color: var(--ink);">${escapeHtml(action.hora)}</span>
-        <span class="badge" style="background: rgba(46, 204, 113, 0.15); color: #27ae60; font-weight: 700; font-size: 0.75rem; padding: 4px 8px; border-radius: 4px; border: none;">Confirmado</span>
+      <div class="recent-activity-meta">
+        <span class="recent-activity-time">${escapeHtml(action.hora)}</span>
+        <span class="recent-status">Confirmado</span>
       </div>
     `;
     container.appendChild(item);
@@ -2248,18 +2329,22 @@ function renderRecords() {
   const filteredRecords = getFilteredRecords();
   renderOperationsDashboard(filteredRecords);
   updateSummary(filteredRecords);
+  renderStreakWidget();
   renderRecentActivity();
-  
+
   if (els.recordsBody) els.recordsBody.innerHTML = "";
-  if (els.emptyRecords) els.emptyRecords.classList.toggle("is-hidden", filteredRecords.length === 0);
+  if (els.adminRecordsBody) els.adminRecordsBody.innerHTML = "";
+
+  if (els.emptyRecords) els.emptyRecords.classList.toggle("is-hidden", filteredRecords.length > 0);
+  if (els.adminEmptyRecords) els.adminEmptyRecords.classList.toggle("is-hidden", filteredRecords.length > 0);
 
   filteredRecords.forEach((record) => {
-    const row = document.createElement("tr");
     const statusClass = statusBadgeClass(record.estado);
     const identityClass = identityBadgeClass(record.validacionIdentidad);
     const riskClass = riskBadgeClass(record.riesgo);
     const adminClass = record.modificado_por_admin ? "admin" : "default";
-    row.innerHTML = `
+
+    const commonColsHtml = `
       <td>${imageCell(record.fotoEntrada, "Entrada")}</td>
       <td>${imageCell(record.fotoSalida, "Salida")}</td>
       <td>${escapeHtml(record.nombre)}</td>
@@ -2282,15 +2367,28 @@ function renderRecords() {
       <td>${escapeHtml(record.observacion || record.observaciones || "Sin observacion")}</td>
       <td>${escapeHtml(record.observacion_admin || "Sin observacion")}</td>
       <td><span class="badge ${adminClass}">${record.modificado_por_admin ? "Si" : "No"}</span></td>
-      <td class="admin-only ${state.isAdmin ? "" : "is-hidden"}">
-        <div class="row-actions">
-          <button class="secondary mini" data-action="view-evidence" data-id="${record.id}">Ver evidencia</button>
-          <button class="ghost mini" data-action="edit-observation" data-id="${record.id}">Observacion</button>
-          <button class="danger mini" data-action="delete-record" data-id="${record.id}">Eliminar</button>
-        </div>
-      </td>
     `;
-    if (els.recordsBody) els.recordsBody.appendChild(row);
+
+    if (els.recordsBody) {
+      const row = document.createElement("tr");
+      row.innerHTML = commonColsHtml;
+      els.recordsBody.appendChild(row);
+    }
+
+    if (els.adminRecordsBody) {
+      const row = document.createElement("tr");
+      row.innerHTML = `
+        ${commonColsHtml}
+        <td class="admin-only ${state.isAdmin ? "" : "is-hidden"}">
+          <div class="row-actions">
+            <button class="secondary mini" data-action="view-evidence" data-id="${record.id}">Ver evidencia</button>
+            <button class="ghost mini" data-action="edit-observation" data-id="${record.id}">Observacion</button>
+            <button class="danger mini" data-action="delete-record" data-id="${record.id}">Eliminar</button>
+          </div>
+        </td>
+      `;
+      els.adminRecordsBody.appendChild(row);
+    }
   });
 }
 
@@ -2482,13 +2580,7 @@ function syncDashboardFiltersFromUi() {
 }
 
 function populateDashboardFilterSelects() {
-  if (!els.filterSite || !els.filterUser) return;
-  
-  const currentSite = els.filterSite.value;
-  const currentUser = els.filterUser.value;
-  
   const allVisible = getVisibleRecords();
-  
   const uniqueSites = new Set();
   const uniqueUsers = new Map();
   
@@ -2500,35 +2592,54 @@ function populateDashboardFilterSelects() {
       uniqueUsers.set(normalizeMatricula(record.matricula), record.nombre.trim());
     }
   });
-  
-  // Rellenar select de Sitios
-  els.filterSite.innerHTML = '<option value="all">Todos los sitios</option>';
-  Array.from(uniqueSites).sort().forEach(site => {
-    const option = document.createElement("option");
-    option.value = site;
-    option.textContent = site;
-    els.filterSite.appendChild(option);
-  });
-  // Restaurar selección anterior de forma segura
-  if (Array.from(uniqueSites).includes(currentSite)) {
-    els.filterSite.value = currentSite;
-  } else {
-    els.filterSite.value = "all";
+
+  const updateSelect = (selectEl, prevValue, placeholder) => {
+    if (!selectEl) return;
+    selectEl.innerHTML = `<option value="all">${placeholder}</option>`;
+
+    if (selectEl.id.includes("Site")) {
+      Array.from(uniqueSites).sort().forEach(site => {
+        const option = document.createElement("option");
+        option.value = site;
+        option.textContent = site;
+        selectEl.appendChild(option);
+      });
+      if (Array.from(uniqueSites).includes(prevValue)) {
+        selectEl.value = prevValue;
+      } else {
+        selectEl.value = "all";
+      }
+    } else {
+      Array.from(uniqueUsers.entries()).sort((a,b) => a[1].localeCompare(b[1])).forEach(([matricula, nombre]) => {
+        const option = document.createElement("option");
+        option.value = matricula;
+        option.textContent = `${nombre} (${matricula})`;
+        selectEl.appendChild(option);
+      });
+      if (uniqueUsers.has(prevValue)) {
+        selectEl.value = prevValue;
+      } else {
+        selectEl.value = "all";
+      }
+    }
+  };
+
+  if (els.filterSite) {
+    const prevSite = els.filterSite.value;
+    updateSelect(els.filterSite, prevSite, "Todos los sitios");
+  }
+  if (els.adminFilterSite) {
+    const prevSite = els.adminFilterSite.value;
+    updateSelect(els.adminFilterSite, prevSite, "Todos los sitios");
   }
   
-  // Rellenar select de Usuarios
-  els.filterUser.innerHTML = '<option value="all">Todos los usuarios</option>';
-  Array.from(uniqueUsers.entries()).sort((a,b) => a[1].localeCompare(b[1])).forEach(([matricula, nombre]) => {
-    const option = document.createElement("option");
-    option.value = matricula;
-    option.textContent = `${nombre} (${matricula})`;
-    els.filterUser.appendChild(option);
-  });
-  // Restaurar selección anterior de forma segura
-  if (uniqueUsers.has(currentUser)) {
-    els.filterUser.value = currentUser;
-  } else {
-    els.filterUser.value = "all";
+  if (els.filterUser) {
+    const prevUser = els.filterUser.value;
+    updateSelect(els.filterUser, prevUser, "Todos los usuarios");
+  }
+  if (els.adminFilterUser) {
+    const prevUser = els.adminFilterUser.value;
+    updateSelect(els.adminFilterUser, prevUser, "Todos los usuarios");
   }
 }
 
@@ -2540,6 +2651,14 @@ function resetDashboardFilters() {
   if (els.filterSite) els.filterSite.value = "all";
   if (els.filterUser) els.filterUser.value = "all";
   if (els.filterSearch) els.filterSearch.value = "";
+
+  if (els.adminFilterDate) els.adminFilterDate.value = "";
+  if (els.adminFilterStatus) els.adminFilterStatus.value = "all";
+  if (els.adminFilterRisk) els.adminFilterRisk.value = "all";
+  if (els.adminFilterSite) els.adminFilterSite.value = "all";
+  if (els.adminFilterUser) els.adminFilterUser.value = "all";
+  if (els.adminFilterSearch) els.adminFilterSearch.value = "";
+
   renderRecords();
 }
 
@@ -2585,6 +2704,17 @@ function requestAdminAccess() {
     addAdminLog("Desbloqueo por rol", getRoleDefinition().label + " activo");
     showToast("Permisos administrativos activados por rol.");
     return true;
+  }
+  if (!isLocalDemoEnvironment()) {
+    state.adminLog.unshift({
+      ...nowParts(),
+      action: "Intento admin fallido",
+      detail: "Usuario sin rol administrativo en produccion",
+    });
+    saveAdminLog();
+    renderAdminAudit();
+    showToast("Para acciones administrativas inicia sesion con una cuenta admin.");
+    return false;
   }
   const value = prompt("Ingresa la clave administrativa para continuar:");
   if (value === ADMIN_KEY) {
@@ -2646,7 +2776,7 @@ function updateAdminControls() {
   // - Admin/Superadmin: ve todo.
   const navRecordsBtn = document.querySelector('button.nav-button[data-target="records"]');
   if (navRecordsBtn) {
-    const canViewRecordsTab = hasAnyPermission(["view_site_records", "view_all_records"]);
+    const canViewRecordsTab = hasAnyPermission(["view_own_records", "view_site_records", "view_all_records"]);
     navRecordsBtn.classList.toggle("is-hidden", !canViewRecordsTab);
   }
   
@@ -2657,7 +2787,18 @@ function updateAdminControls() {
     tabRecordsBtn.classList.toggle("is-hidden", !canViewRecordsTab);
   }
 
-  // Ocultar paneles de configuración de sitios u organización en la vista de Registros si no es administrador
+  // Controlar la visibilidad del botón de Administración
+  const isAuthorizedToAdmin = ["admin", "superadmin"].includes(state.currentRole);
+  const navAdminBtn = document.querySelector('button.nav-button[data-target="admin"]');
+  if (navAdminBtn) {
+    navAdminBtn.classList.toggle("is-hidden", !isAuthorizedToAdmin);
+  }
+  const tabAdminBtn = document.querySelector('.tab-strip button[data-target="admin"]');
+  if (tabAdminBtn) {
+    tabAdminBtn.classList.toggle("is-hidden", !isAuthorizedToAdmin);
+  }
+
+  // Ocultar paneles de configuración de sitios u organización en la vista de Registros/Admin si no es administrador
   const orgAdminSection = document.querySelector(".org-admin-panel");
   const siteAdminSection = document.querySelector(".site-admin-panel");
   if (orgAdminSection) {
@@ -2926,13 +3067,17 @@ function handleRecordAction(event) {
     const matriculaCell = row?.querySelector("td:nth-child(4)"); // la matrícula está en la columna 4 (1-indexed)
     if (matriculaCell && (cell.cellIndex === 2 || cell.cellIndex === 3)) { // Columna de nombre (2) o matrícula (3) (0-indexed)
       const matricula = matriculaCell.textContent.trim();
+      const normalized = normalizeMatricula(matricula);
       if (els.filterUser) {
-        els.filterUser.value = normalizeMatricula(matricula);
-        syncDashboardFiltersFromUi();
-        renderRecords();
-        showToast(`Filtrando historial de usuario: ${matricula}`);
-        return;
+        els.filterUser.value = normalized;
       }
+      if (els.adminFilterUser) {
+        els.adminFilterUser.value = normalized;
+      }
+      syncDashboardFiltersFromUi();
+      renderRecords();
+      showToast(`Filtrando historial de usuario: ${matricula}`);
+      return;
     }
   }
 
@@ -3305,6 +3450,12 @@ async function init() {
       showToast("Sesión cerrada.");
     });
   }
+  if (els.btnLogoutProfile) {
+    els.btnLogoutProfile.addEventListener("click", async () => {
+      await cerrarSesion();
+      showToast("Sesión cerrada.");
+    });
+  }
 
   // 3. Manejadores estándar de la app
   if (els.startEntryCamera) els.startEntryCamera.addEventListener("click", () => startCamera("entry"));
@@ -3339,6 +3490,7 @@ async function init() {
   if (els.exportCsv) els.exportCsv.addEventListener("click", exportCsv);
   if (els.clearRecords) els.clearRecords.addEventListener("click", clearRecords);
   if (els.recordsBody) els.recordsBody.addEventListener("click", handleRecordAction);
+  if (els.adminRecordsBody) els.adminRecordsBody.addEventListener("click", handleRecordAction);
   if (els.closeEvidence) els.closeEvidence.addEventListener("click", closeEvidenceDetail);
   if (els.evidenceModal) {
     els.evidenceModal.addEventListener("click", (event) => {
@@ -3349,23 +3501,60 @@ async function init() {
   if (els.useAdminLocation) els.useAdminLocation.addEventListener("click", useAdminLocation);
   if (els.testAdminLocation) els.testAdminLocation.addEventListener("click", testAdminLocation);
 
-  const filterForm = document.querySelector(".ops-filters");
-  if (filterForm) {
-    filterForm.addEventListener("submit", (event) => event.preventDefault());
-  }
-  [els.filterDate, els.filterStatus, els.filterRisk, els.filterSite, els.filterUser, els.filterSearch].forEach((control) => {
-    if (control) {
-      control.addEventListener("change", () => {
-        syncDashboardFiltersFromUi();
-        renderRecords();
-      });
-      control.addEventListener("input", () => {
-        syncDashboardFiltersFromUi();
-        renderRecords();
-      });
+  document.querySelectorAll(".ops-filters").forEach((form) => {
+    form.addEventListener("submit", (event) => event.preventDefault());
+  });
+
+  const syncFilterControls = (sourceEl) => {
+    if (!sourceEl) return;
+    const map = {
+      "filterDate": "adminFilterDate",
+      "filterStatus": "adminFilterStatus",
+      "filterRisk": "adminFilterRisk",
+      "filterSite": "adminFilterSite",
+      "filterUser": "adminFilterUser",
+      "filterSearch": "adminFilterSearch",
+      "adminFilterDate": "filterDate",
+      "adminFilterStatus": "filterStatus",
+      "adminFilterRisk": "filterRisk",
+      "adminFilterSite": "filterSite",
+      "adminFilterUser": "filterUser",
+      "adminFilterSearch": "filterSearch"
+    };
+    const targetId = map[sourceEl.id];
+    if (targetId) {
+      const targetEl = document.getElementById(targetId);
+      if (targetEl) targetEl.value = sourceEl.value;
+    }
+  };
+
+  const filterControls = [
+    { normal: els.filterDate, admin: els.adminFilterDate },
+    { normal: els.filterStatus, admin: els.adminFilterStatus },
+    { normal: els.filterRisk, admin: els.adminFilterRisk },
+    { normal: els.filterSite, admin: els.adminFilterSite },
+    { normal: els.filterUser, admin: els.adminFilterUser },
+    { normal: els.filterSearch, admin: els.adminFilterSearch }
+  ];
+
+  filterControls.forEach((group) => {
+    const handleFilterEvent = (event) => {
+      syncFilterControls(event.target);
+      syncDashboardFiltersFromUi();
+      renderRecords();
+    };
+    if (group.normal) {
+      group.normal.addEventListener("change", handleFilterEvent);
+      group.normal.addEventListener("input", handleFilterEvent);
+    }
+    if (group.admin) {
+      group.admin.addEventListener("change", handleFilterEvent);
+      group.admin.addEventListener("input", handleFilterEvent);
     }
   });
+
   if (els.clearDashboardFilters) els.clearDashboardFilters.addEventListener("click", resetDashboardFilters);
+  if (els.adminClearDashboardFilters) els.adminClearDashboardFilters.addEventListener("click", resetDashboardFilters);
 
   if (window.location.hash.startsWith("#salida")) {
     showView("exit");
