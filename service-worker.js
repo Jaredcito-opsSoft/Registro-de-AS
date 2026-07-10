@@ -1,4 +1,4 @@
-const CACHE_VERSION = "asistencia-qr-static-v2";
+const CACHE_VERSION = "asistencia-qr-static-v4";
 const STATIC_ASSETS = [
   "/",
   "/index.html",

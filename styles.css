@@ -2148,6 +2148,31 @@ tbody tr:hover {
     flex-shrink: 0;
   }
 
+  .sys-status-bar {
+    flex: none;
+    justify-content: flex-start;
+    flex-wrap: wrap;
+    gap: 8px;
+    width: 100%;
+  }
+
+  .sys-time-chip,
+  .sys-qr-chip {
+    height: 36px;
+    padding: 0 12px;
+    font-size: 0.78rem;
+  }
+
+  .toast {
+    right: 14px;
+    bottom: calc(96px + env(safe-area-inset-bottom));
+    left: 14px;
+    max-width: none;
+    padding: 12px 14px;
+    border-radius: 16px;
+    font-size: 0.88rem;
+  }
+
   .panel-heading,
   .site-admin-header {
     flex-direction: column;
@@ -2537,8 +2562,8 @@ tbody tr:hover {
   .toast {
     left: 16px;
     right: 16px;
-    top: calc(12px + env(safe-area-inset-top));
-    bottom: auto;
+    top: auto;
+    bottom: calc(var(--bottom-nav-height) + 16px + env(safe-area-inset-bottom));
     max-width: none;
     padding: 12px 14px;
     text-align: center;
