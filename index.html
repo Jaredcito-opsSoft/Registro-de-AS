@@ -323,6 +323,20 @@
               <button data-target="records" type="button">Ver mis registros</button>
             </div>
 
+            <section class="streak-widget" aria-label="Racha de asistencia">
+              <div class="streak-orb" aria-hidden="true">
+                <svg viewBox="0 0 24 24" focusable="false">
+                  <path d="M13.5 2.4c.44 2.2-.18 3.66-1.52 5.17-.84.94-1.26 1.72-1.07 2.67 1.4-.5 2.49-1.55 3.32-3.24 2.34 1.63 4.18 4.04 4.18 7.08 0 4.05-2.75 7.02-6.43 7.02-3.73 0-6.39-2.58-6.39-6.44 0-2.58 1.39-4.47 3.07-6.38 1.72-1.96 3.24-3.7 4.84-5.88Z" />
+                  <path d="M12.17 19.25c1.53 0 2.63-1.05 2.63-2.57 0-1.11-.62-2.02-1.6-2.86-.36.9-.94 1.46-1.72 1.68-.18-.82.12-1.39.72-2.1.49-.57.78-1.17.72-2.03-1.71 1.76-3.36 3.2-3.36 5.24 0 1.58 1.06 2.64 2.61 2.64Z" opacity=".72" />
+                </svg>
+              </div>
+              <div>
+                <span>Racha activa</span>
+                <strong id="homeStreakDays">0 dias activos</strong>
+                <p id="homeStreakHours">0 h acumuladas esta semana</p>
+              </div>
+              <button data-target="records" type="button">Ver historial</button>
+            </section>
 
             <div class="home-insights" aria-label="Informacion operativa">
               <article>
@@ -1013,7 +1027,7 @@
   <script src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
   <script src="supabase-config.js?v=f0-mobile-shell"></script>
   <script src="auth.js?v=f0-mobile-shell"></script>
-  <script src="app.js?v=f0-mobile-shell"></script>
+  <script src="app.js?v=2.4"></script>
 </body>
 
 </html>

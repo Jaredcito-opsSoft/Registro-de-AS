@@ -306,7 +306,8 @@ function populateElements() {
   els.pwaInstallHelp = $("#pwaInstallHelp");
   els.profileForm = $("#profileForm");
   els.profileSubmitBtn = $("#save-profile-btn");
-  els.streakHours = $("#streakHours");
+  els.homeStreakDays = $("#homeStreakDays");
+  els.homeStreakHours = $("#homeStreakHours");
   els.appStatusBanner = $("#appStatusBanner");
 }
 
@@ -2565,7 +2566,7 @@ function attendanceDurationHours(record) {
 }
 
 function renderStreakWidget(records = getVisibleRecords()) {
-  if (!els.streakDays || !els.streakHours) return;
+  if (!els.homeStreakDays || !els.homeStreakHours) return;
   const activeDays = new Set(records.filter((record) => record.horaEntrada).map(recordDateKey).filter(Boolean));
   let streak = 0;
   const cursor = new Date();
@@ -2588,11 +2589,11 @@ function renderStreakWidget(records = getVisibleRecords()) {
     return total + attendanceDurationHours(record);
   }, 0);
 
-  if (els.streakDays) {
-    els.streakDays.textContent = `${streak} ${streak === 1 ? "dia activo" : "dias activos"}`;
+  if (els.homeStreakDays) {
+    els.homeStreakDays.textContent = `${streak} ${streak === 1 ? "dia activo" : "dias activos"}`;
   }
-  if (els.streakHours) {
-    els.streakHours.textContent = `${weekHours.toFixed(1).replace(".0", "")} h acumuladas esta semana`;
+  if (els.homeStreakHours) {
+    els.homeStreakHours.textContent = `${weekHours.toFixed(1).replace(".0", "")} h acumuladas esta semana`;
   }
 }
 function renderRecentActivity() {
