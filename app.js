@@ -1709,7 +1709,7 @@ function updateAccessQr() {
   state.qrToken = "";
   state.nextQrRefreshAt = Date.now() + 60000;
   els.clockLabel.textContent = displayTime(now.toISOString());
-  els.qrWindowLabel.textContent = "QR de acceso";
+  if (els.qrWindowLabel) els.qrWindowLabel.textContent = "";
   els.qrMessage.textContent = ACCESS_QR_MESSAGE;
   els.qrBox.classList.remove("is-disabled");
   els.qrImage.hidden = false;
