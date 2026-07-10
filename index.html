@@ -5,8 +5,8 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta name="description"
-    content="Sistema de control de asistencia con registro fotografico, codigo QR dinamico y validacion de ubicacion." />
-  <meta name="theme-color" content="#E8262D" />
+    content="Sistema mobile-first de asistencia multiempresa con evidencia fotografica, ubicacion y reportes controlados." />
+  <meta name="theme-color" content="#ef4ea0" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-title" content="Asistencia QR" />
   <title>Asistencia QR - Control Institucional</title>
@@ -49,6 +49,16 @@
         <label id="label-matricula" class="is-hidden">
           Matrícula
           <input id="authMatricula" type="text" autocomplete="off" placeholder="Ej. A00125" />
+        </label>
+        <label id="label-org-key" class="is-hidden">
+          Clave de organización
+          <input id="authOrgKey" type="text" autocomplete="off" placeholder="Ej. DEMO-AS-2026" />
+        </label>
+        <label id="label-org-select">
+          Sitio afiliado
+          <select id="authOrgSelect">
+            <option value="">Cargando sitios...</option>
+          </select>
         </label>
         <label id="label-email">
           Correo electrónico
@@ -131,14 +141,18 @@
           </span>
           <span class="nav-label">Admin</span>
         </button>
+        <button class="nav-button admin-nav is-hidden" data-target="admin" type="button" aria-label="Panel admin">
+          <span class="nav-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="3" y="4" width="18" height="16" rx="2" />
+              <path d="M8 9h8" />
+              <path d="M8 13h5" />
+              <path d="M16 17h2" />
+            </svg>
+          </span>
+          <span class="nav-label">Admin</span>
+        </button>
 
-        <!-- QR Compacto reubicado debajo de Registros -->
-        <div id="qrBox" style="margin-top: 12px; padding-top: 12px; display: flex; flex-direction: column; align-items: center; gap: 4px; border-top: 1px solid rgba(255, 255, 255, 0.12); width: 100%; text-align: center;">
-          <img id="qrImage" alt="QR" style="width: 44px; height: 44px; background: #fff; border-radius: 4px; padding: 3px; box-shadow: 0 1px 4px rgba(0,0,0,0.3);" />
-          <p id="qrMessage" style="display: none;"></p>
-          <a id="qrDirectLink" href="#" style="display: none;"></a>
-          <small id="qrTokenLabel" style="display: none;"></small>
-        </div>
       </nav>
 
       <div class="sidebar-footer">
@@ -185,6 +199,11 @@
       </header>
 
       <main>
+        <div id="appStatusBanner" class="app-status-banner is-hidden" data-tone="warning" role="status" aria-live="polite">
+          <strong>Sin conexion</strong>
+          <span>La app queda en modo lectura local. No se enviaran asistencias hasta recuperar conexion.</span>
+        </div>
+
         <section class="dashboard-grid" data-view="home">
           <section class="hero-panel">
             <div class="hero-topline">
@@ -253,6 +272,22 @@
             <button id="pwaInstallButton" class="primary" type="button">Instalar app</button>
           </div>
 
+          <section class="panel qr-panel" aria-labelledby="accessQrTitle">
+            <div class="panel-menu">
+              <div>
+                <p class="section-kicker">Acceso rapido</p>
+                <h3 id="accessQrTitle">QR para abrir la app</h3>
+              </div>
+              <span aria-hidden="true">...</span>
+            </div>
+            <div id="qrBox" class="qr-box">
+              <img id="qrImage" alt="QR para abrir el sistema de asistencia" />
+              <p id="qrMessage">Escanea para abrir el sistema de asistencia.</p>
+              <a id="qrDirectLink" href="#" target="_blank" rel="noopener">Abrir enlace</a>
+              <small id="qrTokenLabel">QR solo de acceso; no valida salida.</small>
+            </div>
+          </section>
+
           <section class="panel activity-panel">
             <div class="tab-strip" aria-label="Acciones principales">
               <button class="is-active" data-target="home" type="button">Inicio</button>
@@ -265,20 +300,25 @@
               <p class="section-kicker">Sistema activo</p>
               <h2>Registro rapido, evidencia visual protegida.</h2>
               <p>
-                Captura entrada con foto, valida salida por matricula y conserva el historial en modo lectura
+                Captura entrada con foto, valida salida por identificador y conserva el historial en modo lectura
                 para evitar cambios no autorizados.
               </p>
             </div>
-            <div class="streak-widget" aria-label="Resumen personal de asistencia">
-              <div class="streak-orb" aria-hidden="true">
-                <svg viewBox="0 0 24 24">
-                  <path d="M13.5 2.5c.2 2.6 1.5 4.4 3.1 6.2 1.7 1.9 3 3.9 3 6.6A7.1 7.1 0 0 1 12.5 22 7.4 7.4 0 0 1 5 14.6c0-2.9 1.7-5.1 3.5-6.9.8 2.4 2.1 3.8 3.4 4.6-.4-3.5.4-6.8 1.6-9.8Z" />
-                </svg>
+            <div class="operation-strip" aria-label="Flujo de operacion">
+              <div>
+                <strong>01</strong>
+                <span>Registrar entrada</span>
+                <small>Captura foto, identificador y GPS.</small>
               </div>
               <div>
-                <span>Racha personal</span>
-                <strong id="streakDays">0 dias activos</strong>
-                <p id="streakHours">0 h acumuladas esta semana</p>
+                <strong>02</strong>
+                <span>Registrar salida</span>
+                <small>Usa identificador, foto final y ubicacion.</small>
+              </div>
+              <div>
+                <strong>03</strong>
+                <span>Ver registros</span>
+                <small>Revisa evidencia, riesgos y estado.</small>
               </div>
               <button data-target="records" type="button">Ver mis registros</button>
             </div>
@@ -292,7 +332,7 @@
               </article>
               <article>
                 <span>Salida segura</span>
-                <strong>Salida por matricula</strong>
+                <strong>Salida por identificador</strong>
                 <p>La salida se habilita con entrada activa, prueba de vida y ubicacion dentro del rango permitido.</p>
               </article>
               <article>
@@ -446,9 +486,9 @@
         <section class="panel records-panel is-hidden" data-view="records">
           <div class="panel-heading">
             <div>
-              <p class="section-kicker">Historial</p>
-              <h2>Mis registros</h2>
-              <p class="read-only-note">
+              <p id="recordsKicker" class="section-kicker">Historial</p>
+              <h2 id="recordsTitle">Mis registros</h2>
+              <p id="recordsSubtitle" class="read-only-note">
                 Consulta tus entradas, salidas y evidencias registradas.
               </p>
             </div>
@@ -530,11 +570,18 @@
               </thead>
               <tbody id="recordsBody"></tbody>
             </table>
-            <div id="emptyRecords" class="empty-state">
-              <div class="empty-state-icon" aria-hidden="true"></div>
-              <p>Todavia no hay registros guardados.</p>
-            </div>
           </div>
+
+          <section class="mobile-records-shell" aria-labelledby="mobileRecordsTitle">
+            <div class="mobile-records-head">
+              <div>
+                <p class="section-kicker">Vista movil</p>
+                <h3 id="mobileRecordsTitle">Registros en tarjetas</h3>
+              </div>
+              <span id="mobileRecordsCount" class="badge default">0 visibles</span>
+            </div>
+            <div id="recordsMobileCards" class="records-mobile-cards" aria-live="polite"></div>
+          </section>
         </section>
 
         <section class="panel admin-panel is-hidden" data-view="admin">
@@ -548,7 +595,7 @@
             </div>
             <div class="button-row toolbar-actions">
               <button class="back-button" data-target="home" type="button">Volver al inicio</button>
-              <button id="unlockAdmin" class="secondary" type="button">Desbloquear admin</button>
+              <button id="unlockAdmin" class="secondary is-hidden" type="button">Desbloquear admin</button>
               <button id="lockAdmin" class="ghost is-hidden" type="button">Bloquear admin</button>
               <button id="exportCsv" class="secondary admin-control is-hidden" type="button">Exportar CSV</button>
               <button id="clearRecords" class="danger admin-control is-hidden" type="button">Limpiar datos</button>
@@ -660,7 +707,7 @@
               </label>
               <label class="ops-search-field">
                 Buscar
-                <input id="adminFilterSearch" type="search" autocomplete="off" placeholder="Nombre o matricula" />
+                <input id="adminFilterSearch" type="search" autocomplete="off" placeholder="Nombre o identificador" />
               </label>
               <button id="adminClearDashboardFilters" class="ghost filter-clear" type="button">Limpiar filtros</button>
             </form>
@@ -735,9 +782,60 @@
               </article>
             </div>
 
-            <div class="auth-roadmap" aria-label="Siguiente fase de autenticacion">
-              <span>Login preparado</span>
-              <p>La app sigue funcionando por matricula. Supabase Auth y permisos por rol quedan como siguiente fase estable.</p>
+            <form id="organizationForm" class="site-form-grid superadmin-only is-hidden" aria-label="Crear organizacion">
+              <label>
+                Nombre
+                <input id="orgCreateName" autocomplete="organization" placeholder="Ej. Colegio Central" />
+              </label>
+              <label>
+                Tipo
+                <select id="orgCreateType">
+                  <option value="empresa">Empresa</option>
+                  <option value="escuela">Escuela</option>
+                  <option value="negocio_local">Negocio</option>
+                  <option value="centro_trabajo">Centro de trabajo</option>
+                  <option value="otro">Otro</option>
+                </select>
+              </label>
+              <label>
+                Slug
+                <input id="orgCreateSlug" placeholder="colegio-central" />
+              </label>
+              <label>
+                Clave de acceso
+                <input id="orgCreateKey" placeholder="CENTRAL-2026" />
+              </label>
+              <div class="site-actions">
+                <button class="primary" type="submit">Crear organizacion</button>
+              </div>
+              <p class="site-test-result" data-tone="warning">Comparte esta clave solo con usuarios de esa organización.</p>
+            </form>
+            <div id="organizationList" class="organization-list" aria-label="Organizaciones disponibles"></div>
+            <div class="admin-directory-grid" aria-label="Directorios administrativos">
+              <section class="admin-directory-section">
+                <div class="site-admin-header compact">
+                  <div>
+                    <p class="section-kicker">Sitios gestionables</p>
+                    <h3>Ubicaciones y llaves</h3>
+                    <p>Controla sitios activos, horarios, radios GPS y llave especial por sitio.</p>
+                  </div>
+                </div>
+                <div id="siteDirectory" class="organization-list compact-list" aria-label="Sitios gestionables"></div>
+              </section>
+              <section class="admin-directory-section">
+                <div class="site-admin-header compact">
+                  <div>
+                    <p class="section-kicker">Usuarios gestionables</p>
+                    <h3>Personas y roles</h3>
+                    <p>Superadmin ve todo. Administrador de sitio solo ve usuarios de su alcance.</p>
+                  </div>
+                </div>
+                <div id="userDirectory" class="organization-list compact-list" aria-label="Usuarios gestionables"></div>
+              </section>
+            </div>
+            <div class="auth-roadmap" aria-label="Politica de administracion">
+              <span>Separacion activa</span>
+              <p>El acceso administrativo se decide por rol en Supabase, no por botones de desbloqueo visibles.</p>
             </div>
           </section>
 
@@ -816,6 +914,10 @@
                 Salida fin
                 <input id="siteExitEnd" type="time" value="17:10" required />
               </label>
+              <label>
+                Llave especial del sitio
+                <input id="siteKey" type="text" autocomplete="off" placeholder="Ej. PLANTA-A-2026" />
+              </label>
               <label class="inline-check">
                 <input id="siteActive" type="checkbox" checked />
                 Mantener como sitio activo
@@ -868,6 +970,21 @@
                 Alcance de permisos
                 <textarea id="profileScope" rows="3" readonly class="readonly-field profile-scope"></textarea>
               </label>
+              <section class="streak-panel" aria-label="Racha y cumplimiento personal">
+                <div class="streak-metrics">
+                  <article>
+                    <span>Racha actual</span>
+                    <strong><span id="streakDays">--</span> dias</strong>
+                  </article>
+                  <article>
+                    <span>Cumplimiento</span>
+                    <strong id="streakCompliance">--</strong>
+                  </article>
+                </div>
+                <p id="streakSite" class="streak-site">Disponible al iniciar sesion</p>
+                <p id="streakSchedule" class="streak-schedule">Horario del sitio pendiente</p>
+                <p id="streakSummary" class="streak-summary">La racha y cumplimiento se calculan solo con una cuenta autenticada.</p>
+              </section>
               <div class="form-actions profile-actions">
                 <button id="save-profile-btn" class="primary wide" type="submit">Guardar cambios</button>
                 <button id="btn-logout-profile" class="danger wide mobile-logout-btn" type="button">Cerrar Sesión</button>
@@ -894,9 +1011,9 @@
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
 
   <script src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
-  <script src="supabase-config.js"></script>
-  <script src="auth.js"></script>
-  <script src="app.js"></script>
+  <script src="supabase-config.js?v=f0-mobile-shell"></script>
+  <script src="auth.js?v=f0-mobile-shell"></script>
+  <script src="app.js?v=f0-mobile-shell"></script>
 </body>
 
 </html>

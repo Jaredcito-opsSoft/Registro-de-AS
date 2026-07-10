@@ -4,6 +4,7 @@ const STATIC_ASSETS = [
   "/index.html",
   "/styles.css",
   "/app.js",
+  "/auth.js",
   "/supabase-config.js",
   "/manifest.webmanifest",
   "/icons/icon-192.png",
