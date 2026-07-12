@@ -109,6 +109,7 @@ language plpgsql
 security definer
 set search_path = public
 as $$
+#variable_conflict use_column
 declare
   v_permissions jsonb;
   v_slug text;

@@ -16,7 +16,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="stylesheet"
     href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" />
-  <link rel="stylesheet" href="styles.css?v=2.4" />
+  <link rel="stylesheet" href="styles.css?v=2.11-cache-sync" />
 </head>
 
 <body>
@@ -33,7 +33,7 @@
         </div>
         <p class="eyebrow">Acceso al sistema</p>
         <h1 id="login-title">Iniciar Sesión</h1>
-        <p id="login-subtitle">Ingresa tus credenciales para acceder al control de asistencia.</p>
+        <p id="login-subtitle">Ingresa tus datos para acceder rápido.</p>
       </div>
 
       <div class="auth-toggle-bar">
@@ -42,40 +42,100 @@
       </div>
 
       <form id="authForm" class="data-form" novalidate autocomplete="off">
+
+        <!-- Solo en registro -->
         <label id="label-name" class="is-hidden">
           Nombre completo
-          <input id="authName" type="text" autocomplete="off" placeholder="Ej. Ana Lopez Perez" />
+          <input id="authName" type="text" autocomplete="name" placeholder="Ej. Ana Lopez Perez" />
         </label>
+
         <label id="label-matricula" class="is-hidden">
-          Matrícula
-          <input id="authMatricula" type="text" autocomplete="off" placeholder="Ej. A00125" />
+          Tu identificador
+          <input id="authMatricula" type="text" autocomplete="off"
+            placeholder="Matrícula, cédula, INE, número de empleado…" />
+          <span class="field-hint">El código con el que te identificas en tu organización.</span>
         </label>
-        <label id="label-org-key" class="is-hidden">
-          Clave de organización
-          <input id="authOrgKey" type="text" autocomplete="off" placeholder="Ej. DEMO-AS-2026" />
+
+        <label id="label-phone" class="is-hidden">
+          Teléfono
+          <input id="authPhone" type="tel" autocomplete="tel" inputmode="numeric"
+            placeholder="Ej. 9611234567" />
+          <span class="field-hint optional-badge">Opcional · Para inicio rápido futuro</span>
         </label>
-        <label id="label-org-select">
+
+        <!-- Solo en registro: sitio afiliado -->
+        <label id="label-org-select" class="is-hidden">
           Sitio afiliado
           <select id="authOrgSelect">
-            <option value="">Cargando sitios...</option>
+            <option value="">Cargando sitios…</option>
           </select>
+          <span id="authOrgSelectFallbackWrap" class="org-fallback-wrap is-hidden">
+            <input id="authOrgSelectFallback" type="text" autocomplete="off"
+              placeholder="Escribe el nombre de tu organización" />
+            <span class="field-hint">No se encontraron sitios registrados. Escríbelo manualmente.</span>
+          </span>
         </label>
+
+        <!-- Solo en registro: clave colapsable -->
+        <div id="label-org-key-wrap" class="auth-org-key-wrap is-hidden">
+          <button id="authOrgKeyToggle" class="auth-org-key-toggle" type="button" aria-expanded="false">
+            <span>¿Tienes clave de organización?</span>
+            <svg class="chevron" viewBox="0 0 24 24" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <polyline points="6 9 12 15 18 9" />
+            </svg>
+          </button>
+          <label id="label-org-key" class="is-hidden">
+            Clave de organización
+            <input id="authOrgKey" type="text" autocomplete="off" placeholder="Ej. DEMO-AS-2026" />
+            <span class="field-hint">Entregada por el administrador de tu empresa o institución.</span>
+          </label>
+        </div>
+
+        <!-- Siempre visible: campo unificado correo / teléfono -->
         <label id="label-email">
-          Correo electrónico
-          <input id="authEmail" type="email" autocomplete="off" placeholder="Ej. ana.lopez@empresa.com" required />
+          <span id="label-email-text">Correo electrónico</span>
+          <div class="auth-input-wrap">
+            <input id="authEmail" type="text" inputmode="email" autocomplete="email"
+              placeholder="Correo o número de teléfono" required />
+            <span id="authInputBadge" class="auth-input-badge" aria-live="polite"></span>
+          </div>
+          <span id="label-email-hint" class="field-hint">Escribe tu correo o tu número de teléfono para acceder.</span>
         </label>
+
         <label id="label-password">
           Contraseña
-          <input id="authPassword" type="password" autocomplete="off" placeholder="••••••••" required />
+          <input id="authPassword" type="password" autocomplete="current-password" placeholder="••••••••" required />
         </label>
-                <button id="authSubmitBtn" class="primary wide" type="submit" style="margin-top: 8px;">
+
+        <button id="authSubmitBtn" class="primary wide" type="submit">
           Ingresar
         </button>
+
         <button id="guestAccessBtn" class="ghost wide" type="button">
           Continuar en modo operativo
         </button>
-        <p class="auth-help">Usa modo operativo para registrar asistencia mientras se confirma el correo.</p>
+        <p class="auth-help">Modo operativo: registra asistencia sin cuenta confirmada.</p>
       </form>
+
+      <!-- Panel de nudge: agregar correo (aparece tras login por teléfono) -->
+      <div id="emailNudgePanel" class="email-nudge-panel is-hidden" role="alert" aria-live="polite">
+        <div class="email-nudge-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z" />
+            <polyline points="22,6 12,13 2,6" />
+          </svg>
+        </div>
+        <div>
+          <strong>Agrega tu correo</strong>
+          <p>Para recibir notificaciones importantes y recuperar tu cuenta, agrega un correo electrónico.</p>
+        </div>
+        <div class="email-nudge-actions">
+          <input id="nudgeEmail" type="email" autocomplete="email" placeholder="tu@correo.com" />
+          <button id="nudgeEmailSubmit" class="primary" type="button">Guardar correo</button>
+          <button id="nudgeEmailDismiss" class="ghost" type="button">Ahora no</button>
+        </div>
+      </div>
+
     </div>
   </div>
 
@@ -132,7 +192,7 @@
           <span class="nav-label">Mis registros</span>
         </button>
 
-        <button class="nav-button is-hidden" data-target="admin" type="button" aria-label="Admin" id="btn-admin">
+        <button class="nav-button admin-nav is-hidden" data-target="admin" type="button" aria-label="Admin" id="btn-admin">
           <span class="nav-icon" aria-hidden="true">
             <svg viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="stroke: currentColor; fill: none;">
               <circle cx="12" cy="12" r="3" />
@@ -141,18 +201,6 @@
           </span>
           <span class="nav-label">Admin</span>
         </button>
-        <button class="nav-button admin-nav is-hidden" data-target="admin" type="button" aria-label="Panel admin">
-          <span class="nav-icon" aria-hidden="true">
-            <svg viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <rect x="3" y="4" width="18" height="16" rx="2" />
-              <path d="M8 9h8" />
-              <path d="M8 13h5" />
-              <path d="M16 17h2" />
-            </svg>
-          </span>
-          <span class="nav-label">Admin</span>
-        </button>
-
       </nav>
 
       <div class="sidebar-footer">
@@ -577,8 +625,8 @@
           <section class="mobile-records-shell" aria-labelledby="mobileRecordsTitle">
             <div class="mobile-records-head">
               <div>
-                <p class="section-kicker">Vista movil</p>
-                <h3 id="mobileRecordsTitle">Registros en tarjetas</h3>
+                <p class="section-kicker">Vista móvil</p>
+                <h3 id="mobileRecordsTitle">Mis asistencias</h3>
               </div>
               <span id="mobileRecordsCount" class="badge default">0 visibles</span>
             </div>
@@ -587,28 +635,83 @@
         </section>
 
         <section class="panel admin-panel is-hidden" data-view="admin">
-          <div class="panel-heading">
+          <div class="admin-shell">
+          <div class="panel-heading admin-shell-header">
             <div>
-              <p class="section-kicker">Consola</p>
-              <h2>Administración del sistema</h2>
-              <p class="read-only-note">
-                Configuración global, resumen operativo y auditoría.
-              </p>
+              <p class="section-kicker">Panel administrativo</p>
+              <h2>Centro de control</h2>
+              <p id="adminSectionHint" class="admin-section-hint">Resumen del dia y accesos rapidos.</p>
             </div>
-            <div class="button-row toolbar-actions">
-              <button class="back-button" data-target="home" type="button">Volver al inicio</button>
-              <button id="unlockAdmin" class="secondary is-hidden" type="button">Desbloquear admin</button>
-              <button id="lockAdmin" class="ghost is-hidden" type="button">Bloquear admin</button>
-              <button id="exportCsv" class="secondary admin-control is-hidden" type="button">Exportar CSV</button>
-              <button id="clearRecords" class="danger admin-control is-hidden" type="button">Limpiar datos</button>
+            <div class="admin-shell-meta">
+              <span id="adminRoleBadge" class="admin-role-badge">Admin</span>
+              <div class="button-row toolbar-actions admin-toolbar">
+                <button class="back-button" data-target="home" type="button">Inicio</button>
+                <button id="unlockAdmin" class="secondary is-hidden" type="button">Desbloquear</button>
+                <button id="lockAdmin" class="ghost is-hidden" type="button">Bloquear</button>
+                <button id="exportCsv" class="secondary admin-control is-hidden" type="button">Exportar</button>
+                <button id="clearRecords" class="danger admin-control is-hidden" type="button">Limpiar</button>
+              </div>
             </div>
           </div>
 
-          <div id="adminStatus" class="notice is-blocked" aria-live="polite">
+          <div id="adminStatus" class="notice admin-status-banner" aria-live="polite">
             Modo lectura activo. No se pueden modificar horarios, fotos, estados ni eliminar registros.
           </div>
 
-          <!-- Resumen: Dashboard métrico -->
+          <nav class="admin-config-nav admin-control is-hidden" aria-label="Secciones del panel administrativo">
+            <button class="admin-nav-pill is-active" type="button" data-admin-section-target="summary">
+              <span class="admin-nav-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
+              </span>
+              <strong class="admin-nav-label">Resumen</strong>
+              <span class="admin-nav-desc">Estado del dia</span>
+            </button>
+            <button class="admin-nav-pill superadmin-only is-hidden" type="button" data-admin-section-target="organizations">
+              <span class="admin-nav-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9 12 2l9 7"/><path d="M9 22V12h6v10"/></svg>
+              </span>
+              <strong class="admin-nav-label">Organizaciones</strong>
+              <span class="admin-nav-desc">Empresas y claves</span>
+            </button>
+            <button class="admin-nav-pill" type="button" data-admin-section-target="sites">
+              <span class="admin-nav-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13S3 17 3 10a9 9 0 1 1 18 0Z"/><circle cx="12" cy="10" r="3"/></svg>
+              </span>
+              <strong class="admin-nav-label">Sitios</strong>
+              <span class="admin-nav-desc">GPS y horarios</span>
+            </button>
+            <button class="admin-nav-pill" type="button" data-admin-section-target="users">
+              <span class="admin-nav-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+              </span>
+              <strong class="admin-nav-label">Usuarios</strong>
+              <span class="admin-nav-desc">Por sitio</span>
+            </button>
+            <button class="admin-nav-pill" type="button" data-admin-section-target="attendances">
+              <span class="admin-nav-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><rect x="8" y="2" width="8" height="4" rx="1"/></svg>
+              </span>
+              <strong class="admin-nav-label">Asistencias</strong>
+              <span class="admin-nav-desc">Registros</span>
+            </button>
+            <button class="admin-nav-pill" type="button" data-admin-section-target="audit">
+              <span class="admin-nav-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z"/></svg>
+              </span>
+              <strong class="admin-nav-label">Auditoria</strong>
+              <span class="admin-nav-desc">Acciones</span>
+            </button>
+          </nav>
+
+          <div class="admin-quick-actions admin-control is-hidden" aria-label="Accesos rapidos">
+            <button class="admin-quick-chip" type="button" data-admin-section-target="attendances">Ver asistencias</button>
+            <button class="admin-quick-chip" type="button" data-admin-section-target="users">Revisar usuarios</button>
+            <button class="admin-quick-chip admin-quick-chip--site" type="button" data-admin-section-target="sites">Configurar sitio</button>
+            <button class="admin-quick-chip superadmin-only is-hidden" type="button" data-admin-section-target="organizations">Organizaciones</button>
+          </div>
+
+          <div class="admin-workspace">
+          <section class="admin-section" data-admin-section="summary">
           <section class="ops-dashboard" aria-labelledby="opsDashboardTitle">
             <div class="ops-dashboard-head">
               <div>
@@ -666,7 +769,25 @@
           </section>
 
           <!-- Asistencias en Administración -->
-          <div class="table-wrap admin-control is-hidden">
+          <section class="site-users-overview admin-control is-hidden" aria-labelledby="siteUsersTitle">
+            <div class="ops-dashboard-head">
+              <div>
+                <p class="section-kicker">Usuarios por sitio</p>
+                <h3 id="siteUsersTitle">Distribución operativa</h3>
+                <p>El filtro de usuario se ajusta al sitio seleccionado para revisar solo personas de esa ubicación.</p>
+              </div>
+              <span id="siteUsersTotal" class="ops-rate">0 usuarios</span>
+            </div>
+            <div id="siteUsersList" class="site-users-list" aria-live="polite">
+              <article class="site-users-card">
+                <strong>Sin datos</strong>
+                <span>Selecciona un sitio o espera a que carguen los registros.</span>
+              </article>
+            </div>
+          </section>
+          </section>
+
+          <div class="table-wrap admin-control is-hidden admin-section is-hidden" data-admin-section="attendances">
             <div class="ops-dashboard-head admin-records-head">
               <h3>Asistencias registradas</h3>
             </div>
@@ -751,7 +872,7 @@
           </div>
 
           <!-- Organización -->
-          <section class="org-admin-panel admin-control is-hidden" aria-labelledby="orgFoundationTitle">
+          <section class="org-admin-panel admin-control is-hidden admin-section is-hidden" data-admin-section="organizations" aria-labelledby="orgFoundationTitle">
             <div class="site-admin-header">
               <div>
                 <p class="section-kicker">Base multiempresa</p>
@@ -841,8 +962,60 @@
             </div>
           </section>
 
+
+          <!-- Usuarios -->
+          <section class="admin-users-panel admin-control is-hidden admin-section is-hidden" data-admin-section="users" aria-labelledby="adminUsersTitle">
+            <div class="site-admin-header admin-users-header">
+              <div>
+                <p class="section-kicker">Directorio operativo</p>
+                <h3 id="adminUsersTitle">Usuarios por sitio</h3>
+                <p id="adminUsersSummary">Superadmin ve el universo completo. Admin de sitio solo debe ver su alcance.</p>
+              </div>
+              <span id="adminUsersScopeBadge" class="badge default">Vista por rol</span>
+            </div>
+
+            <div class="admin-users-grid">
+              <section class="admin-users-main" aria-label="Usuarios agrupados">
+                <div class="admin-users-toolbar">
+                  <div>
+                    <strong>Distribucion por sitio</strong>
+                    <span id="adminUsersCount">0 usuarios visibles</span>
+                  </div>
+                  <span id="adminUsersNoSiteCount" class="ops-rate">0 sin sitio</span>
+                </div>
+                <div id="adminUsersBySite" class="admin-users-by-site" aria-live="polite"></div>
+              </section>
+
+              <aside class="admin-assignment-card superadmin-only is-hidden" aria-label="Asignar admin a sitio">
+                <div>
+                  <p class="section-kicker">Key de administracion</p>
+                  <h3>Asignar admin a sitio</h3>
+                  <p>Prepara la llave que entregara superadmin. La vinculacion real debe guardarse por RPC/RLS en Supabase.</p>
+                </div>
+                <label>
+                  Correo del admin
+                  <input id="adminInviteEmail" type="email" autocomplete="email" placeholder="admin@empresa.com" />
+                </label>
+                <label>
+                  Sitio
+                  <select id="adminInviteSite">
+                    <option value="">Selecciona un sitio</option>
+                  </select>
+                </label>
+                <label>
+                  Admin invite key
+                  <input id="adminInviteKey" type="text" autocomplete="off" readonly placeholder="Genera una key MVP" />
+                </label>
+                <div class="site-actions">
+                  <button id="prepareAdminInvite" class="primary" type="button">Preparar key</button>
+                  <button id="copyAdminInviteKey" class="ghost" type="button">Copiar</button>
+                </div>
+                <p id="adminInviteStatus" class="site-test-result" data-tone="warning">Pendiente de RPC segura en Supabase.</p>
+              </aside>
+            </div>
+          </section>
           <!-- Configuración de Sitio -->
-          <section class="site-admin-panel admin-control is-hidden" aria-labelledby="siteConfigTitle">
+          <section class="site-admin-panel admin-control is-hidden admin-section is-hidden" data-admin-section="sites" aria-labelledby="siteConfigTitle">
             <div class="site-admin-header">
               <div>
                 <p class="section-kicker">Configuracion del sitio</p>
@@ -925,6 +1098,8 @@
                 Mantener como sitio activo
               </label>
               <div class="site-actions">
+                <button id="generateSiteKey" class="ghost" type="button">Generar key</button>
+                <button id="copySiteKey" class="ghost" type="button">Copiar key</button>
                 <button id="useAdminLocation" class="ghost" type="button">Usar mi ubicacion</button>
                 <button id="testAdminLocation" class="secondary" type="button">Probar ubicacion</button>
                 <button class="primary" type="submit">Guardar sitio</button>
@@ -934,9 +1109,11 @@
           </section>
 
           <!-- Auditoría -->
-          <div class="audit-box admin-control is-hidden">
+          <div class="audit-box admin-control is-hidden admin-section is-hidden" data-admin-section="audit">
             <h3>Auditoria administrativa</h3>
             <p id="adminAudit">No hay acciones administrativas registradas.</p>
+          </div>
+          </div>
           </div>
         </section>
 
@@ -987,6 +1164,20 @@
                 <p id="streakSchedule" class="streak-schedule">Horario del sitio pendiente</p>
                 <p id="streakSummary" class="streak-summary">La racha y cumplimiento se calculan solo con una cuenta autenticada.</p>
               </section>
+              <section class="profile-privacy-card" aria-label="Privacidad y evidencia">
+                <div>
+                  <span class="profile-privacy-icon" aria-hidden="true">
+                    <svg viewBox="0 0 24 24" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                      <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z" />
+                      <path d="m9 12 2 2 4-5" />
+                    </svg>
+                  </span>
+                </div>
+                <div>
+                  <strong>Evidencia protegida</strong>
+                  <p>Tus fotos y ubicación se usan para validar asistencia. Solo tú y los roles autorizados pueden consultar registros dentro de su alcance.</p>
+                </div>
+              </section>
               <div class="form-actions profile-actions">
                 <button id="save-profile-btn" class="primary wide" type="submit">Guardar cambios</button>
                 <button id="btn-logout-profile" class="danger wide mobile-logout-btn" type="button">Cerrar Sesión</button>
@@ -1015,7 +1206,7 @@
   <script src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
   <script src="supabase-config.js?v=f0-mobile-shell"></script>
   <script src="auth.js?v=f0-mobile-shell"></script>
-  <script src="app.js?v=2.5"></script>
+  <script src="app.js?v=2.11-cache-sync"></script>
 </body>
 
 </html>
