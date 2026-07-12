@@ -1,7 +1,10 @@
 /**
  * auth.js
  * Autenticacion directa contra Supabase Auth sin SDK.
+ * Soporta sesiones persistentes con refresh_token y TTL de 15 minutos de inactividad.
  */
+
+const SESSION_TTL_MS = 15 * 60 * 1000; // 15 minutos de inactividad
 
 function assertSupabaseAuthConfig() {
   if (!window.SUPABASE_CONFIG || !window.SUPABASE_CONFIG.url || !window.SUPABASE_CONFIG.publishableKey) {
@@ -31,28 +34,87 @@ function authErrorMessage(data, fallback) {
   if (normalized.includes("email not confirmed") || normalized.includes("email_not_confirmed") || normalized.includes("confirm your email")) {
     return "Revisa tu correo para confirmar tu cuenta antes de iniciar sesion, o usa modo operativo temporal.";
   }
-
   if (normalized.includes("invalid login credentials")) {
-    return "Credenciales invalidas. Verifica tu correo y contrasena.";
+    return "Credenciales invalidas. Verifica tus datos e intenta de nuevo.";
   }
-
   if (normalized.includes("email_address_invalid") || normalized.includes("invalid email")) {
     return "El correo no es valido para Supabase Auth. Usa un correo real o un dominio permitido.";
   }
-
   if (normalized.includes("user already registered") || normalized.includes("already registered")) {
     return "Ese correo ya esta registrado. Intenta iniciar sesion.";
   }
-
+  if (normalized.includes("rate limit") || normalized.includes("too many requests")) {
+    return "Demasiados intentos. Espera un momento antes de intentarlo de nuevo.";
+  }
   return raw || fallback;
 }
 
-async function crearCuenta(email, password, nombre, matricula, organizationKey = "", organizationSlug = "") {
+/** Guarda access_token, refresh_token y timestamp de actividad */
+function saveSession(accessToken, refreshToken) {
+  if (accessToken) localStorage.setItem("registro_asistencia_token", accessToken);
+  if (refreshToken) localStorage.setItem("registro_asistencia_refresh_token", refreshToken);
+  localStorage.setItem("registro_asistencia_session_ts", String(Date.now()));
+}
+
+/** Elimina todos los datos de sesion local */
+function clearSession() {
+  localStorage.removeItem("registro_asistencia_token");
+  localStorage.removeItem("registro_asistencia_refresh_token");
+  localStorage.removeItem("registro_asistencia_session_ts");
+}
+
+/** Verifica si pasaron mas de SESSION_TTL_MS desde la ultima actividad */
+function isSessionExpiredByTTL() {
+  const ts = parseInt(localStorage.getItem("registro_asistencia_session_ts") || "0", 10);
+  if (!ts) return true;
+  return Date.now() - ts > SESSION_TTL_MS;
+}
+
+/** Actualiza el timestamp de actividad — llamar en cada accion importante del usuario */
+function touchSession() {
+  if (localStorage.getItem("registro_asistencia_token")) {
+    localStorage.setItem("registro_asistencia_session_ts", String(Date.now()));
+  }
+}
+
+/**
+ * Renueva el access_token usando el refresh_token guardado.
+ * Retorna los nuevos datos de sesion o null si falla.
+ */
+async function refrescarSesion() {
+  assertSupabaseAuthConfig();
+  const refreshToken = localStorage.getItem("registro_asistencia_refresh_token");
+  if (!refreshToken) return null;
+
+  try {
+    const response = await fetch(`${window.SUPABASE_CONFIG.url}/auth/v1/token?grant_type=refresh_token`, {
+      method: "POST",
+      headers: authHeaders(),
+      body: JSON.stringify({ refresh_token: refreshToken }),
+    });
+
+    if (!response.ok) {
+      clearSession();
+      return null;
+    }
+
+    const data = await parseAuthResponse(response);
+    saveSession(data.access_token, data.refresh_token);
+    return data;
+  } catch (error) {
+    console.warn("No se pudo refrescar la sesion:", error);
+    clearSession();
+    return null;
+  }
+}
+
+async function crearCuenta(email, password, nombre, matricula, organizationKey = "", organizationSlug = "", phone = "") {
   assertSupabaseAuthConfig();
   const cleanEmail = String(email || "").trim().toLowerCase();
   const cleanNombre = String(nombre || "").trim();
   const cleanMatricula = String(matricula || "").trim();
   const cleanOrganizationKey = String(organizationKey || organizationSlug || "").trim();
+  const cleanPhone = String(phone || "").trim();
 
   try {
     const response = await fetch(`${window.SUPABASE_CONFIG.url}/auth/v1/signup`, {
@@ -66,6 +128,7 @@ async function crearCuenta(email, password, nombre, matricula, organizationKey =
           matricula: cleanMatricula,
           rol: "usuario",
           organization_key: cleanOrganizationKey,
+          ...(cleanPhone ? { telefono: cleanPhone } : {}),
         },
       }),
     });
@@ -77,14 +140,12 @@ async function crearCuenta(email, password, nombre, matricula, organizationKey =
         throw new Error("La clave de Supabase es inválida o no tiene permisos. Revisa supabase-config.js y asegúrate de usar la 'anon key' correcta.");
       }
       const message = authErrorMessage(data, "Error al crear la cuenta.");
-      if (data.error_code === "email_address_invalid") {
-        throw new Error("El correo no fue aceptado por Supabase. Usa un correo real para crear la cuenta o entra en modo operativo.");
-      }
       throw new Error(message);
     }
 
     const token = data.access_token || data.session?.access_token;
-    if (token) localStorage.setItem("registro_asistencia_token", token);
+    const refresh = data.refresh_token || data.session?.refresh_token;
+    saveSession(token, refresh);
     return data;
   } catch (error) {
     console.error("Error en crearCuenta:", error);
@@ -108,19 +169,16 @@ async function iniciarSesion(email, password) {
 
     if (!response.ok) {
       if (response.status === 401 || response.status === 403) {
-        throw new Error("La clave de Supabase es inválida. Verifica supabase-config.js y usa la 'anon key' (empieza con eyJ...) desde el panel de Supabase → Project Settings → API.");
+        throw new Error("La clave de Supabase es inválida. Verifica supabase-config.js y usa la 'anon key'.");
       }
       const message = authErrorMessage(data, "Error al iniciar sesion.");
-      if (data.error_code === "email_not_confirmed" || /not confirmed/i.test(message)) {
-        throw new Error("Tu cuenta fue creada, pero falta confirmar el correo antes de iniciar sesion.");
-      }
       if (response.status === 400) {
         throw new Error("Credenciales invalidas o correo sin confirmar. Verifica tus datos o usa modo operativo temporal.");
       }
       throw new Error(message);
     }
 
-    if (data.access_token) localStorage.setItem("registro_asistencia_token", data.access_token);
+    saveSession(data.access_token, data.refresh_token);
     return data;
   } catch (error) {
     console.error("Error en iniciarSesion:", error);
@@ -130,7 +188,7 @@ async function iniciarSesion(email, password) {
 
 async function cerrarSesion() {
   const token = localStorage.getItem("registro_asistencia_token");
-  localStorage.removeItem("registro_asistencia_token");
+  clearSession();
 
   if (window.SUPABASE_CONFIG && window.SUPABASE_CONFIG.url && token) {
     try {
@@ -153,6 +211,13 @@ async function cerrarSesion() {
 
 async function verificarSesion() {
   assertSupabaseAuthConfig();
+
+  // Si paso el TTL de inactividad, intentar refresco con refresh_token
+  if (isSessionExpiredByTTL()) {
+    const refreshed = await refrescarSesion();
+    if (!refreshed) return null;
+  }
+
   const token = localStorage.getItem("registro_asistencia_token");
   if (!token) return null;
 
@@ -163,10 +228,28 @@ async function verificarSesion() {
     });
 
     if (!response.ok) {
-      localStorage.removeItem("registro_asistencia_token");
+      // Token expirado — intentar refresco automatico
+      if (response.status === 401) {
+        const refreshed = await refrescarSesion();
+        if (!refreshed) return null;
+        const token2 = localStorage.getItem("registro_asistencia_token");
+        if (!token2) return null;
+        const response2 = await fetch(`${window.SUPABASE_CONFIG.url}/auth/v1/user`, {
+          method: "GET",
+          headers: authHeaders(token2),
+        });
+        if (!response2.ok) {
+          clearSession();
+          return null;
+        }
+        touchSession();
+        return await parseAuthResponse(response2);
+      }
+      clearSession();
       return null;
     }
 
+    touchSession();
     return await parseAuthResponse(response);
   } catch (error) {
     console.error("Error en verificarSesion:", error);
@@ -201,6 +284,7 @@ async function actualizarPerfil(email, nombre, matricula) {
       throw new Error(authErrorMessage(data, "Error al actualizar el perfil."));
     }
 
+    touchSession();
     return data;
   } catch (error) {
     console.error("Error en actualizarPerfil:", error);
@@ -212,4 +296,7 @@ window.crearCuenta = crearCuenta;
 window.iniciarSesion = iniciarSesion;
 window.cerrarSesion = cerrarSesion;
 window.verificarSesion = verificarSesion;
+window.refrescarSesion = refrescarSesion;
 window.actualizarPerfil = actualizarPerfil;
+window.touchSession = touchSession;
+window.isSessionExpiredByTTL = isSessionExpiredByTTL;

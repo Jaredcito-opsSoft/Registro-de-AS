@@ -24,6 +24,12 @@ const SUPABASE = window.SUPABASE_CONFIG || {};
 const CLOUD_ENABLED = Boolean(SUPABASE.url && SUPABASE.publishableKey && SUPABASE.bucket);
 const PHOTO_BUCKET = SUPABASE.bucket || "attendance-photos";
 const GEO_PRECISION_MAX_METERS = 200;
+const LOCAL_ASSET_VERSION = "2.11-cache-sync";
+const ATTENDANCE_STREAK_RPC_ENABLED = SUPABASE.enableAttendanceStreakRpc === true;
+const KNOWN_SUPERADMIN_EMAILS = new Set([
+  "alexisdavid1177@gmail.com",
+  "jaredcontacto.mx@gmail.com",
+]);
 
 const ROLE_DEFINITIONS = {
   usuario: {
@@ -128,7 +134,10 @@ const state = {
   currentAppUser: null,
   currentRole: "usuario",
   currentPermissions: { ...ROLE_DEFINITIONS.usuario.permissions },
+  activeAdminSection: "summary",
   attendanceStreak: null,
+  managedSites: [],
+  managedUsers: [],
   recordFilters: {
     date: "",
     status: "all",
@@ -187,6 +196,8 @@ function populateElements() {
   els.exportCsv = $("#exportCsv");
   els.clearRecords = $("#clearRecords");
   els.adminStatus = $("#adminStatus");
+  els.adminSectionHint = $("#adminSectionHint");
+  els.adminRoleBadge = $("#adminRoleBadge");
   els.adminAudit = $("#adminAudit");
   els.recordsKicker = $("#recordsKicker");
   els.recordsTitle = $("#recordsTitle");
@@ -206,6 +217,8 @@ function populateElements() {
   els.dashboardCompletionRate = $("#dashboardCompletionRate");
   els.dashboardScopeLabel = $("#dashboardScopeLabel");
   els.dashboardAlerts = $("#dashboardAlerts");
+  els.siteUsersTotal = $("#siteUsersTotal");
+  els.siteUsersList = $("#siteUsersList");
   els.filterDate = $("#filterDate");
   els.filterStatus = $("#filterStatus");
   els.filterRisk = $("#filterRisk");
@@ -235,6 +248,17 @@ function populateElements() {
   els.organizationList = $("#organizationList");
   els.siteDirectory = $("#siteDirectory");
   els.userDirectory = $("#userDirectory");
+  els.adminUsersSummary = $("#adminUsersSummary");
+  els.adminUsersScopeBadge = $("#adminUsersScopeBadge");
+  els.adminUsersCount = $("#adminUsersCount");
+  els.adminUsersNoSiteCount = $("#adminUsersNoSiteCount");
+  els.adminUsersBySite = $("#adminUsersBySite");
+  els.adminInviteEmail = $("#adminInviteEmail");
+  els.adminInviteSite = $("#adminInviteSite");
+  els.adminInviteKey = $("#adminInviteKey");
+  els.prepareAdminInvite = $("#prepareAdminInvite");
+  els.copyAdminInviteKey = $("#copyAdminInviteKey");
+  els.adminInviteStatus = $("#adminInviteStatus");
   els.orgCreateName = $("#orgCreateName");
   els.orgCreateType = $("#orgCreateType");
   els.orgCreateSlug = $("#orgCreateSlug");
@@ -263,6 +287,8 @@ function populateElements() {
   els.siteTimezone = $("#siteTimezone");
   els.siteKey = $("#siteKey");
   els.siteActive = $("#siteActive");
+  els.generateSiteKey = $("#generateSiteKey");
+  els.copySiteKey = $("#copySiteKey");
   els.useAdminLocation = $("#useAdminLocation");
   els.testAdminLocation = $("#testAdminLocation");
   els.evidenceModal = $("#evidenceModal");
@@ -279,13 +305,27 @@ function populateElements() {
   els.authMatricula = $("#authMatricula");
   els.authOrgKey = $("#authOrgKey");
   els.authOrgSelect = $("#authOrgSelect");
+  els.authOrgSelectFallback = $("#authOrgSelectFallback");
+  els.authOrgSelectFallbackWrap = $("#authOrgSelectFallbackWrap");
+  els.authPhone = $("#authPhone");
+  els.authOrgKeyWrap = $("#label-org-key-wrap");
+  els.authOrgKeyToggle = $("#authOrgKeyToggle");
+  els.authInputBadge = $("#authInputBadge");
   els.authSubmitBtn = $("#authSubmitBtn");
   els.guestAccessBtn = $("#guestAccessBtn");
   els.toggleLoginBtn = $("#toggle-login-btn");
   els.toggleRegisterBtn = $("#toggle-register-btn");
   els.labelName = $("#label-name");
   els.labelMatricula = $("#label-matricula");
+  els.labelPhone = $("#label-phone");
+  els.labelOrgSelect = $("#label-org-select");
   els.labelOrgKey = $("#label-org-key");
+  els.labelEmailText = $("#label-email-text");
+  els.labelEmailHint = $("#label-email-hint");
+  els.emailNudgePanel = $("#emailNudgePanel");
+  els.nudgeEmail = $("#nudgeEmail");
+  els.nudgeEmailSubmit = $("#nudgeEmailSubmit");
+  els.nudgeEmailDismiss = $("#nudgeEmailDismiss");
   els.loginTitle = $("#login-title");
   els.loginSubtitle = $("#login-subtitle");
   els.profileName = $("#profileName");
@@ -343,7 +383,9 @@ function updatePwaInstallUi() {
 function setupPwaInstall() {
   if ("serviceWorker" in navigator) {
     window.addEventListener("load", () => {
-      navigator.serviceWorker.register("/service-worker.js").catch(() => {
+      navigator.serviceWorker.register(`/service-worker.js?v=${LOCAL_ASSET_VERSION}`).then((registration) => {
+        registration.update?.();
+      }).catch(() => {
         console.warn("No se pudo registrar el service worker.");
       });
     });
@@ -807,11 +849,33 @@ function getVisibleRecords() {
 }
 
 function applyAppUserSession(appUser) {
-  state.currentAppUser = appUser || null;
-  state.currentRole = normalizeAppRole(appUser?.rol);
+  const authUser = state.currentUser || {};
+  const authEmail = String(authUser.email || appUser?.email || "").trim().toLowerCase();
+  const isKnownSuperadmin = isKnownSuperadminEmail(authEmail);
+  const fallbackSuperadmin = !appUser && isKnownSuperadmin
+    ? {
+      id: authUser.id || authEmail,
+      nombre: authUser.user_metadata?.nombre || authUser.user_metadata?.full_name || authEmail,
+      matricula: authUser.user_metadata?.matricula || authEmail.split("@")[0].toUpperCase(),
+      email: authEmail,
+      rol: "superadmin",
+      permisos: { ...ROLE_DEFINITIONS.superadmin.permissions },
+      organizacion_id: null,
+      sitio_id: null,
+      source: "frontend_superadmin_fallback",
+    }
+    : null;
+  const effectiveAppUser = appUser || fallbackSuperadmin;
+  if (effectiveAppUser && isKnownSuperadmin) {
+    effectiveAppUser.rol = "superadmin";
+    effectiveAppUser.permisos = { ...ROLE_DEFINITIONS.superadmin.permissions, ...(effectiveAppUser.permisos || {}) };
+    effectiveAppUser.source = effectiveAppUser.source || "frontend_superadmin_override";
+  }
+  state.currentAppUser = effectiveAppUser || null;
+  state.currentRole = normalizeAppRole(effectiveAppUser?.rol);
   state.currentPermissions = {
     ...getRoleDefinition(state.currentRole).permissions,
-    ...(appUser?.permisos || {}),
+    ...(effectiveAppUser?.permisos || {}),
   };
   state.isAdmin = isRoleAdminSession() || isDemoAdminUnlocked();
   renderCurrentUserProfile();
@@ -867,6 +931,24 @@ function renderAttendanceStreak() {
   els.streakSummary.textContent = `${completeDays} de ${totalDays} dias cumplidos. ${reviewDays} en revision.`;
 }
 
+function parseSupabaseError(error) {
+  const raw = String(error?.message || error || "");
+  try {
+    const json = JSON.parse(raw);
+    return json.message || json.error || json.hint || raw;
+  } catch {
+    return raw;
+  }
+}
+
+function getKnownSuperadminMatricula(email = state.currentUser?.email) {
+  return String(email || "").split("@")[0].toUpperCase();
+}
+
+function isKnownSuperadminEmail(email = state.currentUser?.email) {
+  return KNOWN_SUPERADMIN_EMAILS.has(String(email || "").trim().toLowerCase());
+}
+
 async function loadCurrentAppUser({ silent = false } = {}) {
   if (!CLOUD_ENABLED || !state.currentUser) {
     applyAppUserSession(null);
@@ -874,14 +956,21 @@ async function loadCurrentAppUser({ silent = false } = {}) {
   }
 
   const metadata = state.currentUser.user_metadata || {};
+  const authEmail = String(state.currentUser.email || "").trim().toLowerCase();
+  const matricula = isKnownSuperadminEmail(authEmail)
+    ? getKnownSuperadminMatricula(authEmail)
+    : (metadata.matricula || "");
   try {
     const result = await callAdminRpc("get_current_app_user", {
       p_nombre: metadata.nombre || metadata.full_name || state.currentUser.email || "Usuario",
-      p_matricula: metadata.matricula || "",
+      p_matricula: matricula,
       p_org_key: metadata.organization_key || metadata.org_key || localStorage.getItem("registro_asistencia_org_key") || "",
     });
     const appUser = getRpcFirstRow(result);
     applyAppUserSession(appUser);
+    if (isKnownSuperadminEmail(authEmail) && appUser?.rol !== "superadmin" && !silent) {
+      showToast("Tu cuenta necesita rol superadmin en Supabase para crear organizaciones. Aplica supabase-hito13.");
+    }
     return appUser;
   } catch (error) {
     applyAppUserSession(null);
@@ -923,6 +1012,8 @@ function renderOrganizations(rows) {
 }
 
 function renderManagedSites(rows = []) {
+  state.managedSites = Array.isArray(rows) ? rows : [];
+  populateAdminInviteSites();
   if (!els.siteDirectory) return;
   if (!isRoleAdminSession() && !isDemoAdminUnlocked()) {
     els.siteDirectory.innerHTML = `<p class="muted-note">Sin permisos para administrar sitios.</p>`;
@@ -954,6 +1045,8 @@ function renderManagedSites(rows = []) {
 }
 
 function renderManagedUsers(rows = []) {
+  state.managedUsers = Array.isArray(rows) ? rows : [];
+  renderAdminUsersSection(getVisibleRecords());
   if (!els.userDirectory) return;
   if (!isRoleAdminSession() && !isDemoAdminUnlocked()) {
     els.userDirectory.innerHTML = `<p class="muted-note">Sin permisos para consultar usuarios.</p>`;
@@ -1050,11 +1143,18 @@ async function handleOrganizationSubmit(event) {
     await loadOrganizations({ silent: true });
     showToast("Organizacion creada. Comparte su clave con sus usuarios.");
   } catch (error) {
-    showToast("No se pudo crear la organizacion. Verifica permisos y slug.");
+    const detail = parseSupabaseError(error);
+    if (/permiso_manage_organization/i.test(detail)) {
+      showToast("Sin permiso en Supabase para crear organizaciones. Verifica rol superadmin en usuarios_app.");
+    } else if (/sesion_requerida/i.test(detail)) {
+      showToast("Sesion expirada. Vuelve a iniciar sesion.");
+    } else {
+      showToast(`No se pudo crear la organizacion: ${detail.slice(0, 140)}`);
+    }
   }
 }
 async function loadAttendanceStreak({ silent = false } = {}) {
-  if (!CLOUD_ENABLED || !state.currentUser || !localStorage.getItem("registro_asistencia_token")) {
+  if (!CLOUD_ENABLED || !ATTENDANCE_STREAK_RPC_ENABLED || !state.currentUser || !localStorage.getItem("registro_asistencia_token")) {
     state.attendanceStreak = null;
     renderAttendanceStreak();
     return null;
@@ -1769,7 +1869,7 @@ function showView(name) {
     targetName = "home";
   }
 
-  const actualView = targetName === "admin" ? "records" : targetName;
+  const actualView = targetName;
   document.querySelectorAll('[data-view]').forEach((view) => {
     view.classList.toggle("is-hidden", view.dataset.view !== actualView);
   });
@@ -1792,7 +1892,10 @@ function showView(name) {
     updateClockAndQr({ force: true });
   }
   if (actualView === "records" || actualView === "admin" || actualView === "home") refreshRecords({ silent: true });
-  if (targetName === "admin") loadAdminDirectories({ silent: true });
+  if (targetName === "admin") {
+    showAdminSection("summary");
+    loadAdminDirectories({ silent: true });
+  }
   window.scrollTo({ top: 0, behavior: "smooth" });
 }
 
@@ -1823,6 +1926,34 @@ function renderRolePanelCopy(activeTarget = "records") {
         ? "Mostrando registros del sitio u organizacion asignada."
         : "Mostrando solo tus registros personales.";
   }
+}
+
+const ADMIN_SECTION_COPY = {
+  summary: "Resumen del dia, alertas y distribucion por sitio.",
+  organizations: "Crea organizaciones, revisa claves y estructura multiempresa.",
+  sites: "Configura ubicacion, radio GPS, horarios y llave del sitio.",
+  users: "Consulta personas por sitio, pendientes sin sitio y asignacion admin.",
+  attendances: "Filtra registros, revisa evidencia y exporta si tienes permiso.",
+  audit: "Historial de acciones administrativas visibles para tu rol.",
+};
+
+function showAdminSection(section = "summary") {
+  const target = section || "summary";
+  state.activeAdminSection = target;
+  document.querySelectorAll("[data-admin-section]").forEach((element) => {
+    const shouldShow = element.dataset.adminSection === target;
+    element.classList.toggle("is-hidden", !shouldShow);
+  });
+  document.querySelectorAll("[data-admin-section-target]").forEach((button) => {
+    button.classList.toggle("is-active", button.dataset.adminSectionTarget === target);
+  });
+  if (els.adminSectionHint) {
+    els.adminSectionHint.textContent = ADMIN_SECTION_COPY[target] || ADMIN_SECTION_COPY.summary;
+  }
+  document.querySelector(".admin-quick-actions")?.classList.toggle("is-hidden", target !== "summary");
+  const activeNav = document.querySelector(`.admin-nav-pill[data-admin-section-target="${target}"]`);
+  activeNav?.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "center" });
+  if (target === "users") renderAdminUsersSection(getVisibleRecords());
 }
 
 function showToast(message) {
@@ -2463,11 +2594,17 @@ function metadataBlock(title, fields) {
 }
 
 async function showEvidenceDetail(id) {
-  if (!requestAdminAccess()) return;
   const record = state.records.find((item) => item.id === id);
   if (!record || !els.evidenceModal || !els.evidenceBody) return;
+  const canOpenEvidence = canViewRecord(record) || hasPermission("view_evidence") || isDemoAdminUnlocked();
+  if (!canOpenEvidence) {
+    showToast("Solo puedes ver evidencia de registros dentro de tu alcance.");
+    return;
+  }
 
-  addAdminLog("evidencia_geolocalizada_visualizada", `${record.matricula} ${displayDate(record.fecha)}`);
+  if (hasPermission("view_evidence") || isDemoAdminUnlocked()) {
+    addAdminLog("evidencia_geolocalizada_visualizada", `${record.matricula} ${displayDate(record.fecha)}`);
+  }
   const entradaUrl = await getSignedEvidenceUrl(record, "entrada");
   const salidaUrl = await getSignedEvidenceUrl(record, "salida");
 
@@ -2697,7 +2834,7 @@ function renderRecords() {
       <td>${imageCell(record.fotoSalida, "Salida")}</td>
       <td>${escapeHtml(record.nombre)}</td>
       <td>${escapeHtml(record.matricula)}</td>
-      <td>${escapeHtml(record.sitioNombre || "Sin sitio")}</td>
+      <td>${escapeHtml(recordSiteName(record))}</td>
       <td>${escapeHtml(formatMeters(record.radioMetros))}</td>
       <td>${escapeHtml(displayDate(record.fecha))}</td>
       <td>${escapeHtml(record.horaEntrada)}</td>
@@ -2793,7 +2930,7 @@ function recordMatchesDashboardFilters(record) {
 
   // Filtro por Sitio
   if (filters.site && filters.site !== "all") {
-    const recordSite = String(record.sitioNombre || record.sitioEntradaNombre || "").trim().toLowerCase();
+    const recordSite = recordSiteName(record).toLowerCase();
     const targetSite = String(filters.site).trim().toLowerCase();
     if (recordSite !== targetSite) return false;
   }
@@ -2854,7 +2991,7 @@ function renderDashboardAlerts(records) {
     if (seen.has(key)) {
       duplicates.add(r.matricula);
     }
-    seen.set(key);
+    seen.add(key);
   });
 
   if (noGpsCount) {
@@ -2923,6 +3060,292 @@ function renderOperationsDashboard(records = getFilteredRecords()) {
   if (els.dashboardCompletionRate) els.dashboardCompletionRate.textContent = `${completionRate}% completo`;
   if (els.dashboardScopeLabel) els.dashboardScopeLabel.textContent = dashboardScopeText();
   renderDashboardAlerts(records);
+  renderSiteUsersOverview(getVisibleRecords());
+  renderAdminUsersSection(getVisibleRecords());
+}
+
+function recordSiteName(record) {
+  return (record.sitioNombre || record.sitioEntradaNombre || "").trim() || "Sin sitio";
+}
+
+function renderSiteUsersOverview(records = getVisibleRecords()) {
+  if (!els.siteUsersList || !els.siteUsersTotal) return;
+  const bySite = new Map();
+
+  records.forEach((record) => {
+    const site = recordSiteName(record);
+    if (!bySite.has(site)) {
+      bySite.set(site, {
+        users: new Map(),
+        records: 0,
+        completed: 0,
+        pending: 0,
+      });
+    }
+    const bucket = bySite.get(site);
+    bucket.records += 1;
+    if (isCompleteRecord(record)) bucket.completed += 1;
+    if (isPendingExitRecord(record)) bucket.pending += 1;
+    if (record.matricula) {
+      bucket.users.set(normalizeMatricula(record.matricula), record.nombre || record.matricula);
+    }
+  });
+
+  const totalUsers = new Set();
+  bySite.forEach((bucket) => {
+    bucket.users.forEach((_, matricula) => totalUsers.add(matricula));
+  });
+  els.siteUsersTotal.textContent = `${totalUsers.size} ${totalUsers.size === 1 ? "usuario" : "usuarios"}`;
+
+  if (!bySite.size) {
+    els.siteUsersList.innerHTML = `
+      <article class="site-users-card">
+        <strong>Sin registros todavía</strong>
+        <span>Cuando existan asistencias, aquí aparecerán usuarios agrupados por sitio.</span>
+      </article>
+    `;
+    return;
+  }
+
+  const selectedSite = els.adminFilterSite?.value || "all";
+  els.siteUsersList.innerHTML = Array.from(bySite.entries())
+    .sort((a, b) => a[0].localeCompare(b[0]))
+    .map(([site, bucket]) => {
+      const isSelected = selectedSite === site;
+      const sampleUsers = Array.from(bucket.users.values()).slice(0, 3).join(", ");
+      return `
+        <article class="site-users-card ${isSelected ? "is-selected" : ""}">
+          <div>
+            <strong>${escapeHtml(site)}</strong>
+            <span>${bucket.users.size} ${bucket.users.size === 1 ? "usuario" : "usuarios"} · ${bucket.records} ${bucket.records === 1 ? "registro" : "registros"}</span>
+          </div>
+          <div class="site-users-card-meta">
+            <span>${bucket.completed} completos</span>
+            <span>${bucket.pending} pendientes</span>
+          </div>
+          <p>${escapeHtml(sampleUsers || "Sin usuarios identificados")}</p>
+        </article>
+      `;
+    }).join("");
+}
+
+function keySafeSegment(value, fallback = "SITIO") {
+  const normalized = String(value || fallback)
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-zA-Z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .toUpperCase();
+  return normalized || fallback;
+}
+
+function buildAccessKey(prefix, source) {
+  const randomPart = Math.random().toString(36).slice(2, 8).toUpperCase();
+  return `${prefix}-${keySafeSegment(source).slice(0, 14)}-${randomPart}`;
+}
+
+function usersFromVisibleRecords(records = getVisibleRecords()) {
+  const users = new Map();
+  records.forEach((record) => {
+    const matricula = normalizeMatricula(String(record.matricula || ""));
+    if (!matricula) return;
+    if (!users.has(matricula)) {
+      users.set(matricula, {
+        nombre: record.nombre || record.matricula,
+        matricula,
+        email: record.email || "",
+        rol: "usuario",
+        sitio_nombre: recordSiteName(record),
+        organizacion_nombre: record.organizacionNombre || "Organizacion",
+        activo: true,
+        registros_total: 0,
+      });
+    }
+    const user = users.get(matricula);
+    user.registros_total += 1;
+    if (recordSiteName(record) !== "Sin sitio") user.sitio_nombre = recordSiteName(record);
+  });
+  return Array.from(users.values());
+}
+
+function getAdminUserRows() {
+  return state.managedUsers.length ? state.managedUsers : usersFromVisibleRecords();
+}
+
+function getAdminSiteOptions() {
+  const sites = new Map();
+  state.managedSites.forEach((site) => {
+    const label = site.nombre || site.sitio_nombre || "Sitio sin nombre";
+    sites.set(label, {
+      label,
+      org: site.organizacion_nombre || "Organizacion",
+      keyReady: Boolean(site.tiene_clave || site.clave_sitio || site.site_key),
+    });
+  });
+  getVisibleRecords().forEach((record) => {
+    const label = recordSiteName(record);
+    if (!sites.has(label)) {
+      sites.set(label, { label, org: record.organizacionNombre || "Organizacion", keyReady: false });
+    }
+  });
+  return Array.from(sites.values()).sort((a, b) => a.label.localeCompare(b.label));
+}
+
+function populateAdminInviteSites() {
+  if (!els.adminInviteSite) return;
+  const previous = els.adminInviteSite.value;
+  const options = getAdminSiteOptions();
+  els.adminInviteSite.innerHTML = `<option value="">Selecciona un sitio</option>`;
+  options.forEach((site) => {
+    const option = document.createElement("option");
+    option.value = site.label;
+    option.textContent = `${site.label} / ${site.org}`;
+    els.adminInviteSite.appendChild(option);
+  });
+  els.adminInviteSite.value = options.some((site) => site.label === previous) ? previous : "";
+}
+
+function renderAdminUsersSection(records = getVisibleRecords()) {
+  if (!els.adminUsersBySite) return;
+  const rows = getAdminUserRows();
+  const bySite = new Map();
+  const withoutSite = [];
+
+  rows.forEach((user) => {
+    const site = String(user.sitio_nombre || user.sitioNombre || "Sin sitio").trim() || "Sin sitio";
+    if (!bySite.has(site)) bySite.set(site, []);
+    bySite.get(site).push(user);
+    if (site === "Sin sitio") withoutSite.push(user);
+  });
+
+  const totalUsers = rows.length;
+  if (els.adminUsersCount) {
+    els.adminUsersCount.textContent = `${totalUsers} ${totalUsers === 1 ? "usuario visible" : "usuarios visibles"}`;
+  }
+  if (els.adminUsersNoSiteCount) {
+    els.adminUsersNoSiteCount.textContent = `${withoutSite.length} sin sitio`;
+  }
+  if (els.adminUsersScopeBadge) {
+    els.adminUsersScopeBadge.className = `badge ${hasPermission("view_all_records") ? "admin" : "default"}`;
+    els.adminUsersScopeBadge.textContent = hasPermission("view_all_records") ? "Alcance global" : "Alcance de sitio";
+  }
+  if (els.adminUsersSummary) {
+    els.adminUsersSummary.textContent = hasPermission("view_all_records")
+      ? "Superadmin puede revisar usuarios globales, sitios asignados y pendientes de vinculacion."
+      : "Administrador de sitio: solo usuarios vinculados a tu organizacion o sitio.";
+  }
+
+  populateAdminInviteSites();
+
+  if (!totalUsers) {
+    els.adminUsersBySite.innerHTML = `
+      <article class="admin-user-site-card is-empty">
+        <strong>Sin usuarios visibles</strong>
+        <p>Cuando existan registros o el RPC de usuarios responda, aqui apareceran agrupados por sitio.</p>
+      </article>
+    `;
+    return;
+  }
+
+  els.adminUsersBySite.innerHTML = Array.from(bySite.entries())
+    .sort((a, b) => (a[0] === "Sin sitio" ? 1 : b[0] === "Sin sitio" ? -1 : a[0].localeCompare(b[0])))
+    .map(([site, users]) => {
+      const uniqueRecords = records.filter((record) => {
+        const recordUser = normalizeMatricula(String(record.matricula || ""));
+        return users.some((user) => normalizeMatricula(String(user.matricula || "")) === recordUser);
+      }).length;
+      const people = users.slice(0, 8).map((user) => {
+        const role = getRoleDefinition(user.rol || "usuario");
+        const statusClass = user.activo === false ? "danger" : "success";
+        return `
+          <li>
+            <div>
+              <strong>${escapeHtml(user.nombre || user.email || user.matricula || "Usuario")}</strong>
+              <span>${escapeHtml(user.email || user.matricula || "Sin identificador")}</span>
+            </div>
+            <span class="badge ${statusClass}">${user.activo === false ? "Inactivo" : escapeHtml(role.label)}</span>
+          </li>
+        `;
+      }).join("");
+      const overflow = users.length > 8 ? `<p class="muted-note">+${users.length - 8} usuarios adicionales en este sitio.</p>` : "";
+      return `
+        <article class="admin-user-site-card ${site === "Sin sitio" ? "needs-attention" : ""}">
+          <header>
+            <div>
+              <strong>${escapeHtml(site)}</strong>
+              <span>${users.length} ${users.length === 1 ? "usuario" : "usuarios"} / ${uniqueRecords} registros</span>
+            </div>
+            <span class="badge ${site === "Sin sitio" ? "warning" : "success"}">${site === "Sin sitio" ? "Requiere sitio" : "Vinculado"}</span>
+          </header>
+          <ul>${people}</ul>
+          ${overflow}
+        </article>
+      `;
+    }).join("");
+}
+
+function prepareAdminInviteKey() {
+  if (!hasPermission("manage_organization")) {
+    showToast("Solo superadmin puede preparar keys de administracion.");
+    return;
+  }
+  const email = els.adminInviteEmail?.value.trim() || "";
+  const site = els.adminInviteSite?.value || els.siteName?.value || "sitio";
+  if (!email || !site) {
+    if (els.adminInviteStatus) {
+      els.adminInviteStatus.textContent = "Captura correo y sitio antes de preparar la key.";
+      els.adminInviteStatus.dataset.tone = "danger";
+    }
+    return;
+  }
+  const key = buildAccessKey("ADMIN", site);
+  if (els.adminInviteKey) els.adminInviteKey.value = key;
+  if (els.adminInviteStatus) {
+    els.adminInviteStatus.textContent = `Key preparada para ${email}. Pendiente de RPC segura en Supabase.`;
+    els.adminInviteStatus.dataset.tone = "warning";
+  }
+  addAdminLog("admin_invite_key_preparada", `${email} / ${site}`);
+}
+
+async function copyAdminInviteKey() {
+  const key = els.adminInviteKey?.value.trim();
+  if (!key) {
+    showToast("Primero prepara una key de admin.");
+    return;
+  }
+  try {
+    await navigator.clipboard.writeText(key);
+    showToast("Key copiada al portapapeles.");
+  } catch {
+    showToast("No se pudo copiar la key desde este navegador.");
+  }
+}
+
+function generateSiteKey() {
+  if (!hasPermission("manage_organization") && !hasPermission("manage_site")) {
+    showToast("No tienes permisos para generar keys de sitio.");
+    return;
+  }
+  const source = els.siteName?.value.trim() || els.adminInviteSite?.value || state.activeSite?.nombre || "sitio";
+  const key = buildAccessKey("SITE", source);
+  if (els.siteKey) els.siteKey.value = key;
+  setSiteMessage("Key MVP generada. Guardarla requiere RPC/RLS segura en Supabase.", "warning");
+  addAdminLog("site_key_generada_mvp", source);
+}
+
+async function copySiteKey() {
+  const key = els.siteKey?.value.trim();
+  if (!key) {
+    showToast("Primero genera o captura una site_key.");
+    return;
+  }
+  try {
+    await navigator.clipboard.writeText(key);
+    setSiteMessage("Key copiada. Persistirla en Supabase sigue pendiente de RPC segura.", "success");
+    showToast("Site key copiada al portapapeles.");
+  } catch {
+    showToast("No se pudo copiar la key desde este navegador.");
+  }
 }
 
 function syncDashboardFiltersFromUi() {
@@ -2937,65 +3360,66 @@ function syncDashboardFiltersFromUi() {
 function populateDashboardFilterSelects() {
   const allVisible = getVisibleRecords();
   const uniqueSites = new Set();
-  const uniqueUsers = new Map();
   
   allVisible.forEach(record => {
-    const siteName = record.sitioNombre || record.sitioEntradaNombre || "";
-    if (siteName.trim()) uniqueSites.add(siteName.trim());
-    
-    if (record.matricula && record.nombre) {
-      uniqueUsers.set(normalizeMatricula(record.matricula), record.nombre.trim());
-    }
+    uniqueSites.add(recordSiteName(record));
   });
 
-  const updateSelect = (selectEl, prevValue, placeholder) => {
+  const updateSiteSelect = (selectEl, prevValue) => {
     if (!selectEl) return;
-    selectEl.innerHTML = `<option value="all">${placeholder}</option>`;
-
-    if (selectEl.id.includes("Site")) {
-      Array.from(uniqueSites).sort().forEach(site => {
-        const option = document.createElement("option");
-        option.value = site;
-        option.textContent = site;
-        selectEl.appendChild(option);
-      });
-      if (Array.from(uniqueSites).includes(prevValue)) {
-        selectEl.value = prevValue;
-      } else {
-        selectEl.value = "all";
-      }
+    selectEl.innerHTML = '<option value="all">Todos los sitios</option>';
+    Array.from(uniqueSites).sort().forEach(site => {
+      const option = document.createElement("option");
+      option.value = site;
+      option.textContent = site;
+      selectEl.appendChild(option);
+    });
+    if (Array.from(uniqueSites).includes(prevValue)) {
+      selectEl.value = prevValue;
     } else {
-      Array.from(uniqueUsers.entries()).sort((a,b) => a[1].localeCompare(b[1])).forEach(([matricula, nombre]) => {
-        const option = document.createElement("option");
-        option.value = matricula;
-        option.textContent = `${nombre} (${matricula})`;
-        selectEl.appendChild(option);
-      });
-      if (uniqueUsers.has(prevValue)) {
-        selectEl.value = prevValue;
-      } else {
-        selectEl.value = "all";
-      }
+      selectEl.value = "all";
     }
+  };
+
+  const updateUserSelect = (selectEl, prevValue, selectedSite) => {
+    if (!selectEl) return;
+    const uniqueUsers = new Map();
+    allVisible.forEach(record => {
+      const siteName = recordSiteName(record);
+      const siteMatches = selectedSite === "all" || siteName === selectedSite;
+      if (siteMatches && record.matricula && record.nombre) {
+        uniqueUsers.set(normalizeMatricula(record.matricula), record.nombre.trim());
+      }
+    });
+    selectEl.innerHTML = `<option value="all">${selectedSite === "all" ? "Todos los usuarios" : "Usuarios del sitio"}</option>`;
+    Array.from(uniqueUsers.entries()).sort((a,b) => a[1].localeCompare(b[1])).forEach(([matricula, nombre]) => {
+      const option = document.createElement("option");
+      option.value = matricula;
+      option.textContent = `${nombre} (${matricula})`;
+      selectEl.appendChild(option);
+    });
+    selectEl.value = uniqueUsers.has(prevValue) ? prevValue : "all";
   };
 
   if (els.filterSite) {
     const prevSite = els.filterSite.value;
-    updateSelect(els.filterSite, prevSite, "Todos los sitios");
+    updateSiteSelect(els.filterSite, prevSite);
   }
   if (els.adminFilterSite) {
     const prevSite = els.adminFilterSite.value;
-    updateSelect(els.adminFilterSite, prevSite, "Todos los sitios");
+    updateSiteSelect(els.adminFilterSite, prevSite);
   }
   
   if (els.filterUser) {
     const prevUser = els.filterUser.value;
-    updateSelect(els.filterUser, prevUser, "Todos los usuarios");
+    updateUserSelect(els.filterUser, prevUser, els.filterSite?.value || "all");
   }
   if (els.adminFilterUser) {
     const prevUser = els.adminFilterUser.value;
-    updateSelect(els.adminFilterUser, prevUser, "Todos los usuarios");
+    updateUserSelect(els.adminFilterUser, prevUser, els.adminFilterSite?.value || "all");
   }
+
+  syncDashboardFiltersFromUi();
 }
 
 function resetDashboardFilters() {
@@ -3036,21 +3460,26 @@ function renderMobileRecordCards(records = []) {
   if (!records.length) {
     els.recordsMobileCards.innerHTML = `
       <div class="mobile-record-empty">
-        No hay registros con los filtros actuales.
+        <strong>No tienes registros todavía.</strong>
+        <span>Cuando registres tu entrada aparecerán aquí tus horarios, estado y evidencia.</span>
+        <button class="primary mini" data-target="entry" type="button">Registrar entrada</button>
       </div>
     `;
     return;
   }
 
-  const canViewEvidence = hasPermission("view_evidence") || isDemoAdminUnlocked();
   const canManageRecords = hasPermission("manage_records") || isDemoAdminUnlocked();
 
   els.recordsMobileCards.innerHTML = records.map((record) => {
     const statusClass = statusBadgeClass(record.estado);
     const riskClass = riskBadgeClass(record.riesgo);
+    const canViewEvidence = canViewRecord(record) || hasPermission("view_evidence") || isDemoAdminUnlocked();
+    const isComplete = isCompleteRecord(record);
+    const statusText = statusLabel(record.estado);
+    const locationText = record.ubicacionEntradaValidada && (record.horaSalida ? record.ubicacionSalidaValidada : true) ? "Ubicación validada" : "Revisar ubicación";
     const actionButtons = [
-      canViewEvidence ? `<button class="secondary mini" data-action="view-evidence" data-id="${record.id}">Evidencia</button>` : "",
-      canManageRecords ? `<button class="ghost mini" data-action="edit-observation" data-id="${record.id}">Observacion</button>` : "",
+      canViewEvidence ? `<button class="secondary mini" data-action="view-evidence" data-id="${record.id}">Ver evidencia</button>` : "",
+      canManageRecords ? `<button class="ghost mini" data-action="edit-observation" data-id="${record.id}">Observación</button>` : "",
       canManageRecords ? `<button class="danger mini" data-action="delete-record" data-id="${record.id}">Eliminar</button>` : "",
     ].filter(Boolean).join("");
 
@@ -3058,20 +3487,33 @@ function renderMobileRecordCards(records = []) {
       <article class="mobile-record-card">
         <div class="mobile-record-card-head">
           <div class="mobile-record-card-title">
-            <strong>${escapeHtml(record.nombre || "Usuario sin nombre")}</strong>
-            <span>Identificador: ${escapeHtml(record.matricula || "-")}</span>
+            <span>${escapeHtml(displayDate(record.fecha))}</span>
+            <strong>${escapeHtml(isComplete ? "Asistencia completa" : "Salida pendiente")}</strong>
+            <small>${escapeHtml(recordSiteName(record))}</small>
           </div>
-          <span class="badge ${statusClass}">${escapeHtml(statusLabel(record.estado))}</span>
+          <span class="badge ${statusClass}">${escapeHtml(statusText)}</span>
         </div>
+
+        <div class="mobile-record-timeline" aria-label="Horario de asistencia">
+          <div>
+            <span>Entrada</span>
+            <strong>${escapeHtml(record.horaEntrada || "Pendiente")}</strong>
+          </div>
+          <div class="mobile-record-line" aria-hidden="true"></div>
+          <div>
+            <span>Salida</span>
+            <strong>${escapeHtml(record.horaSalida || "Pendiente")}</strong>
+          </div>
+        </div>
+
         <div class="mobile-record-card-grid">
-          ${mobileRecordField("Sitio", record.sitioNombre || "Sin sitio")}
-          ${mobileRecordField("Fecha", displayDate(record.fecha))}
-          ${mobileRecordField("Entrada", record.horaEntrada)}
-          ${mobileRecordField("Salida", record.horaSalida || "Pendiente")}
-          ${mobileRecordField("Riesgo", riskLabel(record.riesgo))}
-          ${mobileRecordField("Ubicacion", record.ubicacionEntradaValidada && (record.horaSalida ? record.ubicacionSalidaValidada : true) ? "Correcta" : "Revision")}
+          ${mobileRecordField("Matrícula", record.matricula)}
+          ${mobileRecordField("Identidad", identityLabel(record.validacionIdentidad))}
+          ${mobileRecordField("Foto", hasCompleteEvidence(record) ? "Completa" : "Parcial")}
+          ${mobileRecordField("GPS", locationText)}
         </div>
-        <div class="mobile-record-card-head">
+
+        <div class="mobile-record-card-foot">
           <span class="badge ${riskClass}">${escapeHtml(riskLabel(record.riesgo))}</span>
           <div class="mobile-record-actions">${actionButtons}</div>
         </div>
@@ -3241,6 +3683,21 @@ function updateAdminControls() {
       : CLOUD_ENABLED
         ? "Modo usuario: solo puedes registrar asistencia y consultar tus propios registros."
         : "Modo local activo. Configura Supabase para lista global.";
+  }
+
+  if (els.adminRoleBadge) {
+    const role = getRoleDefinition();
+    els.adminRoleBadge.textContent = role.label;
+    els.adminRoleBadge.dataset.tone = hasPermission("manage_organization")
+      ? "superadmin"
+      : roleAdmin
+        ? "admin"
+        : "demo";
+  }
+
+  const adminView = document.querySelector('[data-view="admin"]');
+  if (adminView && !adminView.classList.contains("is-hidden")) {
+    showAdminSection(state.activeAdminSection || "summary");
   }
 
   // Controlar la visibilidad de las pestañas en la barra lateral
@@ -3545,6 +4002,12 @@ function handleRecordAction(event) {
     }
   }
 
+  const navButton = event.target.closest("button[data-target]");
+  if (navButton) {
+    showView(navButton.dataset.target);
+    return;
+  }
+
   const button = event.target.closest("button[data-action]");
   if (!button) return;
 
@@ -3641,10 +4104,19 @@ async function loadOrganizationOptions() {
   if (!els.authOrgSelect) return;
   const selected = localStorage.getItem("registro_asistencia_org_slug") || "";
 
+  const showFallback = () => {
+    els.authOrgSelect.innerHTML = `<option value="">Sin sitios registrados</option>`;
+    if (els.authOrgSelectFallbackWrap) {
+      els.authOrgSelectFallbackWrap.classList.remove("is-hidden");
+    }
+  };
+
   if (!CLOUD_ENABLED) {
-    els.authOrgSelect.innerHTML = `<option value="">Organizacion principal</option>`;
+    showFallback();
     return;
   }
+
+  els.authOrgSelect.innerHTML = `<option value="">Cargando sitios\u2026</option>`;
 
   try {
     const rows = await supabaseRequest("/rest/v1/rpc/get_public_organization_options", {
@@ -3653,64 +4125,117 @@ async function loadOrganizationOptions() {
       body: JSON.stringify({}),
     });
 
-    const options = (Array.isArray(rows) ? rows : []).map((org) => {
+    const orgs = Array.isArray(rows) ? rows.filter(Boolean) : [];
+
+    if (!orgs.length) {
+      showFallback();
+      return;
+    }
+
+    const options = orgs.map((org) => {
       const slug = String(org.slug || "").trim();
       const label = `${org.nombre || "Organizacion"} (${org.tipo || "sitio"})`;
       return `<option value="${escapeHtml(slug)}" ${slug === selected ? "selected" : ""}>${escapeHtml(label)}</option>`;
     });
 
-    els.authOrgSelect.innerHTML = `<option value="">Selecciona sitio afiliado</option>${options.join("")}`;
+    els.authOrgSelect.innerHTML = `<option value="">Selecciona tu sitio afiliado</option>${options.join("")}`;
+    if (els.authOrgSelectFallbackWrap) {
+      els.authOrgSelectFallbackWrap.classList.add("is-hidden");
+    }
   } catch (error) {
     console.warn("No se pudo cargar la lista publica de sitios.", error);
-    els.authOrgSelect.innerHTML = `<option value="">Organizacion principal</option>`;
+    showFallback();
   }
 }
 
+
 function selectedOrganizationSlug() {
-  return els.authOrgSelect?.value.trim() || localStorage.getItem("registro_asistencia_org_slug") || "";
+  const fallback = els.authOrgSelectFallback?.value.trim() || "";
+  return els.authOrgSelect?.value.trim() || fallback || localStorage.getItem("registro_asistencia_org_slug") || "";
+}
+
+/** Detecta si el valor ingresado parece un número de teléfono */
+function isPhoneInput(value) {
+  const cleaned = value.replace(/[\s\-().+]/g, "");
+  return /^\d{8,15}$/.test(cleaned);
+}
+
+/** Convierte número de teléfono a email sintético temporal para Supabase Auth */
+function buildEmailFromPhone(phone) {
+  const cleaned = phone.replace(/[^\d]/g, "");
+  return `tel.${cleaned}@registro.local`;
+}
+
+/** Muestra/oculta el panel de nudge para agregar correo */
+function showEmailNudgePanel(show = true) {
+  if (!els.emailNudgePanel) return;
+  if (show) {
+    els.emailNudgePanel.classList.remove("is-hidden");
+  } else {
+    els.emailNudgePanel.classList.add("is-hidden");
+  }
 }
 function updateAuthUI() {
   if (!els.labelName || !els.labelMatricula || !els.loginTitle || !els.loginSubtitle || !els.authSubmitBtn) return;
 
   if (authMode === "login") {
+    // LOGIN: solo correo/teléfono + contraseña
     els.labelName.classList.add("is-hidden");
     els.labelMatricula.classList.add("is-hidden");
+    els.labelPhone?.classList.add("is-hidden");
+    els.labelOrgSelect?.classList.add("is-hidden");
     els.labelOrgKey?.classList.add("is-hidden");
+    els.authOrgKeyWrap?.classList.add("is-hidden");
     els.authName.required = false;
     els.authMatricula.required = false;
     if (els.authOrgKey) els.authOrgKey.required = false;
+    if (els.authPhone) els.authPhone.required = false;
     els.loginTitle.textContent = "Iniciar Sesión";
-    els.loginSubtitle.textContent = "Ingresa tus credenciales para acceder al control de asistencia.";
+    els.loginSubtitle.textContent = "Ingresa rápido con tu correo o número de teléfono.";
     els.authSubmitBtn.textContent = "Ingresar";
     els.toggleLoginBtn.classList.add("active");
     els.toggleRegisterBtn.classList.remove("active");
+    if (els.labelEmailText) els.labelEmailText.textContent = "Correo o teléfono";
+    if (els.labelEmailHint) els.labelEmailHint.textContent = "Escribe tu correo electrónico o número de teléfono.";
   } else {
+    // REGISTRO: todos los campos
     els.labelName.classList.remove("is-hidden");
     els.labelMatricula.classList.remove("is-hidden");
-    els.labelOrgKey?.classList.remove("is-hidden");
+    els.labelPhone?.classList.remove("is-hidden");
+    els.labelOrgSelect?.classList.remove("is-hidden");
+    els.authOrgKeyWrap?.classList.remove("is-hidden");
+    els.labelOrgKey?.classList.add("is-hidden"); // empieza colapsado
     els.authName.required = true;
     els.authMatricula.required = true;
     if (els.authOrgKey) els.authOrgKey.required = false;
+    if (els.authPhone) els.authPhone.required = false;
     els.loginTitle.textContent = "Registrarse";
-    els.loginSubtitle.textContent = "Crea una cuenta para registrar tu asistencia diaria.";
+    els.loginSubtitle.textContent = "Crea tu cuenta para registrar asistencia.";
     els.authSubmitBtn.textContent = "Crear Cuenta";
     els.toggleLoginBtn.classList.remove("active");
     els.toggleRegisterBtn.classList.add("active");
+    if (els.labelEmailText) els.labelEmailText.textContent = "Correo electrónico";
+    if (els.labelEmailHint) els.labelEmailHint.textContent = "Necesario para confirmar tu cuenta y recibir notificaciones.";
+    loadOrganizationOptions();
   }
 }
 
 async function handleAuthSubmit(event) {
   event.preventDefault();
 
-  const email = els.authEmail.value.trim();
+  const rawInput = els.authEmail.value.trim();
   const password = els.authPassword.value.trim();
   const orgSlug = selectedOrganizationSlug();
   if (orgSlug) localStorage.setItem("registro_asistencia_org_slug", orgSlug);
 
-  if (!email || !password) {
+  if (!rawInput || !password) {
     showToast("Por favor completa los campos obligatorios.");
     return;
   }
+
+  // Detectar si el input es teléfono o email
+  const isPhone = isPhoneInput(rawInput);
+  const email = isPhone ? buildEmailFromPhone(rawInput) : rawInput.toLowerCase();
 
   els.authSubmitBtn.disabled = true;
   const originalText = els.authSubmitBtn.textContent;
@@ -3719,13 +4244,18 @@ async function handleAuthSubmit(event) {
   try {
     if (authMode === "login") {
       const data = await iniciarSesion(email, password);
-      showToast("¡Inicio de sesión exitoso!");
+      showToast("¡Sesión iniciada!");
 
-      // Obtener datos del usuario
       const user = await verificarSesion();
       if (user) {
+        // Si entró con teléfono (email sintético), mostrar nudge de correo real
+        if (isPhone) {
+          const hasRealEmail = user.email && !user.email.includes("@registro.local");
+          if (!hasRealEmail) {
+            showEmailNudgePanel(true);
+          }
+        }
         showAppShell(user);
-        // Inicializar datos una vez logueado
         await finishInitialization();
       } else {
         throw new Error("No se pudo obtener el usuario después del inicio de sesión.");
@@ -3733,9 +4263,10 @@ async function handleAuthSubmit(event) {
     } else {
       const nombre = els.authName.value.trim();
       const matricula = els.authMatricula.value.trim();
+      const phone = els.authPhone?.value.trim() || "";
 
       if (!nombre || !matricula) {
-        showToast("Nombre y matrícula son requeridos para el registro.");
+        showToast("Nombre e identificador son requeridos para el registro.");
         els.authSubmitBtn.disabled = false;
         els.authSubmitBtn.textContent = originalText;
         return;
@@ -3743,18 +4274,18 @@ async function handleAuthSubmit(event) {
 
       const orgKey = els.authOrgKey?.value.trim() || "";
       if (orgKey) localStorage.setItem("registro_asistencia_org_key", orgKey);
-      const data = await crearCuenta(email, password, nombre, matricula, orgKey, orgSlug);
+      const data = await crearCuenta(email, password, nombre, matricula, orgKey, orgSlug, phone);
 
-      // Si retorna sesión, entra directo. Si no, pide verificar correo o iniciar sesión
       if (localStorage.getItem("registro_asistencia_token")) {
-        showToast("¡Registro e inicio de sesión exitoso!");
+        showToast("¡Cuenta creada! Bienvenido.");
         const user = await verificarSesion();
         if (user) {
+          if (isPhone) showEmailNudgePanel(true);
           showAppShell(user);
           await finishInitialization();
         }
       } else {
-        showToast("Cuenta creada. Revisa tu correo para confirmar antes de iniciar sesion, o usa modo operativo temporal.");
+        showToast("Cuenta creada. Revisa tu correo para confirmar antes de iniciar sesión, o usa modo operativo.");
         authMode = "login";
         updateAuthUI();
         els.authPassword.value = "";
@@ -3978,6 +4509,71 @@ async function init() {
     });
   }
 
+  // Badge dinámico email / teléfono en el campo unificado
+  if (els.authEmail && els.authInputBadge) {
+    els.authEmail.addEventListener("input", () => {
+      const v = els.authEmail.value.trim();
+      if (!v) {
+        els.authInputBadge.textContent = "";
+        els.authInputBadge.dataset.tone = "";
+      } else if (isPhoneInput(v)) {
+        els.authInputBadge.textContent = "📱 Teléfono";
+        els.authInputBadge.dataset.tone = "phone";
+      } else {
+        els.authInputBadge.textContent = "✉️ Correo";
+        els.authInputBadge.dataset.tone = "email";
+      }
+    });
+  }
+
+  // Accordion: ¿Tienes clave de organización?
+  if (els.authOrgKeyToggle && els.labelOrgKey) {
+    els.authOrgKeyToggle.addEventListener("click", () => {
+      const open = els.labelOrgKey.classList.toggle("is-hidden");
+      els.authOrgKeyToggle.setAttribute("aria-expanded", String(!open));
+      els.authOrgKeyToggle.classList.toggle("is-open", !open);
+    });
+  }
+
+  // Nudge panel: guardar correo real
+  if (els.nudgeEmailSubmit) {
+    els.nudgeEmailSubmit.addEventListener("click", async () => {
+      const email = els.nudgeEmail?.value.trim();
+      if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        showToast("Escribe un correo electrónico válido.");
+        return;
+      }
+      try {
+        const token = localStorage.getItem("registro_asistencia_token");
+        if (!token) throw new Error("Sin sesión activa.");
+        await fetch(`${window.SUPABASE_CONFIG.url}/auth/v1/user`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json", "apikey": window.SUPABASE_CONFIG.publishableKey, "Authorization": `Bearer ${token}` },
+          body: JSON.stringify({ email }),
+        });
+        showToast("Correo guardado. Revisa tu bandeja para confirmarlo.");
+        showEmailNudgePanel(false);
+        localStorage.setItem("registro_asistencia_nudge_dismissed", "1");
+      } catch (err) {
+        showToast(err.message || "No se pudo guardar el correo.");
+      }
+    });
+  }
+
+  if (els.nudgeEmailDismiss) {
+    els.nudgeEmailDismiss.addEventListener("click", () => {
+      showEmailNudgePanel(false);
+      localStorage.setItem("registro_asistencia_nudge_dismissed", "1");
+    });
+  }
+
+  // touchSession en cada clic de navegación para mantener activa la sesión
+  document.querySelectorAll(".nav-button[data-target]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      if (typeof touchSession === "function") touchSession();
+    });
+  });
+
   // 3. Manejadores estándar de la app
   if (els.startEntryCamera) els.startEntryCamera.addEventListener("click", () => startCamera("entry"));
   if (els.takeEntryPhoto) els.takeEntryPhoto.addEventListener("click", () => takePhoto("entry"));
@@ -4024,6 +4620,13 @@ async function init() {
   if (els.siteDirectory) els.siteDirectory.addEventListener("click", handleSiteDirectoryAction);
   if (els.useAdminLocation) els.useAdminLocation.addEventListener("click", useAdminLocation);
   if (els.testAdminLocation) els.testAdminLocation.addEventListener("click", testAdminLocation);
+  if (els.generateSiteKey) els.generateSiteKey.addEventListener("click", generateSiteKey);
+  if (els.copySiteKey) els.copySiteKey.addEventListener("click", copySiteKey);
+  if (els.prepareAdminInvite) els.prepareAdminInvite.addEventListener("click", prepareAdminInviteKey);
+  if (els.copyAdminInviteKey) els.copyAdminInviteKey.addEventListener("click", copyAdminInviteKey);
+  document.querySelectorAll("[data-admin-section-target]").forEach((button) => {
+    button.addEventListener("click", () => showAdminSection(button.dataset.adminSectionTarget));
+  });
 
   document.querySelectorAll(".ops-filters").forEach((form) => {
     form.addEventListener("submit", (event) => event.preventDefault());
