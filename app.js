@@ -889,9 +889,9 @@ function renderCurrentUserProfile() {
   const nombre = appUser?.nombre || metadata.nombre || metadata.full_name || authUser.email || "Usuario";
   const matricula = appUser?.matricula || metadata.matricula || "-";
   const email = appUser?.email || authUser.email || "-";
+  const initials = String(nombre).split(" ").filter(Boolean).map((part) => part[0].toUpperCase()).slice(0, 2).join("");
 
   if (els.userInitials) {
-    const initials = String(nombre).split(" ").filter(Boolean).map((part) => part[0].toUpperCase()).slice(0, 2).join("");
     els.userInitials.textContent = initials || "US";
   }
   if (els.profileName) els.profileName.value = nombre;
@@ -899,6 +899,12 @@ function renderCurrentUserProfile() {
   if (els.profileEmail) els.profileEmail.value = email;
   if (els.profileRole) els.profileRole.value = role.label;
   if (els.profileScope) els.profileScope.value = role.scope;
+  const profileInitials = document.querySelector("#profileInitials");
+  const profileDisplayName = document.querySelector("#profileDisplayName");
+  const profileDisplayIdentifier = document.querySelector("#profileDisplayIdentifier");
+  if (profileInitials) profileInitials.textContent = initials || "US";
+  if (profileDisplayName) profileDisplayName.textContent = nombre;
+  if (profileDisplayIdentifier) profileDisplayIdentifier.textContent = `Identificador: ${matricula}`;
   renderAttendanceStreak();
 }
 
@@ -1063,7 +1069,7 @@ function renderManagedUsers(rows = []) {
       <article class="organization-item directory-item">
         <div>
           <strong>${escapeHtml(user.nombre || user.email || user.matricula || "Usuario")}</strong>
-          <span>${escapeHtml(user.matricula || "Sin matricula")} - ${escapeHtml(user.email || "Sin correo")}</span>
+          <span>${escapeHtml(user.matricula || "Sin identificador")} - ${escapeHtml(user.email || "Sin correo")}</span>
           <small>${escapeHtml(user.organizacion_nombre || "Organizacion")} / ${escapeHtml(user.sitio_nombre || "Sin sitio asignado")}</small>
         </div>
         <div class="directory-actions">
@@ -1736,7 +1742,7 @@ async function updateExitRecord(record, { fotoSalida, descriptorSalida, location
     record.observaciones = faceValidation.observacion;
     record.metodoSalida = "matricula_foto_gps";
     record.qrValidado = false;
-    record.qrObservacion = "No aplica: salida validada por matricula, foto, GPS y facial.";
+    record.qrObservacion = "No aplica: salida validada por identificador, foto, GPS y facial.";
     record.latitudSalida = location.latitud ?? null;
     record.longitudSalida = location.longitud ?? null;
     record.precisionSalida = location.precision ?? null;
@@ -1818,7 +1824,7 @@ function updateAccessQr() {
   els.qrDirectLink.href = accessUrl;
   els.qrDirectLink.textContent = "Abrir sistema de asistencia";
   els.qrImage.src = `https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(accessUrl)}`;
-  els.exitGuard.textContent = "Ingresa tu matricula para buscar tu entrada activa.";
+  els.exitGuard.textContent = "Ingresa tu identificación para buscar tu entrada activa.";
   els.exitGuard.classList.remove("is-blocked");
 
   const headerQr = $("#headerQrState");
@@ -1901,7 +1907,13 @@ function showView(name) {
 
 function setActiveNavigation(name) {
   document.querySelectorAll(".nav-button, .sidebar-user-btn").forEach((button) => {
-    button.classList.toggle("is-active", button.dataset.target === name);
+    const isActive = button.dataset.target === name;
+    button.classList.toggle("is-active", isActive);
+    if (isActive) {
+      button.setAttribute("aria-current", "page");
+    } else {
+      button.removeAttribute("aria-current");
+    }
   });
 }
 
@@ -1917,7 +1929,7 @@ function renderRolePanelCopy(activeTarget = "records") {
   if (els.recordsSubtitle) {
     els.recordsSubtitle.textContent = isAdminTarget
       ? role.scope
-      : "Solo puedes consultar registros asociados a tu propia matricula.";
+      : "Solo puedes consultar registros asociados a tu propio identificador.";
   }
   if (els.dashboardScopeLabel) {
     els.dashboardScopeLabel.textContent = hasPermission("view_all_records")
@@ -2306,7 +2318,7 @@ function setExitLookupInfo(message, tone = "neutral") {
   els.exitLookupInfo.dataset.tone = tone;
 }
 
-function resetExitActiveRecord(message = "Ingresa la matricula para validar entrada activa antes de tomar foto de salida.") {
+function resetExitActiveRecord(message = "Ingresa la identificación para validar entrada activa antes de tomar foto de salida.") {
   state.exitActiveRecord = null;
   if (state.exitStream) stopCamera("exit");
   clearCapturedFace("exit");
@@ -2325,14 +2337,14 @@ async function validateExitMatricula({ showErrors = false } = {}) {
 
   state.exitActiveRecord = null;
   syncCaptureControls();
-  setExitLookupInfo("Validando entrada activa para esta matricula...", "neutral");
+  setExitLookupInfo("Validando entrada activa para este identificador...", "neutral");
   await refreshRecords({ silent: true });
   if (seq !== state.exitLookupSeq) return null;
 
   const record = todayRecordByMatricula(matricula);
 
   if (!record || !record.horaEntrada) {
-    const message = "No existe una entrada activa para esta matricula el dia de hoy.";
+    const message = "No existe una entrada activa para este identificador el dia de hoy.";
     resetExitActiveRecord(message);
     els.exitLookupInfo.dataset.tone = "danger";
     if (showErrors) showToast(message);
@@ -2340,7 +2352,7 @@ async function validateExitMatricula({ showErrors = false } = {}) {
   }
 
   if (record.horaSalida) {
-    const message = "Esta matricula ya registro salida el dia de hoy.";
+    const message = "Este identificador ya registro salida el dia de hoy.";
     resetExitActiveRecord(message);
     els.exitLookupInfo.dataset.tone = "danger";
     if (showErrors) showToast(message);
@@ -2352,7 +2364,7 @@ async function validateExitMatricula({ showErrors = false } = {}) {
     els.exitLookupInfo.dataset.tone = "success";
     els.exitLookupInfo.innerHTML = `
       <strong>Salida para: ${escapeHtml(record.nombre || "Sin nombre")}</strong>
-      <span>Matricula: ${escapeHtml(record.matricula)}</span>
+      <span>Identificador: ${escapeHtml(record.matricula)}</span>
       <span>Entrada registrada: ${escapeHtml(record.horaEntrada || "Pendiente")}</span>
       <span>Estado: entrada activa</span>
     `;
@@ -2368,14 +2380,14 @@ async function handleEntrySubmit(event) {
   const matricula = normalizeMatricula(els.entryMatricula.value);
 
   if (!state.entryPhoto || !state.entryFace || !nombre || !matricula) {
-    showToast("Falta foto con rostro valido, nombre o matricula para guardar la entrada.");
+    showToast("Falta foto con rostro valido, nombre o identificador para guardar la entrada.");
     return;
   }
 
   await refreshRecords({ silent: true });
 
   if (todayRecordByMatricula(matricula)) {
-    showToast("Ya existe un registro para esa matricula el dia de hoy.");
+    showToast("Ya existe un registro para ese identificador el dia de hoy.");
     return;
   }
 
@@ -2621,7 +2633,7 @@ async function showEvidenceDetail(id) {
     </div>
     ${metadataBlock("Identificacion", [
     evidenceField("Nombre", record.nombre),
-    evidenceField("Matricula", record.matricula),
+    evidenceField("Identificador", record.matricula),
     evidenceField("Fecha", displayDate(record.fecha)),
     evidenceField("Estado", statusLabel(record.estado)),
   ])}
@@ -2794,7 +2806,7 @@ function renderRecentActivity() {
         </div>
         <div class="recent-activity-text">
           <strong>${escapeHtml(titleText)} - ${escapeHtml(action.nombre)}</strong>
-          <span>Matricula: ${escapeHtml(action.matricula)} - ${escapeHtml(dateStr)}</span>
+          <span>Identificador: ${escapeHtml(action.matricula)} - ${escapeHtml(dateStr)}</span>
         </div>
       </div>
       <div class="recent-activity-meta">
@@ -3004,12 +3016,12 @@ function renderDashboardAlerts(records) {
     alerts.push(["Rostro en revisión", `${faceReviewCount} validacion(es) faciales pendientes o en revisión.`]);
   }
   if (duplicates.size) {
-    alerts.push(["Salida duplicada", `${duplicates.size} matrícula(s) registran múltiples entradas/salidas hoy.`]);
+    alerts.push(["Salida duplicada", `${duplicates.size} identificador(es) registran múltiples entradas/salidas hoy.`]);
   }
 
   const pendingToday = records.filter((record) => record.fecha === today && isPendingExitRecord(record));
   if (pendingToday.length) {
-    alerts.push(["Pendientes de salida", `${pendingToday.length} matrícula(s) con entrada activa hoy.`]);
+    alerts.push(["Pendientes de salida", `${pendingToday.length} identificador(es) con entrada activa hoy.`]);
   }
 
   if (!alerts.length) {
@@ -3747,7 +3759,7 @@ function exportCsv() {
 
   const headers = [
     "Nombre",
-    "Matricula",
+    "Identificador",
     "Fecha",
     "Sitio",
     "Sitio ID",
@@ -4586,7 +4598,7 @@ async function init() {
       if (state.exitStream) stopCamera("exit");
       clearCapturedFace("exit");
       syncCaptureControls();
-      setExitLookupInfo("Validando entrada activa para esta matricula...", "neutral");
+      setExitLookupInfo("Validando entrada activa para este identificador...", "neutral");
       validateExitMatricula.timer = window.setTimeout(() => validateExitMatricula(), 450);
     });
     els.exitMatricula.addEventListener("blur", () => validateExitMatricula());

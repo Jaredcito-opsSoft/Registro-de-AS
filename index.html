@@ -16,7 +16,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="stylesheet"
     href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" />
-  <link rel="stylesheet" href="styles.css?v=2.11-cache-sync" />
+  <link rel="stylesheet" href="styles.css?v=2.12-profile" />
 </head>
 
 <body>
@@ -52,7 +52,7 @@
         <label id="label-matricula" class="is-hidden">
           Tu identificador
           <input id="authMatricula" type="text" autocomplete="off"
-            placeholder="Matrícula, cédula, INE, número de empleado…" />
+            placeholder="Identificador, cédula, INE, número de empleado…" />
           <span class="field-hint">El código con el que te identificas en tu organización.</span>
         </label>
 
@@ -148,7 +148,7 @@
       </div>
 
       <nav class="top-nav" aria-label="Navegacion principal">
-        <button class="nav-button is-active" data-target="home" type="button" aria-label="Inicio">
+        <button class="nav-button is-active" data-target="home" type="button" aria-label="Inicio" aria-current="page">
           <span class="nav-icon" aria-hidden="true">
             <svg viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
@@ -441,7 +441,7 @@
                 <input id="entryName" type="text" autocomplete="name" placeholder="Ej. Ana Lopez Perez" required />
               </label>
               <label>
-                Matricula
+                Identificador
                 <input id="entryMatricula" type="text" autocomplete="off" placeholder="Ej. A00125" required />
               </label>
               <div class="form-actions">
@@ -455,7 +455,7 @@
             <div>
               <p class="section-kicker">Entrada guardada</p>
               <h3>Entrada registrada correctamente</h3>
-              <p>El siguiente paso natural es registrar la salida con matricula validada.</p>
+              <p>El siguiente paso natural es registrar la salida con identificador validado.</p>
             </div>
             <div class="flow-actions">
               <button class="primary" data-target="exit" type="button">Registrar salida</button>
@@ -470,14 +470,14 @@
             <div>
               <p class="section-kicker">Paso 2 de 2</p>
               <h2>Registrar salida</h2>
-              <p class="view-subtitle">Ingresa tu matricula para buscar tu entrada activa; despues toma foto final y
+              <p class="view-subtitle">Ingresa tu identificador para buscar tu entrada activa; despues toma foto final y
                 guarda la salida con GPS y validacion facial.</p>
             </div>
             <button class="back-button" data-target="home" type="button">Volver al inicio</button>
           </div>
 
           <div class="notice" id="exitGuard" aria-live="polite">
-            Ingresa tu matricula para buscar tu entrada activa.
+            Ingresa tu identificador para buscar tu entrada activa.
           </div>
 
           <div class="anti-fraud-strip">
@@ -507,11 +507,11 @@
 
             <form id="exitForm" class="data-form" novalidate>
               <label>
-                Matricula
+                Identificador
                 <input id="exitMatricula" type="text" autocomplete="off" placeholder="Ej. A00125" required />
               </label>
               <div id="exitLookupInfo" class="exit-lookup" data-tone="neutral" aria-live="polite">
-                Ingresa la matricula para validar entrada activa antes de tomar foto de salida.
+                Ingresa el identificador para validar entrada activa antes de tomar foto de salida.
               </div>
               <div class="form-actions">
                 <button class="primary wide" type="submit">Guardar salida</button>
@@ -585,7 +585,7 @@
             </label>
             <label class="ops-search-field">
               Buscar
-              <input id="filterSearch" type="search" autocomplete="off" placeholder="Nombre o matricula" />
+              <input id="filterSearch" type="search" autocomplete="off" placeholder="Nombre o identificador" />
             </label>
             <button id="clearDashboardFilters" class="ghost filter-clear" type="button">Limpiar filtros</button>
           </form>
@@ -597,7 +597,7 @@
                   <th>Foto entrada</th>
                   <th>Foto salida</th>
                   <th>Nombre</th>
-                  <th>Matricula</th>
+                  <th>Identificador</th>
                   <th>Sitio</th>
                   <th>Radio</th>
                   <th>Fecha</th>
@@ -841,7 +841,7 @@
                   <th>Foto entrada</th>
                   <th>Foto salida</th>
                   <th>Nombre</th>
-                  <th>Matricula</th>
+                  <th>Identificador</th>
                   <th>Sitio</th>
                   <th>Radio</th>
                   <th>Fecha</th>
@@ -896,7 +896,7 @@
               <article class="site-config-card">
                 <small>Usuarios</small>
                 <strong id="orgUsersLabel">0</strong>
-                <span>Matriculas migradas</span>
+                <span>Identificadores migrados</span>
               </article>
               <article class="site-config-card">
                 <small>Asistencias</small>
@@ -1121,35 +1121,86 @@
           <div class="panel-heading">
             <div>
               <p class="section-kicker">Usuario activo</p>
-              <h2>Perfil de usuario</h2>
-              <p class="view-subtitle">Información del usuario autenticado en el sistema.</p>
+              <h2>Perfil</h2>
+              <p class="view-subtitle">Tu cuenta, asistencia y permisos de registro.</p>
             </div>
             <button class="back-button" data-target="home" type="button">Volver al inicio</button>
           </div>
 
           <div class="profile-layout">
+            <section class="profile-identity-card" aria-label="Resumen del perfil">
+              <div id="profileInitials" class="profile-avatar" aria-hidden="true">US</div>
+              <div class="profile-identity-copy">
+                <h3 id="profileDisplayName">Usuario</h3>
+                <p id="profileDisplayIdentifier" class="profile-identifier">Identificador pendiente</p>
+                <p class="profile-attendance-state"><span aria-hidden="true"></span>Perfil de asistencia activo</p>
+              </div>
+            </section>
+
             <form id="profileForm" class="data-form" novalidate autocomplete="off">
-              <label>
-                Nombre completo
-                <input id="profileName" type="text" placeholder="Ej. Ana Lopez Perez" required />
-              </label>
-              <label>
-                Matrícula
-                <input id="profileMatricula" type="text" placeholder="Ej. A00125" required />
-              </label>
-              <label>
-                Correo electrónico
-                <input id="profileEmail" type="email" placeholder="Ej. ana.lopez@empresa.com" required />
-              </label>
-              <label>
-                Rol operativo
-                <input id="profileRole" type="text" readonly class="readonly-field" />
-              </label>
-              <label>
-                Alcance de permisos
-                <textarea id="profileScope" rows="3" readonly class="readonly-field profile-scope"></textarea>
-              </label>
+              <fieldset class="profile-section profile-fieldset">
+                <legend>Información personal</legend>
+                <p class="profile-section-copy">Datos asociados a tu cuenta de asistencia.</p>
+                <label class="profile-data-row">
+                  <span class="profile-row-icon" aria-hidden="true">US</span>
+                  <span class="profile-row-content">
+                    <span class="profile-row-label">Nombre completo</span>
+                    <input id="profileName" type="text" placeholder="Ej. Ana Lopez Perez" required />
+                  </span>
+                </label>
+                <label class="profile-data-row">
+                  <span class="profile-row-icon" aria-hidden="true">ID</span>
+                  <span class="profile-row-content">
+                    <span class="profile-row-label">Identificador</span>
+                    <input id="profileMatricula" type="text" placeholder="Ej. ID-00125" required />
+                  </span>
+                </label>
+                <label class="profile-data-row">
+                  <span class="profile-row-icon" aria-hidden="true">@</span>
+                  <span class="profile-row-content">
+                    <span class="profile-row-label">Correo electrónico</span>
+                    <input id="profileEmail" type="email" placeholder="Ej. ana.lopez@empresa.com" required />
+                  </span>
+                </label>
+              </fieldset>
+
+              <section class="profile-section profile-attendance" aria-labelledby="profileAttendanceTitle">
+                <div class="profile-section-heading">
+                  <div>
+                    <p class="section-kicker">Asistencia</p>
+                    <h3 id="profileAttendanceTitle">Tu jornada</h3>
+                  </div>
+                </div>
+                <button class="profile-action-row" data-target="records" type="button">
+                  <span class="profile-row-icon" aria-hidden="true">RG</span>
+                  <span class="profile-row-content"><strong>Mis registros</strong><small>Consulta tu historial de asistencia</small></span>
+                  <span class="profile-row-arrow" aria-hidden="true">&gt;</span>
+                </button>
+                <button class="profile-action-row" data-target="entry" type="button">
+                  <span class="profile-row-icon" aria-hidden="true">IN</span>
+                  <span class="profile-row-content"><strong>Registrar entrada</strong><small>Inicia tu registro con evidencia</small></span>
+                  <span class="profile-row-arrow" aria-hidden="true">&gt;</span>
+                </button>
+                <button class="profile-action-row" data-target="exit" type="button">
+                  <span class="profile-row-icon" aria-hidden="true">OUT</span>
+                  <span class="profile-row-content"><strong>Registrar salida</strong><small>Finaliza tu asistencia activa</small></span>
+                  <span class="profile-row-arrow" aria-hidden="true">&gt;</span>
+                </button>
+                <div class="profile-static-row">
+                  <span class="profile-row-icon" aria-hidden="true">QR</span>
+                  <span class="profile-row-content"><strong>Acceso QR</strong><small>Disponible desde la pantalla de inicio</small></span>
+                  <span class="profile-row-status">Acceso</span>
+                </div>
+                <div class="profile-static-row">
+                  <span class="profile-row-icon" aria-hidden="true">FC</span>
+                  <span class="profile-row-content"><strong>Reconocimiento facial</strong><small>Se valida durante entrada y salida</small></span>
+                </div>
+              </section>
+
               <section class="streak-panel" aria-label="Racha y cumplimiento personal">
+                <div class="profile-section-heading">
+                  <div><p class="section-kicker">Constancia</p><h3>Tu asistencia</h3></div>
+                </div>
                 <div class="streak-metrics">
                   <article>
                     <span>Racha actual</span>
@@ -1178,9 +1229,29 @@
                   <p>Tus fotos y ubicación se usan para validar asistencia. Solo tú y los roles autorizados pueden consultar registros dentro de su alcance.</p>
                 </div>
               </section>
+
+              <fieldset class="profile-section profile-fieldset profile-context">
+                <legend>Permisos y seguridad</legend>
+                <div class="profile-static-row">
+                  <span class="profile-row-icon" aria-hidden="true">RL</span>
+                  <span class="profile-row-content"><strong>Rol operativo</strong><input id="profileRole" type="text" readonly class="readonly-field" /></span>
+                </div>
+                <div class="profile-static-row profile-scope-row">
+                  <span class="profile-row-icon" aria-hidden="true">OK</span>
+                  <span class="profile-row-content"><strong>Alcance de permisos</strong><textarea id="profileScope" rows="3" readonly class="readonly-field profile-scope"></textarea></span>
+                </div>
+                <div class="profile-static-row">
+                  <span class="profile-row-icon" aria-hidden="true">CM</span>
+                  <span class="profile-row-content"><strong>Permiso de cámara</strong><small>Se solicitará al registrar asistencia</small></span>
+                </div>
+                <div class="profile-static-row">
+                  <span class="profile-row-icon" aria-hidden="true">UB</span>
+                  <span class="profile-row-content"><strong>Ubicación</strong><small>Se solicitará al registrar asistencia</small></span>
+                </div>
+              </fieldset>
               <div class="form-actions profile-actions">
                 <button id="save-profile-btn" class="primary wide" type="submit">Guardar cambios</button>
-                <button id="btn-logout-profile" class="danger wide mobile-logout-btn" type="button">Cerrar Sesión</button>
+                <button id="btn-logout-profile" class="profile-logout-row mobile-logout-btn" type="button">Cerrar sesión</button>
               </div>
             </form>
           </div>
@@ -1206,7 +1277,7 @@
   <script src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
   <script src="supabase-config.js?v=f0-mobile-shell"></script>
   <script src="auth.js?v=f0-mobile-shell"></script>
-  <script src="app.js?v=2.11-cache-sync"></script>
+  <script src="app.js?v=2.12-profile"></script>
 </body>
 
 </html>
