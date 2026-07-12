@@ -20,7 +20,7 @@
   --shadow-sm: 0 14px 40px rgba(26, 26, 46, 0.07), 0 1px 2px rgba(26, 26, 46, 0.03);
   --shadow-xs: 0 8px 22px rgba(26, 26, 46, 0.05), 0 1px 1px rgba(26, 26, 46, 0.02);
   --shadow-card: 0 2px 12px rgba(26, 26, 46, 0.06);
-  --bottom-nav-height: 72px;
+  --bottom-nav-height: 68px;
   --radius: 24px;
   --radius-card: 20px;
   --radius-soft: 16px;
@@ -586,16 +586,9 @@ a {
   min-width: 130px;
 }
 
-.qr-panel,
 .stats-panel {
   display: grid;
   gap: 16px;
-}
-
-.qr-panel {
-  grid-column: 2;
-  grid-row: 3;
-  gap: 12px;
 }
 
 .stats-panel {
@@ -612,59 +605,6 @@ a {
   overflow: hidden;
 }
 
-.panel-menu {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-}
-
-.panel-menu span {
-  color: var(--ink);
-  font-size: 1.35rem;
-  font-weight: 900;
-  line-height: 1;
-}
-
-.qr-box {
-  display: grid;
-  justify-items: center;
-  gap: 8px;
-  min-height: 108px;
-  padding: 16px;
-  border-radius: 14px;
-  background: var(--cream);
-  box-shadow: inset 0 0 0 1px var(--line);
-  transition: opacity 180ms var(--ease), filter 180ms var(--ease);
-  overflow: visible;
-}
-
-.qr-box img {
-  width: 150px;
-  height: 150px;
-  padding: 10px;
-  background: #fff;
-  border-radius: 14px;
-  object-fit: contain;
-}
-
-.qr-box a {
-  font-size: 0.88rem;
-  font-weight: 800;
-  color: var(--red);
-}
-
-.qr-box small {
-  color: var(--muted);
-  font-family: ui-monospace, "SFMono-Regular", Consolas, monospace;
-  font-size: 0.72rem;
-  text-align: center;
-}
-
-.qr-box.is-disabled {
-  opacity: 0.52;
-  filter: grayscale(1);
-}
 
 .toggle-row {
   display: flex;
@@ -1938,7 +1878,6 @@ tbody tr:hover {
 
   .hero-panel,
   .install-card,
-  .qr-panel,
   .stats-panel,
   .activity-panel {
     grid-column: 1;
@@ -2016,10 +1955,6 @@ tbody tr:hover {
   .top-nav {
     display: contents !important;
     position: static !important;
-  }
-
-  #qrBox {
-    display: none !important;
   }
 
   .nav-button {
@@ -4154,12 +4089,32 @@ tbody tr:hover {
 @media (max-width: 760px) {
   .nav-button,
   .sidebar-user-btn {
-    height: 58px;
-    min-height: 58px;
-    margin: 0 2px;
-    padding: 6px 4px;
-    border-radius: 14px;
+    height: 56px;
+    min-height: 56px;
+    margin: 0 1px;
+    padding: 5px 3px;
+    gap: 2px;
+    border-radius: 12px;
     transition: color 160ms var(--ease), background 160ms var(--ease), transform 160ms var(--ease);
+  }
+
+  .nav-icon,
+  .sidebar-user {
+    width: 22px;
+    height: 22px;
+  }
+
+  .nav-icon svg {
+    width: 22px;
+    height: 22px;
+  }
+
+  .nav-label,
+  .sidebar-profile-label {
+    max-width: 100%;
+    font-size: 0.6875rem;
+    line-height: 1.1;
+    text-align: center;
   }
 
   .nav-button.is-active,

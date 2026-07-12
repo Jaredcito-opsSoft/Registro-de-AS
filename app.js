@@ -5,8 +5,6 @@ const ADMIN_KEY = "ADMIN123";
 const QR_START = { hour: 16, minute: 30 };
 const QR_END = { hour: 17, minute: 10 };
 const QR_VALID_MINUTES = 5;
-const ACCESS_QR_URL = "https://registro-de-as.vercel.app/";
-const ACCESS_QR_MESSAGE = "Escanea para abrir el sistema de asistencia.";
 const FACE_MODEL_URL = window.location.origin + "/models";
 const DEFAULT_TIMEZONE = "America/Mexico_City";
 const FACE_DISTANCE_STRONG = 0.46;
@@ -116,14 +114,12 @@ const state = {
   exitPhoto: "",
   entryStream: null,
   exitStream: null,
-  qrToken: "",
   loadingRecords: false,
   facialModelsLoaded: false,
   facialModelsError: false,
   entryFace: null,
   exitFace: null,
   lifeChallenge: "",
-  serverQr: null,
   serverClockOffset: 0,
   nextQrRefreshAt: 0,
   activeSite: null,
@@ -156,12 +152,6 @@ const els = {};
 
 function populateElements() {
   els.clockLabel = $("#clockLabel");
-  els.qrWindowLabel = $("#qrWindowLabel");
-  els.qrMessage = $("#qrMessage");
-  els.qrBox = $("#qrBox");
-  els.qrImage = $("#qrImage");
-  els.qrDirectLink = $("#qrDirectLink");
-  els.qrTokenLabel = $("#qrTokenLabel");
   els.demoMode = $("#demoMode");
   els.toast = $("#toast");
   els.faceStatus = $("#faceStatus");
@@ -1488,7 +1478,7 @@ async function handleSiteSubmit(event) {
       addAdminLog("Llave de sitio actualizada", data.nombre);
     }
     await loadAdminDirectories({ silent: true });
-    await updateClockAndQr({ force: true });
+    await updateHeaderStatus({ force: true });
     showToast("Configuracion del sitio guardada.");
   } catch (error) {
     setSiteMessage("No se pudo guardar. Verifica la clave, datos y permisos RLS.", "danger");
@@ -1807,23 +1797,9 @@ async function callAdminRpc(functionName, payload) {
   });
 }
 
-function updateAccessQr() {
+function updateHeaderStatus() {
   const now = new Date();
-  const accessUrl = ACCESS_QR_URL;
-
-  state.serverQr = null;
-  state.qrToken = "";
-  state.nextQrRefreshAt = Date.now() + 60000;
   els.clockLabel.textContent = displayTime(now.toISOString());
-  if (els.qrWindowLabel) els.qrWindowLabel.textContent = "";
-  els.qrMessage.textContent = ACCESS_QR_MESSAGE;
-  els.qrBox.classList.remove("is-disabled");
-  els.qrImage.hidden = false;
-  els.qrDirectLink.hidden = false;
-  els.qrTokenLabel.textContent = "Acceso: registro-de-as.vercel.app";
-  els.qrDirectLink.href = accessUrl;
-  els.qrDirectLink.textContent = "Abrir sistema de asistencia";
-  els.qrImage.src = `https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(accessUrl)}`;
   els.exitGuard.textContent = "Ingresa tu identificación para buscar tu entrada activa.";
   els.exitGuard.classList.remove("is-blocked");
 
@@ -1834,9 +1810,6 @@ function updateAccessQr() {
   }
 }
 
-function updateClockAndQr() {
-  updateAccessQr();
-}
 function hideGuidedPanels() {
   els.entrySuccessPanel?.classList.add("is-hidden");
   els.exitSuccessPanel?.classList.add("is-hidden");
@@ -1895,7 +1868,7 @@ function showView(name) {
     } else {
       resetExitActiveRecord();
     }
-    updateClockAndQr({ force: true });
+    updateHeaderStatus({ force: true });
   }
   if (actualView === "records" || actualView === "admin" || actualView === "home") refreshRecords({ silent: true });
   if (targetName === "admin") {
@@ -4427,7 +4400,7 @@ async function finishInitialization() {
   setFaceStatus(els.exitFaceStatus, "Espera a que carguen los modelos faciales.", "pending");
   syncCaptureControls();
   loadFaceModels();
-  updateClockAndQr({ force: true });
+  updateHeaderStatus({ force: true });
   // Solo cargar usuario desde Supabase si no estamos en modo operativo guest
   const isGuestMode = state.currentAppUser?.isGuest || state.currentUser?.isGuest;
   if (!isGuestMode) {
@@ -4701,7 +4674,7 @@ async function init() {
 
   // 4. Intervalos de actualización si está logueado
   setInterval(() => {
-    if (state.currentUser) updateClockAndQr();
+    if (state.currentUser) updateHeaderStatus();
   }, 1000);
 
   setInterval(() => {
