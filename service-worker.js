@@ -1,4 +1,4 @@
-const CACHE_VERSION = "asistencia-qr-static-v15-organization-hotfix-message";
+const CACHE_VERSION = "asistencia-qr-static-v17-permission-toggle-source";
 const STATIC_ASSETS = [
   "/",
   "/index.html",

@@ -22,7 +22,7 @@ const SUPABASE = window.SUPABASE_CONFIG || {};
 const CLOUD_ENABLED = Boolean(SUPABASE.url && SUPABASE.publishableKey && SUPABASE.bucket);
 const PHOTO_BUCKET = SUPABASE.bucket || "attendance-photos";
 const GEO_PRECISION_MAX_METERS = 200;
-const LOCAL_ASSET_VERSION = "2.14-organization-hotfix-message";
+const LOCAL_ASSET_VERSION = "2.16-permission-toggle-source";
 const ATTENDANCE_STREAK_RPC_ENABLED = SUPABASE.enableAttendanceStreakRpc === true;
 const KNOWN_SUPERADMIN_EMAILS = new Set([
   "alexisdavid1177@gmail.com",
@@ -146,6 +146,8 @@ const state = {
   },
   permissionPreferences: { camera: true, location: true },
   permissionStatus: { camera: "unknown", location: "unknown" },
+  permissionApprovals: { camera: false, location: false },
+  permissionSelections: { camera: false, location: false },
   deferredInstallPrompt: null,
 };
 
@@ -776,26 +778,43 @@ function handleLocalAvatarSelection(event) {
   const file = event.target.files?.[0];
   if (!file) return;
 
-  if (!file.type.startsWith("image/")) {
+  const imageExtension = /\.(jpe?g|png|webp|heic|heif)$/i.test(file.name || "");
+  if (!file.type.startsWith("image/") && !imageExtension) {
     event.target.value = "";
     showToast("Selecciona un archivo de imagen válido.");
     return;
   }
 
-  if (file.size > 5 * 1024 * 1024) {
+  if (file.size > 15 * 1024 * 1024) {
     event.target.value = "";
-    showToast("La foto debe pesar 5 MB o menos.");
+    showToast("La foto debe pesar 15 MB o menos.");
     return;
   }
 
   const nextObjectUrl = URL.createObjectURL(file);
   const validationImage = new Image();
   validationImage.onload = async () => {
-    releaseLocalAvatarUrl();
-    localAvatarObjectUrl = nextObjectUrl;
-    showLocalAvatar(localAvatarObjectUrl);
-    const saved = await savePersistentAvatar(file);
-    showToast(saved ? "Foto guardada en este dispositivo." : "Foto aplicada; no se pudo guardar de forma permanente.");
+    try {
+      const maxSide = 1200;
+      const scale = Math.min(1, maxSide / Math.max(validationImage.naturalWidth, validationImage.naturalHeight));
+      const canvas = document.createElement("canvas");
+      canvas.width = Math.max(1, Math.round(validationImage.naturalWidth * scale));
+      canvas.height = Math.max(1, Math.round(validationImage.naturalHeight * scale));
+      canvas.getContext("2d").drawImage(validationImage, 0, 0, canvas.width, canvas.height);
+      const avatarBlob = await new Promise((resolve) => canvas.toBlob(resolve, "image/jpeg", 0.86));
+      if (!(avatarBlob instanceof Blob)) throw new Error("No se pudo preparar la imagen");
+      URL.revokeObjectURL(nextObjectUrl);
+      releaseLocalAvatarUrl();
+      localAvatarObjectUrl = URL.createObjectURL(avatarBlob);
+      showLocalAvatar(localAvatarObjectUrl);
+      const saved = await savePersistentAvatar(avatarBlob);
+      event.target.value = "";
+      showToast(saved ? "Foto guardada en este dispositivo." : "Foto aplicada; no se pudo guardar de forma permanente.");
+    } catch {
+      URL.revokeObjectURL(nextObjectUrl);
+      event.target.value = "";
+      showToast("No se pudo preparar la foto. Prueba con JPG o PNG.");
+    }
   };
   validationImage.onerror = () => {
     URL.revokeObjectURL(nextObjectUrl);
@@ -821,9 +840,19 @@ function loadPermissionPreferences() {
       camera: saved?.cameraStatus || "unknown",
       location: saved?.locationStatus || "unknown",
     };
+    state.permissionApprovals = {
+      camera: saved?.cameraApproved === true || saved?.cameraStatus === "granted",
+      location: saved?.locationApproved === true || saved?.locationStatus === "granted",
+    };
+    state.permissionSelections = {
+      camera: saved?.cameraEnabledByUser === true || Boolean(saved && saved.camera !== false),
+      location: saved?.locationEnabledByUser === true || Boolean(saved && saved.location !== false),
+    };
   } catch {
     state.permissionPreferences = { camera: true, location: true };
     state.permissionStatus = { camera: "unknown", location: "unknown" };
+    state.permissionApprovals = { camera: false, location: false };
+    state.permissionSelections = { camera: false, location: false };
   }
 }
 
@@ -832,6 +861,10 @@ function savePermissionPreferences() {
     ...state.permissionPreferences,
     cameraStatus: state.permissionStatus.camera,
     locationStatus: state.permissionStatus.location,
+    cameraApproved: state.permissionApprovals.camera,
+    locationApproved: state.permissionApprovals.location,
+    cameraEnabledByUser: state.permissionSelections.camera,
+    locationEnabledByUser: state.permissionSelections.location,
   }));
 }
 
@@ -860,7 +893,7 @@ function renderPermissionControls() {
   if (els.profileLocationPermissionStatus) els.profileLocationPermissionStatus.textContent = permissionStatusCopy("location");
 
   const missingPermissions = ["camera", "location"].filter(
-    (kind) => !state.permissionPreferences[kind] || state.permissionStatus[kind] !== "granted"
+    (kind) => !state.permissionPreferences[kind] || !state.permissionSelections[kind]
   );
   els.permissionOnboarding?.classList.toggle("is-hidden", missingPermissions.length === 0);
   if (els.permissionOnboardingTitle && missingPermissions.length) {
@@ -890,8 +923,18 @@ async function syncPermissionState() {
   const locationState = state.permissionPreferences.location
     ? await getBrowserPermissionState("geolocation")
     : "disabled";
-  state.permissionStatus.camera = cameraState === "unknown" ? state.permissionStatus.camera : cameraState;
-  state.permissionStatus.location = locationState === "unknown" ? state.permissionStatus.location : locationState;
+  [["camera", cameraState], ["location", locationState]].forEach(([kind, browserState]) => {
+    if (browserState === "granted") {
+      state.permissionStatus[kind] = "granted";
+      state.permissionApprovals[kind] = true;
+      state.permissionSelections[kind] = true;
+    } else if (browserState === "denied") {
+      state.permissionStatus[kind] = "denied";
+      state.permissionApprovals[kind] = false;
+    } else if (state.permissionApprovals[kind]) {
+      state.permissionStatus[kind] = "granted";
+    }
+  });
   savePermissionPreferences();
   renderPermissionControls();
 }
@@ -899,12 +942,14 @@ async function syncPermissionState() {
 async function requestCameraAccess() {
   if (!state.permissionPreferences.camera) {
     state.permissionStatus.camera = "disabled";
+    state.permissionApprovals.camera = false;
     savePermissionPreferences();
     renderPermissionControls();
     return false;
   }
   if (!navigator.mediaDevices?.getUserMedia) {
     state.permissionStatus.camera = "denied";
+    state.permissionApprovals.camera = false;
     savePermissionPreferences();
     renderPermissionControls();
     return false;
@@ -913,11 +958,14 @@ async function requestCameraAccess() {
     const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" }, audio: false });
     stream.getTracks().forEach((track) => track.stop());
     state.permissionStatus.camera = "granted";
+    state.permissionApprovals.camera = true;
+    state.permissionSelections.camera = true;
     savePermissionPreferences();
     renderPermissionControls();
     return true;
   } catch {
     state.permissionStatus.camera = "denied";
+    state.permissionApprovals.camera = false;
     savePermissionPreferences();
     renderPermissionControls();
     return false;
@@ -927,6 +975,7 @@ async function requestCameraAccess() {
 function requestLocationAccess() {
   if (!state.permissionPreferences.location || !navigator.geolocation) {
     state.permissionStatus.location = state.permissionPreferences.location ? "denied" : "disabled";
+    state.permissionApprovals.location = false;
     savePermissionPreferences();
     renderPermissionControls();
     return Promise.resolve(false);
@@ -935,12 +984,15 @@ function requestLocationAccess() {
     navigator.geolocation.getCurrentPosition(
       () => {
         state.permissionStatus.location = "granted";
+        state.permissionApprovals.location = true;
+        state.permissionSelections.location = true;
         savePermissionPreferences();
         renderPermissionControls();
         resolve(true);
       },
       () => {
         state.permissionStatus.location = "denied";
+        state.permissionApprovals.location = false;
         savePermissionPreferences();
         renderPermissionControls();
         resolve(false);
@@ -2707,6 +2759,8 @@ function requestAttendanceLocation(kind) {
     navigator.geolocation.getCurrentPosition(
       (position) => {
         state.permissionStatus.location = "granted";
+        state.permissionApprovals.location = true;
+        state.permissionSelections.location = true;
         savePermissionPreferences();
         renderPermissionControls();
         const location = {
@@ -2731,6 +2785,7 @@ function requestAttendanceLocation(kind) {
       },
       () => {
         state.permissionStatus.location = "denied";
+        state.permissionApprovals.location = false;
         savePermissionPreferences();
         renderPermissionControls();
         const observacion = kind === "entry"
@@ -2782,6 +2837,8 @@ async function startCamera(kind, { silent = false } = {}) {
     video.srcObject = stream;
     state[`${kind}Stream`] = stream;
     state.permissionStatus.camera = "granted";
+    state.permissionApprovals.camera = true;
+    state.permissionSelections.camera = true;
     savePermissionPreferences();
     renderPermissionControls();
     syncCaptureControls();
@@ -2792,6 +2849,7 @@ async function startCamera(kind, { silent = false } = {}) {
     );
   } catch (error) {
     state.permissionStatus.camera = "denied";
+    state.permissionApprovals.camera = false;
     savePermissionPreferences();
     renderPermissionControls();
     if (!silent) showToast("No se pudo acceder a la camara. Revisa permisos o usa HTTPS.");
@@ -5117,6 +5175,9 @@ async function init() {
   if (els.profileAvatarInput) {
     els.profileAvatarInput.addEventListener("change", handleLocalAvatarSelection);
   }
+  els.profileAvatarChangeLabel?.addEventListener("click", () => {
+    els.profileAvatarInput?.click();
+  });
   if (els.removeProfileAvatar) {
     els.removeProfileAvatar.addEventListener("click", () => removeLocalAvatar());
   }
@@ -5132,6 +5193,7 @@ async function init() {
   });
   els.profileCameraEnabled?.addEventListener("change", async () => {
     state.permissionPreferences.camera = els.profileCameraEnabled.checked;
+    state.permissionSelections.camera = els.profileCameraEnabled.checked;
     savePermissionPreferences();
     if (state.permissionPreferences.camera) {
       await requestCameraAccess();
@@ -5139,17 +5201,22 @@ async function init() {
       stopCamera("entry");
       stopCamera("exit");
       state.permissionStatus.camera = "disabled";
+      state.permissionApprovals.camera = false;
+      state.permissionSelections.camera = false;
       savePermissionPreferences();
       renderPermissionControls();
     }
   });
   els.profileLocationEnabled?.addEventListener("change", async () => {
     state.permissionPreferences.location = els.profileLocationEnabled.checked;
+    state.permissionSelections.location = els.profileLocationEnabled.checked;
     savePermissionPreferences();
     if (state.permissionPreferences.location) {
       await requestLocationAccess();
     } else {
       state.permissionStatus.location = "disabled";
+      state.permissionApprovals.location = false;
+      state.permissionSelections.location = false;
       savePermissionPreferences();
       renderPermissionControls();
     }

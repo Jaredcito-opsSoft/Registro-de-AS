@@ -145,13 +145,25 @@ async function runViewportSmoke(browser, label, profile) {
     await assertVisible(page, "#profileCameraEnabled", `${prefix}: camera preference`);
     await assertVisible(page, "#profileLocationEnabled", `${prefix}: location preference`);
     if (label === "mobile-390") {
+      await assertVisible(page, "#profileAvatarChangeLabel", `${prefix}: avatar picker button`);
       const avatarPng = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=", "base64");
       await page.locator("#profileAvatarInput").setInputFiles({ name: "avatar-smoke.png", mimeType: "image/png", buffer: avatarPng });
       await page.waitForTimeout(300);
       await assertVisible(page, "#profileAvatarImage", `${prefix}: avatar selected`);
+      await page.evaluate(() => {
+        const key = Object.keys(localStorage).find((item) => item.startsWith("asistencia_permission_preferences:"));
+        if (!key) return;
+        const saved = JSON.parse(localStorage.getItem(key) || "{}");
+        saved.locationStatus = "denied";
+        saved.locationApproved = false;
+        saved.locationEnabledByUser = true;
+        localStorage.setItem(key, JSON.stringify(saved));
+      });
       await page.reload({ waitUntil: "domcontentloaded" });
       await waitForAppReady(page);
       await enterGuestMode(page);
+      const permissionAlertStillHidden = await page.locator("#permissionOnboarding").evaluate((node) => node.classList.contains("is-hidden"));
+      record(`${prefix}: enabled toggles suppress permission alert`, permissionAlertStillHidden);
       await page.locator("#btn-profile").click();
       await assertVisible(page, "#profileAvatarImage", `${prefix}: avatar persists after reload`);
     }
