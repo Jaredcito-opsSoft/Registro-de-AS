@@ -22,7 +22,7 @@ const SUPABASE = window.SUPABASE_CONFIG || {};
 const CLOUD_ENABLED = Boolean(SUPABASE.url && SUPABASE.publishableKey && SUPABASE.bucket);
 const PHOTO_BUCKET = SUPABASE.bucket || "attendance-photos";
 const GEO_PRECISION_MAX_METERS = 200;
-const LOCAL_ASSET_VERSION = "2.19-attendance-user-scope";
+const LOCAL_ASSET_VERSION = "2.20-mobile-pwa-media";
 const ATTENDANCE_STREAK_RPC_ENABLED = SUPABASE.enableAttendanceStreakRpc === true;
 const KNOWN_SUPERADMIN_EMAILS = new Set([
   "alexisdavid1177@gmail.com",
@@ -116,6 +116,7 @@ const state = {
   exitStream: null,
   cameraStartPromises: { entry: null, exit: null },
   cameraRetryTimers: { entry: null, exit: null },
+  cameraNeedsGesture: { entry: false, exit: false },
   loadingRecords: false,
   facialModelsLoaded: false,
   facialModelsError: false,
@@ -158,6 +159,7 @@ const $$ = (selector) => Array.from(document.querySelectorAll(selector));
 
 const els = {};
 let localAvatarObjectUrl = "";
+let pwaSetupComplete = false;
 const AVATAR_DB_NAME = "asistencia-profile-media";
 const AVATAR_STORE_NAME = "avatars";
 const avatarCropState = {
@@ -444,7 +446,15 @@ function updatePwaInstallUi() {
 }
 
 function setupPwaInstall() {
+  if (pwaSetupComplete) return;
+  pwaSetupComplete = true;
   if ("serviceWorker" in navigator) {
+    navigator.serviceWorker.addEventListener("controllerchange", () => {
+      const reloadKey = "asistencia_sw_reload_version";
+      if (sessionStorage.getItem(reloadKey) === LOCAL_ASSET_VERSION) return;
+      sessionStorage.setItem(reloadKey, LOCAL_ASSET_VERSION);
+      window.location.reload();
+    });
     window.addEventListener("load", () => {
       navigator.serviceWorker.register(`/service-worker.js?v=${LOCAL_ASSET_VERSION}`).then((registration) => {
         registration.update?.();
@@ -2651,8 +2661,14 @@ function setFaceStatus(element, message, tone = "neutral") {
 function syncCaptureControls() {
   const canUseFace = state.facialModelsLoaded && !state.facialModelsError;
   const canStartExit = canUseFace && Boolean(state.exitActiveRecord);
-  if (els.startEntryCamera) els.startEntryCamera.disabled = !canUseFace;
-  if (els.startExitCamera) els.startExitCamera.disabled = !canStartExit;
+  if (els.startEntryCamera) {
+    els.startEntryCamera.disabled = !state.permissionPreferences.camera;
+    els.startEntryCamera.classList.toggle("is-hidden", !state.cameraNeedsGesture.entry || Boolean(state.entryStream));
+  }
+  if (els.startExitCamera) {
+    els.startExitCamera.disabled = !state.permissionPreferences.camera || !state.exitActiveRecord;
+    els.startExitCamera.classList.toggle("is-hidden", !state.cameraNeedsGesture.exit || Boolean(state.exitStream) || !state.exitActiveRecord);
+  }
   if (els.takeEntryPhoto) els.takeEntryPhoto.disabled = !canUseFace || !state.entryStream;
   if (els.takeExitPhoto) els.takeExitPhoto.disabled = !canStartExit || !state.exitStream;
 }
@@ -2929,11 +2945,6 @@ async function startCamera(kind, { silent = false, retry = 0 } = {}) {
     return;
   }
 
-  if (!state.facialModelsLoaded) {
-    if (!silent) showToast("Espera a que carguen los modelos faciales.");
-    return;
-  }
-
   if (state.cameraStartPromises[kind]) return state.cameraStartPromises[kind];
 
   const startPromise = (async () => {
@@ -2947,17 +2958,25 @@ async function startCamera(kind, { silent = false, retry = 0 } = {}) {
       }
       video.srcObject = stream;
       state[`${kind}Stream`] = stream;
-      await video.play().catch(() => undefined);
+      try {
+        await video.play();
+      } catch (playError) {
+        stream.getTracks().forEach((track) => track.stop());
+        state[`${kind}Stream`] = null;
+        video.srcObject = null;
+        throw playError;
+      }
       state.permissionStatus.camera = "granted";
       state.permissionApprovals.camera = true;
       state.permissionSelections.camera = true;
+      state.cameraNeedsGesture[kind] = false;
       savePermissionPreferences();
       renderPermissionControls();
       syncCaptureControls();
       setFaceStatus(
         kind === "entry" ? els.entryFaceStatus : els.exitFaceStatus,
-        "Camara lista. Mira de frente y toma la foto.",
-        "success"
+        state.facialModelsLoaded ? "Camara lista. Mira de frente y toma la foto." : "Camara lista. Preparando validacion facial...",
+        state.facialModelsLoaded ? "success" : "pending"
       );
     } catch (error) {
       const permissionDenied = ["NotAllowedError", "SecurityError"].includes(error?.name);
@@ -2975,6 +2994,8 @@ async function startCamera(kind, { silent = false, retry = 0 } = {}) {
           startCamera(kind, { silent: true, retry: retry + 1 });
         }, 500);
       } else {
+        state.cameraNeedsGesture[kind] = true;
+        syncCaptureControls();
         setFaceStatus(
           kind === "entry" ? els.entryFaceStatus : els.exitFaceStatus,
           permissionDenied ? "Activa el permiso de camara en el navegador." : "No se pudo iniciar la camara. Intenta volver a entrar.",
@@ -3107,6 +3128,14 @@ async function openAttendanceView() {
     showToast("Completa tu nombre e identificador en Perfil para registrar asistencia.");
     showView("profile");
     return;
+  }
+
+  // En una PWA móvil, getUserMedia debe comenzar dentro del toque que abrió Registro.
+  const cachedRecord = todayRecordByMatricula(identity.matricula);
+  const gestureCameraKind = !cachedRecord?.horaEntrada ? "entry" : !cachedRecord.horaSalida ? "exit" : "";
+  if (gestureCameraKind) {
+    showView(gestureCameraKind);
+    startCamera(gestureCameraKind, { silent: true });
   }
 
   await refreshRecords({ silent: true });
@@ -5324,9 +5353,6 @@ async function init() {
   if (els.profileAvatarInput) {
     els.profileAvatarInput.addEventListener("change", handleLocalAvatarSelection);
   }
-  els.profileAvatarChangeLabel?.addEventListener("click", () => {
-    els.profileAvatarInput?.click();
-  });
   if (els.removeProfileAvatar) {
     els.removeProfileAvatar.addEventListener("click", () => removeLocalAvatar());
   }

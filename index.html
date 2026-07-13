@@ -16,7 +16,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="stylesheet"
     href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" />
-  <link rel="stylesheet" href="styles.css?v=2.30-organization-create-fallback" />
+  <link rel="stylesheet" href="styles.css?v=2.31-mobile-pwa-media" />
 </head>
 
 <body>
@@ -385,6 +385,7 @@
                 entrada.</p>
               <p class="camera-help">Mira de frente y procura tener buena luz.</p>
               <div class="camera-actions">
+                <button id="startEntryCamera" class="secondary camera-retry is-hidden" type="button">Activar cámara</button>
                 <button id="takeEntryPhoto" class="primary" type="button" disabled>Tomar foto</button>
               </div>
             </div>
@@ -449,6 +450,7 @@
               </p>
               <p class="camera-help">Sigue la indicacion y mira de frente.</p>
               <div class="camera-actions">
+                <button id="startExitCamera" class="secondary camera-retry is-hidden" type="button">Activar cámara</button>
                 <button id="takeExitPhoto" class="primary" type="button" disabled>Tomar foto</button>
               </div>
             </div>
@@ -1032,7 +1034,7 @@
                   <span id="profileAvatarFallback" class="profile-avatar-initials" aria-hidden="true">US</span>
                 </div>
                 <div class="profile-avatar-actions" aria-label="Foto de perfil local">
-                  <button id="profileAvatarChangeLabel" class="profile-avatar-action" type="button">Agregar foto</button>
+                  <label id="profileAvatarChangeLabel" class="profile-avatar-action" for="profileAvatarInput">Agregar foto</label>
                   <input id="profileAvatarInput" class="visually-hidden" type="file" accept="image/*" aria-describedby="profileAvatarHelp" />
                   <button id="removeProfileAvatar" class="profile-avatar-action is-danger" type="button" disabled>Quitar foto</button>
                   <small id="profileAvatarHelp">Guardada en este dispositivo.</small>
@@ -1179,7 +1181,7 @@
   <script src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
   <script src="supabase-config.js?v=f0-mobile-shell"></script>
   <script src="auth.js?v=f0-mobile-shell"></script>
-  <script src="app.js?v=2.32-attendance-user-scope"></script>
+  <script src="app.js?v=2.33-mobile-pwa-media"></script>
 </body>
 
 </html>

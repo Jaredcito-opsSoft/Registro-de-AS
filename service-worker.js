@@ -1,4 +1,4 @@
-const CACHE_VERSION = "asistencia-qr-static-v20-attendance-user-scope";
+const CACHE_VERSION = "asistencia-qr-static-v21-mobile-pwa-media";
 const STATIC_ASSETS = [
   "/",
   "/index.html",
