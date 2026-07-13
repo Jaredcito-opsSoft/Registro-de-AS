@@ -5160,6 +5160,7 @@ function updateAuthUI() {
     els.loginTitle.textContent = "Iniciar Sesión";
     els.loginSubtitle.textContent = "Ingresa rápido con tu correo o número de teléfono.";
     els.authSubmitBtn.textContent = "Ingresar";
+    if (els.authPassword) els.authPassword.autocomplete = "current-password";
     els.toggleLoginBtn.classList.add("active");
     els.toggleRegisterBtn.classList.remove("active");
     if (els.labelEmailText) els.labelEmailText.textContent = "Correo o teléfono";
@@ -5179,6 +5180,7 @@ function updateAuthUI() {
     els.loginTitle.textContent = "Registrarse";
     els.loginSubtitle.textContent = "Crea tu cuenta para registrar asistencia.";
     els.authSubmitBtn.textContent = "Crear Cuenta";
+    if (els.authPassword) els.authPassword.autocomplete = "new-password";
     els.toggleLoginBtn.classList.remove("active");
     els.toggleRegisterBtn.classList.add("active");
     if (els.labelEmailText) els.labelEmailText.textContent = "Correo electrónico";
@@ -5187,15 +5189,35 @@ function updateAuthUI() {
   }
 }
 
+function bindSensitiveFieldVisibilityToggles() {
+  document.querySelectorAll("[data-password-toggle]").forEach((button) => {
+    const input = document.getElementById(button.dataset.passwordToggle);
+    if (!input || button.dataset.visibilityBound === "true") return;
+
+    button.dataset.visibilityBound = "true";
+    button.setAttribute("aria-controls", input.id);
+    button.addEventListener("click", () => {
+      const revealed = input.type === "password";
+      const subject = (button.getAttribute("aria-label") || "valor").replace(/^(Mostrar|Ocultar)\s+/i, "");
+
+      input.type = revealed ? "text" : "password";
+      button.classList.toggle("is-revealed", revealed);
+      button.setAttribute("aria-pressed", String(revealed));
+      button.setAttribute("aria-label", `${revealed ? "Ocultar" : "Mostrar"} ${subject}`);
+      button.setAttribute("title", `${revealed ? "Ocultar" : "Mostrar"} ${subject}`);
+    });
+  });
+}
+
 async function handleAuthSubmit(event) {
   event.preventDefault();
 
   const rawInput = els.authEmail.value.trim();
-  const password = els.authPassword.value.trim();
+  const password = els.authPassword.value;
   const orgSlug = selectedOrganizationSlug();
   if (orgSlug) localStorage.setItem("registro_asistencia_org_slug", orgSlug);
 
-  if (!rawInput || !password) {
+  if (!rawInput || password.length === 0) {
     showToast("Por favor completa los campos obligatorios.");
     return;
   }
@@ -5612,6 +5634,8 @@ async function init() {
       }
     });
   }
+
+  bindSensitiveFieldVisibilityToggles();
 
   // Accordion: ¿Tienes clave de organización?
   if (els.authOrgKeyToggle && els.labelOrgKey) {

@@ -87,7 +87,12 @@
           </button>
           <label id="label-org-key" class="is-hidden">
             Clave de organización
-            <input id="authOrgKey" type="text" autocomplete="off" placeholder="Ej. DEMO-AS-2026" />
+            <span class="sensitive-input-wrap">
+              <input id="authOrgKey" type="password" autocomplete="off" placeholder="Ej. DEMO-AS-2026" />
+              <button class="password-visibility-toggle" type="button" data-password-toggle="authOrgKey" aria-label="Mostrar clave de organización" aria-pressed="false" title="Mostrar clave">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6Z" /><circle cx="12" cy="12" r="2.5" /><path class="visibility-slash" d="M4 4 20 20" /></svg>
+              </button>
+            </span>
             <span class="field-hint">Entregada por el administrador de tu empresa o institución.</span>
           </label>
         </div>
@@ -105,7 +110,12 @@
 
         <label id="label-password">
           Contraseña
-          <input id="authPassword" type="password" autocomplete="current-password" placeholder="••••••••" required />
+          <span class="sensitive-input-wrap">
+            <input id="authPassword" type="password" autocomplete="current-password" placeholder="••••••••" required />
+            <button class="password-visibility-toggle" type="button" data-password-toggle="authPassword" aria-label="Mostrar contraseña" aria-pressed="false" title="Mostrar contraseña">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6Z" /><circle cx="12" cy="12" r="2.5" /><path class="visibility-slash" d="M4 4 20 20" /></svg>
+            </button>
+          </span>
         </label>
 
         <button id="authSubmitBtn" class="primary wide" type="submit">
@@ -908,7 +918,7 @@
               <label>Nombre<input id="orgCreateName" autocomplete="organization" placeholder="Ej. Colegio Central" required /></label>
               <label>Tipo<select id="orgCreateType"><option value="empresa">Empresa</option><option value="escuela">Escuela</option><option value="negocio_local">Negocio</option><option value="centro_trabajo">Centro de trabajo</option><option value="otro">Otro</option></select></label>
               <input id="orgCreateSlug" type="hidden" />
-              <label>Clave de acceso <small id="orgKeyHint">Obligatoria al crear</small><input id="orgCreateKey" type="password" autocomplete="new-password" placeholder="Minimo 8 caracteres" /></label>
+              <label>Clave de acceso <small id="orgKeyHint">Obligatoria al crear</small><span class="sensitive-input-wrap"><input id="orgCreateKey" type="password" autocomplete="new-password" placeholder="Minimo 8 caracteres" /><button class="password-visibility-toggle" type="button" data-password-toggle="orgCreateKey" aria-label="Mostrar clave de acceso" aria-pressed="false" title="Mostrar clave"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6Z" /><circle cx="12" cy="12" r="2.5" /><path class="visibility-slash" d="M4 4 20 20" /></svg></button></span></label>
               <label class="inline-check"><input id="orgActive" type="checkbox" checked /> Organizacion activa</label>
               <div class="site-actions"><button id="saveOrganizationButton" class="primary" type="submit">Guardar organizacion</button></div>
               <p id="organizationFormStatus" class="site-test-result" data-tone="warning">Los cambios se registran en auditoria.</p>
@@ -944,7 +954,7 @@
                 <label>Evidencia<select id="siteEvidencePolicy"><option value="rostro">Foto de rostro</option><option value="foto_simple">Foto simple</option><option value="documento">Documento</option><option value="rostro_documento">Rostro y documento</option></select></label>
                 <label>Nombre del identificador<input id="siteIdentifierLabel" value="Identificador" placeholder="Ej. Matricula" /></label>
               </fieldset>
-              <label>Llave del sitio <small>Dejala vacia para conservarla</small><input id="siteKey" type="password" autocomplete="new-password" placeholder="Minimo 8 caracteres" /></label>
+              <label>Llave del sitio <small>Dejala vacia para conservarla</small><span class="sensitive-input-wrap"><input id="siteKey" type="password" autocomplete="new-password" placeholder="Minimo 8 caracteres" /><button class="password-visibility-toggle" type="button" data-password-toggle="siteKey" aria-label="Mostrar llave del sitio" aria-pressed="false" title="Mostrar llave"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6Z" /><circle cx="12" cy="12" r="2.5" /><path class="visibility-slash" d="M4 4 20 20" /></svg></button></span></label>
               <label class="inline-check"><input id="siteActive" type="checkbox" checked /> Sitio activo</label>
               <div class="site-actions">
                 <button id="generateSiteKey" class="ghost" type="button">Generar clave</button>
@@ -998,7 +1008,7 @@
                 </label>
                 <label>
                   Admin invite key
-                  <input id="adminInviteKey" type="text" autocomplete="off" readonly placeholder="Genera una key MVP" />
+                  <span class="sensitive-input-wrap"><input id="adminInviteKey" type="password" autocomplete="off" readonly placeholder="Genera una key MVP" /><button class="password-visibility-toggle" type="button" data-password-toggle="adminInviteKey" aria-label="Mostrar key de invitación" aria-pressed="false" title="Mostrar key"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6Z" /><circle cx="12" cy="12" r="2.5" /><path class="visibility-slash" d="M4 4 20 20" /></svg></button></span>
                 </label>
                 <div class="site-actions">
                   <button id="prepareAdminInvite" class="primary" type="button">Preparar key</button>
