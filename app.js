@@ -22,7 +22,7 @@ const SUPABASE = window.SUPABASE_CONFIG || {};
 const CLOUD_ENABLED = Boolean(SUPABASE.url && SUPABASE.publishableKey && SUPABASE.bucket);
 const PHOTO_BUCKET = SUPABASE.bucket || "attendance-photos";
 const GEO_PRECISION_MAX_METERS = 200;
-const LOCAL_ASSET_VERSION = "2.11-cache-sync";
+const LOCAL_ASSET_VERSION = "2.14-organization-hotfix-message";
 const ATTENDANCE_STREAK_RPC_ENABLED = SUPABASE.enableAttendanceStreakRpc === true;
 const KNOWN_SUPERADMIN_EMAILS = new Set([
   "alexisdavid1177@gmail.com",
@@ -132,6 +132,8 @@ const state = {
   currentPermissions: { ...ROLE_DEFINITIONS.usuario.permissions },
   activeAdminSection: "summary",
   attendanceStreak: null,
+  organizationHubs: [],
+  selectedOrganizationId: null,
   managedSites: [],
   managedUsers: [],
   recordFilters: {
@@ -142,6 +144,8 @@ const state = {
     user: "all",
     query: "",
   },
+  permissionPreferences: { camera: true, location: true },
+  permissionStatus: { camera: "unknown", location: "unknown" },
   deferredInstallPrompt: null,
 };
 
@@ -150,11 +154,19 @@ const $$ = (selector) => Array.from(document.querySelectorAll(selector));
 
 const els = {};
 let localAvatarObjectUrl = "";
+const AVATAR_DB_NAME = "asistencia-profile-media";
+const AVATAR_STORE_NAME = "avatars";
 
 function populateElements() {
   els.clockLabel = $("#clockLabel");
   els.clockDateLabel = $("#clockDateLabel");
   els.homeAttendanceHint = $("#homeAttendanceHint");
+  els.homeGreeting = $("#homeGreeting");
+  els.homeWelcomeName = $("#homeWelcomeName");
+  els.permissionOnboarding = $("#permissionOnboarding");
+  els.permissionOnboardingTitle = $("#permissionOnboardingTitle");
+  els.requestAttendancePermissions = $("#requestAttendancePermissions");
+  els.profilePermissions = $("#profilePermissions");
   els.headerProfileAvatar = $("#headerProfileAvatar");
   els.headerAvatarImage = $("#headerAvatarImage");
   els.headerAvatarFallback = $("#headerAvatarFallback");
@@ -163,6 +175,10 @@ function populateElements() {
   els.profileAvatarFallback = $("#profileAvatarFallback");
   els.profileAvatarChangeLabel = $("#profileAvatarChangeLabel");
   els.removeProfileAvatar = $("#removeProfileAvatar");
+  els.profileCameraEnabled = $("#profileCameraEnabled");
+  els.profileLocationEnabled = $("#profileLocationEnabled");
+  els.profileCameraPermissionStatus = $("#profileCameraPermissionStatus");
+  els.profileLocationPermissionStatus = $("#profileLocationPermissionStatus");
   els.demoMode = $("#demoMode");
   els.toast = $("#toast");
   els.faceStatus = $("#faceStatus");
@@ -199,7 +215,6 @@ function populateElements() {
   els.lockAdmin = $("#lockAdmin");
   els.exportCsv = $("#exportCsv");
   els.clearRecords = $("#clearRecords");
-  els.adminStatus = $("#adminStatus");
   els.adminSectionHint = $("#adminSectionHint");
   els.adminRoleBadge = $("#adminRoleBadge");
   els.adminAudit = $("#adminAudit");
@@ -245,11 +260,24 @@ function populateElements() {
   els.orgFoundationSummary = $("#orgFoundationSummary");
   els.orgNameLabel = $("#orgNameLabel");
   els.orgTypeLabel = $("#orgTypeLabel");
+  els.orgSlugLabel = $("#orgSlugLabel");
   els.orgSitesLabel = $("#orgSitesLabel");
   els.orgUsersLabel = $("#orgUsersLabel");
   els.orgAttendancesLabel = $("#orgAttendancesLabel");
   els.organizationForm = $("#organizationForm");
   els.organizationList = $("#organizationList");
+  els.organizationSearch = $("#organizationSearch");
+  els.organizationDetail = $("#organizationDetail");
+  els.organizationHubNotice = $("#organizationHubNotice");
+  els.newOrganizationButton = $("#newOrganizationButton");
+  els.editOrganizationButton = $("#editOrganizationButton");
+  els.deleteOrganizationButton = $("#deleteOrganizationButton");
+  els.cancelOrganizationEdit = $("#cancelOrganizationEdit");
+  els.organizationFormTitle = $("#organizationFormTitle");
+  els.organizationFormStatus = $("#organizationFormStatus");
+  els.orgEditId = $("#orgEditId");
+  els.orgActive = $("#orgActive");
+  els.orgKeyHint = $("#orgKeyHint");
   els.siteDirectory = $("#siteDirectory");
   els.userDirectory = $("#userDirectory");
   els.adminUsersSummary = $("#adminUsersSummary");
@@ -267,6 +295,11 @@ function populateElements() {
   els.orgCreateType = $("#orgCreateType");
   els.orgCreateSlug = $("#orgCreateSlug");
   els.orgCreateKey = $("#orgCreateKey");
+  els.newSiteButton = $("#newSiteButton");
+  els.cancelSiteEdit = $("#cancelSiteEdit");
+  els.siteFormTitle = $("#siteFormTitle");
+  els.siteEditId = $("#siteEditId");
+  els.siteOrganizationId = $("#siteOrganizationId");
   els.siteStatusBadge = $("#siteStatusBadge");
   els.siteStatusSummary = $("#siteStatusSummary");
   els.siteNameLabel = $("#siteNameLabel");
@@ -289,6 +322,9 @@ function populateElements() {
   els.siteExitStart = $("#siteExitStart");
   els.siteExitEnd = $("#siteExitEnd");
   els.siteTimezone = $("#siteTimezone");
+  els.siteGpsPolicy = $("#siteGpsPolicy");
+  els.siteEvidencePolicy = $("#siteEvidencePolicy");
+  els.siteIdentifierLabel = $("#siteIdentifierLabel");
   els.siteKey = $("#siteKey");
   els.siteActive = $("#siteActive");
   els.generateSiteKey = $("#generateSiteKey");
@@ -632,6 +668,72 @@ function displayLongDate(date = new Date()) {
   return formatted.charAt(0).toUpperCase() + formatted.slice(1);
 }
 
+function avatarStorageKey() {
+  return String(state.currentUser?.id || state.currentUser?.email || "local-user");
+}
+
+function openAvatarDatabase() {
+  return new Promise((resolve, reject) => {
+    if (!window.indexedDB) {
+      reject(new Error("IndexedDB no disponible"));
+      return;
+    }
+    const request = indexedDB.open(AVATAR_DB_NAME, 1);
+    request.onupgradeneeded = () => {
+      if (!request.result.objectStoreNames.contains(AVATAR_STORE_NAME)) {
+        request.result.createObjectStore(AVATAR_STORE_NAME);
+      }
+    };
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error || new Error("No se pudo abrir IndexedDB"));
+  });
+}
+
+async function avatarStoreRequest(mode, operation) {
+  const database = await openAvatarDatabase();
+  return new Promise((resolve, reject) => {
+    const transaction = database.transaction(AVATAR_STORE_NAME, mode);
+    const store = transaction.objectStore(AVATAR_STORE_NAME);
+    const request = operation(store);
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error || new Error("No se pudo actualizar la foto"));
+    transaction.oncomplete = () => database.close();
+    transaction.onerror = () => database.close();
+  });
+}
+
+async function savePersistentAvatar(blob) {
+  try {
+    await avatarStoreRequest("readwrite", (store) => store.put(blob, avatarStorageKey()));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function deletePersistentAvatar() {
+  try {
+    await avatarStoreRequest("readwrite", (store) => store.delete(avatarStorageKey()));
+  } catch {
+    // La interfaz puede volver al avatar inicial aunque el almacenamiento no esté disponible.
+  }
+}
+
+async function loadPersistentAvatar() {
+  releaseLocalAvatarUrl();
+  try {
+    const blob = await avatarStoreRequest("readonly", (store) => store.get(avatarStorageKey()));
+    if (!(blob instanceof Blob)) {
+      showAvatarFallback();
+      return;
+    }
+    localAvatarObjectUrl = URL.createObjectURL(blob);
+    showLocalAvatar(localAvatarObjectUrl);
+  } catch {
+    showAvatarFallback();
+  }
+}
+
 function releaseLocalAvatarUrl() {
   if (!localAvatarObjectUrl) return;
   URL.revokeObjectURL(localAvatarObjectUrl);
@@ -650,11 +752,12 @@ function showAvatarFallback() {
   if (els.removeProfileAvatar) els.removeProfileAvatar.disabled = true;
 }
 
-function removeLocalAvatar({ notify = true } = {}) {
+async function removeLocalAvatar({ notify = true, removeStored = true } = {}) {
   releaseLocalAvatarUrl();
   if (els.profileAvatarInput) els.profileAvatarInput.value = "";
+  if (removeStored) await deletePersistentAvatar();
   showAvatarFallback();
-  if (notify) showToast("Foto local eliminada. No se guardó en el sistema.");
+  if (notify) showToast("Foto eliminada de este dispositivo.");
 }
 
 function showLocalAvatar(objectUrl) {
@@ -687,11 +790,12 @@ function handleLocalAvatarSelection(event) {
 
   const nextObjectUrl = URL.createObjectURL(file);
   const validationImage = new Image();
-  validationImage.onload = () => {
+  validationImage.onload = async () => {
     releaseLocalAvatarUrl();
     localAvatarObjectUrl = nextObjectUrl;
     showLocalAvatar(localAvatarObjectUrl);
-    showToast("Foto aplicada solo en esta sesión y en este dispositivo.");
+    const saved = await savePersistentAvatar(file);
+    showToast(saved ? "Foto guardada en este dispositivo." : "Foto aplicada; no se pudo guardar de forma permanente.");
   };
   validationImage.onerror = () => {
     URL.revokeObjectURL(nextObjectUrl);
@@ -699,6 +803,162 @@ function handleLocalAvatarSelection(event) {
     showToast("No se pudo leer la imagen seleccionada.");
   };
   validationImage.src = nextObjectUrl;
+}
+
+function permissionPreferencesKey() {
+  const userKey = String(state.currentUser?.id || state.currentUser?.email || "local-user");
+  return `asistencia_permission_preferences:${userKey}`;
+}
+
+function loadPermissionPreferences() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(permissionPreferencesKey()) || "null");
+    state.permissionPreferences = {
+      camera: saved?.camera !== false,
+      location: saved?.location !== false,
+    };
+    state.permissionStatus = {
+      camera: saved?.cameraStatus || "unknown",
+      location: saved?.locationStatus || "unknown",
+    };
+  } catch {
+    state.permissionPreferences = { camera: true, location: true };
+    state.permissionStatus = { camera: "unknown", location: "unknown" };
+  }
+}
+
+function savePermissionPreferences() {
+  localStorage.setItem(permissionPreferencesKey(), JSON.stringify({
+    ...state.permissionPreferences,
+    cameraStatus: state.permissionStatus.camera,
+    locationStatus: state.permissionStatus.location,
+  }));
+}
+
+async function getBrowserPermissionState(name) {
+  try {
+    if (!navigator.permissions?.query) return "unknown";
+    const permission = await navigator.permissions.query({ name });
+    return permission.state || "unknown";
+  } catch {
+    return "unknown";
+  }
+}
+
+function permissionStatusCopy(kind) {
+  if (!state.permissionPreferences[kind]) return "Desactivada en la app";
+  const status = state.permissionStatus[kind];
+  if (status === "granted") return "Permitida";
+  if (status === "denied") return "Bloqueada en el navegador";
+  return "Pendiente de activar";
+}
+
+function renderPermissionControls() {
+  if (els.profileCameraEnabled) els.profileCameraEnabled.checked = state.permissionPreferences.camera;
+  if (els.profileLocationEnabled) els.profileLocationEnabled.checked = state.permissionPreferences.location;
+  if (els.profileCameraPermissionStatus) els.profileCameraPermissionStatus.textContent = permissionStatusCopy("camera");
+  if (els.profileLocationPermissionStatus) els.profileLocationPermissionStatus.textContent = permissionStatusCopy("location");
+
+  const missingPermissions = ["camera", "location"].filter(
+    (kind) => !state.permissionPreferences[kind] || state.permissionStatus[kind] !== "granted"
+  );
+  els.permissionOnboarding?.classList.toggle("is-hidden", missingPermissions.length === 0);
+  if (els.permissionOnboardingTitle && missingPermissions.length) {
+    const missingLabel = missingPermissions.length === 2
+      ? "cámara y ubicación"
+      : missingPermissions[0] === "camera" ? "cámara" : "ubicación";
+    els.permissionOnboardingTitle.textContent = `Activa ${missingLabel}`;
+  }
+  if (els.requestAttendancePermissions) {
+    els.requestAttendancePermissions.textContent = "Revisar permisos";
+  }
+}
+
+function openPermissionSettings() {
+  showView("profile");
+  window.requestAnimationFrame(() => {
+    els.profilePermissions?.scrollIntoView({ behavior: "smooth", block: "start" });
+    els.profilePermissions?.focus({ preventScroll: true });
+  });
+}
+
+async function syncPermissionState() {
+  loadPermissionPreferences();
+  const cameraState = state.permissionPreferences.camera
+    ? await getBrowserPermissionState("camera")
+    : "disabled";
+  const locationState = state.permissionPreferences.location
+    ? await getBrowserPermissionState("geolocation")
+    : "disabled";
+  state.permissionStatus.camera = cameraState === "unknown" ? state.permissionStatus.camera : cameraState;
+  state.permissionStatus.location = locationState === "unknown" ? state.permissionStatus.location : locationState;
+  savePermissionPreferences();
+  renderPermissionControls();
+}
+
+async function requestCameraAccess() {
+  if (!state.permissionPreferences.camera) {
+    state.permissionStatus.camera = "disabled";
+    savePermissionPreferences();
+    renderPermissionControls();
+    return false;
+  }
+  if (!navigator.mediaDevices?.getUserMedia) {
+    state.permissionStatus.camera = "denied";
+    savePermissionPreferences();
+    renderPermissionControls();
+    return false;
+  }
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" }, audio: false });
+    stream.getTracks().forEach((track) => track.stop());
+    state.permissionStatus.camera = "granted";
+    savePermissionPreferences();
+    renderPermissionControls();
+    return true;
+  } catch {
+    state.permissionStatus.camera = "denied";
+    savePermissionPreferences();
+    renderPermissionControls();
+    return false;
+  }
+}
+
+function requestLocationAccess() {
+  if (!state.permissionPreferences.location || !navigator.geolocation) {
+    state.permissionStatus.location = state.permissionPreferences.location ? "denied" : "disabled";
+    savePermissionPreferences();
+    renderPermissionControls();
+    return Promise.resolve(false);
+  }
+  return new Promise((resolve) => {
+    navigator.geolocation.getCurrentPosition(
+      () => {
+        state.permissionStatus.location = "granted";
+        savePermissionPreferences();
+        renderPermissionControls();
+        resolve(true);
+      },
+      () => {
+        state.permissionStatus.location = "denied";
+        savePermissionPreferences();
+        renderPermissionControls();
+        resolve(false);
+      },
+      { enableHighAccuracy: false, timeout: 10000, maximumAge: 300000 }
+    );
+  });
+}
+
+async function requestInitialAttendancePermissions() {
+  const cameraGranted = state.permissionStatus.camera === "granted" || await requestCameraAccess();
+  const locationGranted = state.permissionStatus.location === "granted" || await requestLocationAccess();
+  renderPermissionControls();
+  if (cameraGranted && locationGranted) {
+    showToast("Cámara y ubicación listas para registrar asistencia.");
+  } else {
+    showToast("Puedes revisar los permisos desde Perfil.");
+  }
 }
 
 function minutesFromStart(date = new Date()) {
@@ -965,6 +1225,15 @@ function applyAppUserSession(appUser) {
   renderCurrentUserProfile();
 }
 
+function renderHomeWelcome(nombre = "Usuario") {
+  const hour = Math.floor(minutesFromStart() / 60);
+  const greeting = hour < 12 ? "Buenos días" : hour < 19 ? "Buenas tardes" : "Buenas noches";
+  const cleanName = String(nombre || "Usuario").trim();
+  const firstName = (cleanName.includes("@") ? cleanName.split("@")[0] : cleanName.split(/\s+/)[0]) || "Usuario";
+  if (els.homeGreeting) els.homeGreeting.textContent = greeting;
+  if (els.homeWelcomeName) els.homeWelcomeName.textContent = firstName;
+}
+
 function renderCurrentUserProfile() {
   const appUser = state.currentAppUser;
   const authUser = state.currentUser || {};
@@ -988,6 +1257,7 @@ function renderCurrentUserProfile() {
   if (els.profileAvatarFallback) els.profileAvatarFallback.textContent = initials || "US";
   if (profileDisplayName) profileDisplayName.textContent = nombre;
   if (profileDisplayIdentifier) profileDisplayIdentifier.textContent = `Identificador: ${matricula}`;
+  renderHomeWelcome(nombre);
   renderAttendanceStreak();
 }
 
@@ -1072,61 +1342,106 @@ async function loadCurrentAppUser({ silent = false } = {}) {
 async function loadOrganizations({ silent = false } = {}) {
   if (!CLOUD_ENABLED || !state.currentUser || !localStorage.getItem("registro_asistencia_token") || !els.organizationList) return;
   try {
-    const rows = await callAdminRpc("get_manageable_organizations", {});
-    renderOrganizations(rows || []);
+    const rows = await callAdminRpc("admin_list_organization_hubs", {});
+    state.organizationHubs = Array.isArray(rows) ? rows : [];
+    if (!state.organizationHubs.some((org) => org.id === state.selectedOrganizationId)) {
+      state.selectedOrganizationId = state.organizationHubs[0]?.id || null;
+    }
+    renderOrganizations();
   } catch (error) {
-    if (!silent) showToast("No se pudo cargar organizaciones.");
+    try {
+      const [organizations, sites] = await Promise.all([
+        callAdminRpc("get_manageable_organizations", {}),
+        callAdminRpc("get_manageable_sites", {}),
+      ]);
+      state.organizationHubs = (organizations || []).map((org) => ({
+        ...org,
+        sitios: (sites || []).filter((site) => site.organizacion_id === org.id),
+      }));
+      state.selectedOrganizationId = state.organizationHubs.some((org) => org.id === state.selectedOrganizationId)
+        ? state.selectedOrganizationId
+        : state.organizationHubs[0]?.id || null;
+      renderOrganizations();
+      setOrganizationHubNotice("Vista compatible activa. Aplica la migracion Hito 14 para editar.", "warning");
+    } catch (fallbackError) {
+      state.organizationHubs = [];
+      renderOrganizations();
+      if (!silent) showToast("No se pudieron cargar organizaciones.");
+    }
   }
 }
 
-function renderOrganizations(rows) {
+function getSelectedOrganization() {
+  return state.organizationHubs.find((org) => org.id === state.selectedOrganizationId) || null;
+}
+
+function setOrganizationHubNotice(message = "", tone = "warning") {
+  if (!els.organizationHubNotice) return;
+  els.organizationHubNotice.hidden = !message;
+  els.organizationHubNotice.textContent = message;
+  els.organizationHubNotice.dataset.tone = tone;
+}
+
+function renderOrganizations() {
   if (!els.organizationList) return;
+  const rows = state.organizationHubs;
   const canManageOrg = hasPermission("manage_organization");
   document.querySelectorAll(".superadmin-only").forEach((element) => {
     element.classList.toggle("is-hidden", !canManageOrg);
   });
   if (!rows.length) {
-    els.organizationList.innerHTML = `<p class="muted-note">Sin organizaciones disponibles para este rol.</p>`;
+    els.organizationList.innerHTML = `<div class="organization-empty"><strong>Sin organizaciones</strong><span>Crea la primera para agregar sitios.</span></div>`;
+    renderSelectedOrganization(null);
     return;
   }
-  els.organizationList.innerHTML = rows.map((org) => `
-    <article class="organization-item">
-      <div>
-        <strong>${escapeHtml(org.nombre || "Organizacion")}</strong>
-        <span>${escapeHtml(org.tipo || "empresa")} - ${escapeHtml(org.slug || "sin-slug")}</span>
-      </div>
-      <small>${Number(org.sitios_total || 0)} sitios - ${Number(org.usuarios_total || 0)} usuarios - ${Number(org.asistencias_total || 0)} asistencias</small>
-    </article>
+  const query = String(els.organizationSearch?.value || "").trim().toLowerCase();
+  const visibleRows = rows.filter((org) => !query || `${org.nombre || ""} ${org.slug || ""}`.toLowerCase().includes(query));
+  els.organizationList.innerHTML = visibleRows.map((org) => `
+    <button class="organization-picker-item ${org.id === state.selectedOrganizationId ? "is-selected" : ""}" type="button" data-organization-id="${escapeHtml(org.id)}">
+      <span><strong>${escapeHtml(org.nombre || "Organizacion")}</strong><small>${Number(org.sitios_total || org.sitios?.length || 0)} sitios</small></span>
+      <span class="status-dot ${org.activo === false ? "is-inactive" : ""}" aria-label="${org.activo === false ? "Inactiva" : "Activa"}"></span>
+    </button>
   `).join("");
+  if (!visibleRows.length) els.organizationList.innerHTML = `<p class="muted-note">Sin coincidencias.</p>`;
+  renderSelectedOrganization(getSelectedOrganization());
+}
+
+function renderSelectedOrganization(org) {
+  if (!els.organizationDetail) return;
+  els.organizationDetail.classList.toggle("is-empty", !org);
+  els.orgNameLabel.textContent = org?.nombre || "Selecciona una organizacion";
+  els.orgTypeLabel.textContent = org?.tipo ? org.tipo.replaceAll("_", " ") : "";
+  if (els.orgSlugLabel) els.orgSlugLabel.textContent = org?.slug || "";
+  els.orgSitesLabel.textContent = Number(org?.sitios_total || org?.sitios?.length || 0);
+  els.orgUsersLabel.textContent = Number(org?.usuarios_total || 0);
+  els.orgAttendancesLabel.textContent = Number(org?.asistencias_total || 0);
+  els.orgStatusBadge.className = `badge ${!org ? "default" : org.activo === false ? "danger" : "success"}`;
+  els.orgStatusBadge.textContent = !org ? "Sin seleccion" : org.activo === false ? "Inactiva" : "Activa";
+  if (els.newSiteButton) els.newSiteButton.disabled = !org || org.activo === false;
+  renderManagedSites(org?.sitios || []);
 }
 
 function renderManagedSites(rows = []) {
-  state.managedSites = Array.isArray(rows) ? rows : [];
+  state.managedSites = state.organizationHubs.flatMap((org) => org.sitios || []);
   populateAdminInviteSites();
   if (!els.siteDirectory) return;
-  if (!isRoleAdminSession() && !isDemoAdminUnlocked()) {
-    els.siteDirectory.innerHTML = `<p class="muted-note">Sin permisos para administrar sitios.</p>`;
-    return;
-  }
   if (!rows.length) {
-    els.siteDirectory.innerHTML = `<p class="muted-note">No hay sitios registrados en tu alcance.</p>`;
+    els.siteDirectory.innerHTML = `<div class="organization-empty"><strong>Sin sitios</strong><span>Agrega la primera ubicacion operativa.</span></div>`;
     return;
   }
-  const canDeleteSite = hasPermission("manage_site") || hasPermission("manage_organization") || isDemoAdminUnlocked();
   els.siteDirectory.innerHTML = rows.map((site) => {
-    const schedule = `${site.hora_entrada_inicio || "--:--"} - ${site.hora_entrada_fin || "--:--"} / ${site.hora_salida_inicio || "--:--"} - ${site.hora_salida_fin || "--:--"}`;
-    const status = site.activo ? "Activo" : "Inactivo";
-    const keyState = site.tiene_clave ? "Llave configurada" : "Llave pendiente";
+    const schedule = `${normalizeTimeInput(site.hora_entrada_inicio, "--:--")}–${normalizeTimeInput(site.hora_entrada_fin, "--:--")} · ${normalizeTimeInput(site.hora_salida_inicio, "--:--")}–${normalizeTimeInput(site.hora_salida_fin, "--:--")}`;
     return `
-      <article class="organization-item directory-item">
-        <div>
-          <strong>${escapeHtml(site.nombre || "Sitio sin nombre")}</strong>
-          <span>${escapeHtml(site.organizacion_nombre || "Organizacion")} - ${escapeHtml(status)} - ${escapeHtml(keyState)}</span>
-          <small>${escapeHtml(site.direccion || "Direccion pendiente")} - Radio ${escapeHtml(formatMeters(site.radio_metros))} - ${escapeHtml(schedule)}</small>
+      <article class="organization-site-row">
+        <div class="organization-site-icon" aria-hidden="true"></div>
+        <div class="organization-site-copy">
+          <div><strong>${escapeHtml(site.nombre || "Sitio sin nombre")}</strong><span class="badge ${site.activo === false ? "danger" : "success"}">${site.activo === false ? "Inactivo" : "Activo"}</span></div>
+          <span>${escapeHtml(site.direccion || "Direccion pendiente")}</span>
+          <small>${escapeHtml(schedule)} · ${escapeHtml(formatMeters(site.radio_metros))}</small>
         </div>
-        <div class="directory-actions">
-          <small>${Number(site.usuarios_total || 0)} usuarios / ${Number(site.asistencias_total || 0)} asistencias</small>
-          ${canDeleteSite ? `<button class="danger mini" type="button" data-site-action="delete" data-site-id="${escapeHtml(site.id)}">Desactivar</button>` : ""}
+        <div class="organization-site-actions">
+          <button class="ghost mini" type="button" data-site-action="edit" data-site-id="${escapeHtml(site.id)}">Editar</button>
+          <button class="danger mini" type="button" data-site-action="delete" data-site-id="${escapeHtml(site.id)}">Eliminar</button>
         </div>
       </article>
     `;
@@ -1166,20 +1481,14 @@ function renderManagedUsers(rows = []) {
 
 async function loadAdminDirectories({ silent = false } = {}) {
   if (!CLOUD_ENABLED || !state.currentUser || !localStorage.getItem("registro_asistencia_token") || (!isRoleAdminSession() && !isDemoAdminUnlocked())) {
-    renderManagedSites([]);
     renderManagedUsers([]);
     return;
   }
   try {
-    const [sites, users] = await Promise.all([
-      callAdminRpc("get_manageable_sites", {}),
-      callAdminRpc("get_manageable_users", {}),
-    ]);
-    renderManagedSites(sites || []);
+    const users = await callAdminRpc("get_manageable_users", {});
     renderManagedUsers(users || []);
   } catch (error) {
-    if (!silent) showToast("No se pudieron cargar sitios o usuarios administrables.");
-    renderManagedSites([]);
+    if (!silent) showToast("No se pudieron cargar usuarios administrables.");
     renderManagedUsers([]);
   }
 }
@@ -1196,50 +1505,143 @@ async function deleteManagedSite(siteId) {
     addAdminLog("Sitio desactivado/eliminado", status?.message || siteId);
     showToast(status?.message || "Sitio actualizado.");
     await loadActiveSite({ silent: true });
-    await loadAdminDirectories({ silent: true });
+    await loadOrganizations({ silent: true });
   } catch (error) {
-    showToast("No se pudo desactivar/eliminar el sitio.");
+    showToast(`No se pudo eliminar el sitio: ${parseSupabaseError(error).slice(0, 120)}`);
   }
 }
 
 function handleSiteDirectoryAction(event) {
   const button = event.target.closest("[data-site-action]");
   if (!button) return;
+  if (button.dataset.siteAction === "edit") openSiteEditor(button.dataset.siteId);
   if (button.dataset.siteAction === "delete") deleteManagedSite(button.dataset.siteId);
 }
+
+function selectOrganization(organizationId) {
+  if (!state.organizationHubs.some((org) => org.id === organizationId)) return;
+  state.selectedOrganizationId = organizationId;
+  closeOrganizationEditor();
+  closeSiteEditor();
+  renderOrganizations();
+}
+
+function openOrganizationEditor(org = null) {
+  if (!hasPermission("manage_organization") || !els.organizationForm) return;
+  els.organizationForm.hidden = false;
+  els.organizationForm.classList.remove("is-hidden");
+  els.orgEditId.value = org?.id || "";
+  els.orgCreateName.value = org?.nombre || "";
+  els.orgCreateType.value = org?.tipo || "empresa";
+  els.orgCreateSlug.value = org?.slug || "";
+  els.orgCreateKey.value = "";
+  els.orgActive.checked = org?.activo !== false;
+  els.organizationFormTitle.textContent = org ? "Editar organizacion" : "Nueva organizacion";
+  els.orgKeyHint.textContent = org ? "Vacia conserva la actual" : "Obligatoria al crear";
+  els.organizationForm.scrollIntoView({ behavior: "smooth", block: "start" });
+  window.setTimeout(() => els.orgCreateName.focus(), 250);
+}
+
+function closeOrganizationEditor() {
+  if (!els.organizationForm) return;
+  els.organizationForm.hidden = true;
+  els.organizationForm.classList.add("is-hidden");
+  els.organizationForm.reset();
+}
+
+function createOrganizationSlug(name, currentId = null) {
+  const base = String(name || "organizacion")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "") || "organizacion";
+  const used = new Set(
+    state.organizationHubs
+      .filter((org) => org.id !== currentId)
+      .map((org) => String(org.slug || "").toLowerCase()),
+  );
+  if (!used.has(base)) return base;
+  let suffix = 2;
+  while (used.has(`${base}-${suffix}`)) suffix += 1;
+  return `${base}-${suffix}`;
+}
+
+async function deleteSelectedOrganization() {
+  const org = getSelectedOrganization();
+  if (!org || !hasPermission("manage_organization")) return;
+  if (!confirm(`Eliminar ${org.nombre}? Si tiene historial se desactivara sin borrar registros.`)) return;
+  try {
+    const result = await callAdminRpc("admin_delete_organization", { p_id: org.id });
+    const status = getRpcFirstRow(result);
+    showToast(status?.message || "Organizacion actualizada.");
+    state.selectedOrganizationId = null;
+    await loadOrganizations({ silent: true });
+  } catch (error) {
+    showToast(`No se pudo eliminar: ${parseSupabaseError(error).slice(0, 120)}`);
+  }
+}
+
 async function handleOrganizationSubmit(event) {
   event.preventDefault();
   if (!hasPermission("manage_organization")) {
-    showToast("Solo superadmin puede crear organizaciones.");
+    showToast("Solo superadmin puede modificar organizaciones.");
     return;
   }
   const nombre = els.orgCreateName?.value.trim() || "";
   const clave = els.orgCreateKey?.value.trim() || "";
-  if (!nombre || !clave) {
-    showToast("Nombre y clave son obligatorios para crear una organizacion.");
+  const id = els.orgEditId?.value || null;
+  if (!nombre || (!id && clave.length < 8) || (clave && clave.length < 8)) {
+    showToast("Captura el nombre y una clave de al menos 8 caracteres al crear.");
     return;
   }
+  const slug = id
+    ? (els.orgCreateSlug?.value.trim() || createOrganizationSlug(nombre, id))
+    : createOrganizationSlug(nombre);
   try {
-    await callAdminRpc("admin_create_organization", {
+    await callAdminRpc("admin_upsert_organization", {
+      p_id: id,
       p_nombre: nombre,
       p_tipo: els.orgCreateType?.value || "empresa",
-      p_slug: els.orgCreateSlug?.value.trim() || null,
+      p_slug: slug,
       p_clave: clave,
-      p_activo: true,
+      p_activo: els.orgActive?.checked !== false,
     });
-    els.organizationForm?.reset();
-    await loadOrganizationContext({ silent: true });
+    closeOrganizationEditor();
     await loadOrganizations({ silent: true });
-    showToast("Organizacion creada. Comparte su clave con sus usuarios.");
+    showToast(id ? "Organizacion actualizada." : "Organizacion creada.");
   } catch (error) {
     const detail = parseSupabaseError(error);
-    if (/permiso_manage_organization/i.test(detail)) {
-      showToast("Sin permiso en Supabase para crear organizaciones. Verifica rol superadmin en usuarios_app.");
-    } else if (/sesion_requerida/i.test(detail)) {
-      showToast("Sesion expirada. Vuelve a iniciar sesion.");
-    } else {
-      showToast(`No se pudo crear la organizacion: ${detail.slice(0, 140)}`);
+    const rpcPending = /admin_upsert_organization|PGRST202|schema cache/i.test(detail);
+    if (rpcPending && !id) {
+      try {
+        await callAdminRpc("admin_create_organization", {
+          p_nombre: nombre,
+          p_tipo: els.orgCreateType?.value || "empresa",
+          p_slug: slug,
+          p_clave: clave,
+          p_activo: els.orgActive?.checked !== false,
+        });
+        closeOrganizationEditor();
+        await loadOrganizations({ silent: true });
+        showToast("Organizacion creada. La edicion avanzada se activara con el Hito 14.");
+        return;
+      } catch (fallbackError) {
+        const fallbackDetail = parseSupabaseError(fallbackError);
+        if (/slug.*ambigu|ambigu.*slug/i.test(fallbackDetail)) {
+          showToast("Supabase necesita el hotfix de organizaciones. Tus datos siguen en el formulario.");
+          setOrganizationHubNotice("Pendiente: aplicar el hotfix de creacion en Supabase.", "warning");
+          return;
+        }
+        showToast(`No se pudo crear la organizacion: ${fallbackDetail.slice(0, 120)}`);
+        return;
+      }
     }
+    if (rpcPending) {
+      showToast("La edicion estara disponible al aplicar la migracion Hito 14 en Supabase.");
+      return;
+    }
+    showToast(`No se pudo guardar la organizacion: ${detail.slice(0, 120)}`);
   }
 }
 async function loadAttendanceStreak({ silent = false } = {}) {
@@ -1262,6 +1664,7 @@ async function loadAttendanceStreak({ silent = false } = {}) {
   }
 }
 function renderOrganizationContext(context) {
+  if (els.organizationDetail) return;
   if (!els.orgNameLabel) return;
   const configured = Boolean(context && context.organizacion_id);
   els.orgStatusBadge.className = "badge " + (configured ? "success" : "warning");
@@ -1388,6 +1791,8 @@ function normalizeSiteLocationValidation(validation, fallbackPrecision = null) {
 function fillSiteForm(site) {
   if (!els.siteForm) return;
   const configured = hasConfiguredSite(site);
+  if (els.siteEditId) els.siteEditId.value = configured ? site.id || "" : "";
+  if (els.siteOrganizationId) els.siteOrganizationId.value = configured ? site.organizacion_id || state.selectedOrganizationId || "" : state.selectedOrganizationId || "";
   els.siteName.value = configured ? site.nombre || "" : "";
   els.siteAddress.value = configured ? site.direccion || "" : "";
   els.siteLat.value = configured && site.latitud !== null ? Number(site.latitud).toFixed(6) : "";
@@ -1398,8 +1803,29 @@ function fillSiteForm(site) {
   els.siteExitStart.value = normalizeTimeInput(configured ? site.hora_salida_inicio : "", "16:30");
   els.siteExitEnd.value = normalizeTimeInput(configured ? site.hora_salida_fin : "", "17:10");
   els.siteTimezone.value = configured ? site.zona_horaria || "America/Mexico_City" : "America/Mexico_City";
+  if (els.siteGpsPolicy) els.siteGpsPolicy.value = configured ? site.gps_policy || "revision" : "revision";
+  if (els.siteEvidencePolicy) els.siteEvidencePolicy.value = configured ? site.evidence_policy || "rostro" : "rostro";
+  if (els.siteIdentifierLabel) els.siteIdentifierLabel.value = configured ? site.identificador_label || "Identificador" : "Identificador";
   if (els.siteKey) els.siteKey.value = "";
   els.siteActive.checked = configured ? Boolean(site.activo) : true;
+}
+
+function openSiteEditor(siteId = null) {
+  const org = getSelectedOrganization();
+  if (!org || !hasPermission("manage_site") || !els.siteForm) return;
+  const site = (org.sitios || []).find((item) => item.id === siteId) || null;
+  fillSiteForm(site);
+  els.siteFormTitle.textContent = site ? "Editar sitio" : `Nuevo sitio en ${org.nombre}`;
+  els.siteForm.hidden = false;
+  els.siteForm.scrollIntoView({ behavior: "smooth", block: "start" });
+  window.setTimeout(() => els.siteName.focus(), 250);
+}
+
+function closeSiteEditor() {
+  if (!els.siteForm) return;
+  els.siteForm.hidden = true;
+  els.siteForm.reset();
+  if (els.siteEditId) els.siteEditId.value = "";
 }
 
 function renderActiveSite(site) {
@@ -1407,8 +1833,9 @@ function renderActiveSite(site) {
   const configured = hasConfiguredSite(site);
   if (!els.siteStatusBadge) return;
 
-  els.siteStatusBadge.className = "badge " + (configured ? "success" : "warning");
-  els.siteStatusBadge.textContent = configured ? "Sitio activo" : "Sitio pendiente";
+  const siteIsActive = configured && site.activo !== false;
+  els.siteStatusBadge.className = "badge " + (!configured ? "warning" : siteIsActive ? "success" : "danger");
+  els.siteStatusBadge.textContent = !configured ? "Pendiente" : siteIsActive ? "Activo" : "Inactivo";
   els.siteStatusSummary.textContent = configured
     ? "La validacion de salidas usa esta ubicacion y horarios desde Supabase."
     : "Configura el sitio oficial para activar la validacion global de ubicacion.";
@@ -1473,7 +1900,7 @@ async function useAdminLocation() {
     };
     els.siteLat.value = position.coords.latitude.toFixed(6);
     els.siteLng.value = position.coords.longitude.toFixed(6);
-    els.sitePrecisionLabel.textContent = "Ultima precision: " + formatMeters(position.coords.accuracy);
+    if (els.sitePrecisionLabel) els.sitePrecisionLabel.textContent = "Ultima precision: " + formatMeters(position.coords.accuracy);
     setSiteMessage("Ubicacion cargada en el formulario. Revisa el radio antes de guardar.", "success");
   } catch (error) {
     setSiteMessage("No se pudo obtener ubicacion. Revisa permisos del navegador.", "danger");
@@ -1495,7 +1922,7 @@ async function testAdminLocation() {
       longitud: position.coords.longitude,
       accuracy: position.coords.accuracy,
     };
-    els.sitePrecisionLabel.textContent = "Ultima precision: " + formatMeters(position.coords.accuracy);
+    if (els.sitePrecisionLabel) els.sitePrecisionLabel.textContent = "Ultima precision: " + formatMeters(position.coords.accuracy);
     const result = await callAdminRpc("validate_location_for_site", {
       p_latitud: position.coords.latitude,
       p_longitud: position.coords.longitude,
@@ -1540,6 +1967,9 @@ async function handleSiteSubmit(event) {
     zonaHoraria: els.siteTimezone.value.trim() || "America/Mexico_City",
     activo: els.siteActive.checked,
     claveSitio: els.siteKey?.value.trim() || "",
+    gpsPolicy: els.siteGpsPolicy?.value || "revision",
+    evidencePolicy: els.siteEvidencePolicy?.value || "rostro",
+    identifierLabel: els.siteIdentifierLabel?.value.trim() || "Identificador",
   };
   const error = validateSiteForm(data);
   if (error) {
@@ -1549,8 +1979,9 @@ async function handleSiteSubmit(event) {
 
   setSiteMessage("Guardando configuracion del sitio...", "warning");
   try {
-    await callAdminRpc("upsert_site_config", {
-      p_admin_key: getAdminRpcKey(),
+    await callAdminRpc("admin_upsert_site", {
+      p_id: els.siteEditId?.value || null,
+      p_organization_id: els.siteOrganizationId?.value || state.selectedOrganizationId,
       p_nombre: data.nombre,
       p_direccion: data.direccion,
       p_latitud: data.latitud,
@@ -1561,20 +1992,19 @@ async function handleSiteSubmit(event) {
       p_hora_salida_inicio: data.horaSalidaInicio,
       p_hora_salida_fin: data.horaSalidaFin,
       p_zona_horaria: data.zonaHoraria,
+      p_gps_policy: data.gpsPolicy,
+      p_evidence_policy: data.evidencePolicy,
+      p_identificador_label: data.identifierLabel,
+      p_clave: data.claveSitio || null,
       p_activo: data.activo,
     });
     addAdminLog("Sitio actualizado", data.nombre + " (" + data.radio + " m)");
-    await loadActiveSite({ silent: true });
-    if (data.claveSitio && state.activeSite?.id) {
-      await callAdminRpc("admin_set_site_key", { p_site_id: state.activeSite.id, p_clave: data.claveSitio });
-      if (els.siteKey) els.siteKey.value = "";
-      addAdminLog("Llave de sitio actualizada", data.nombre);
-    }
-    await loadAdminDirectories({ silent: true });
+    closeSiteEditor();
+    await loadOrganizations({ silent: true });
     await updateHeaderStatus({ force: true });
-    showToast("Configuracion del sitio guardada.");
+    showToast("Sitio guardado.");
   } catch (error) {
-    setSiteMessage("No se pudo guardar. Verifica la clave, datos y permisos RLS.", "danger");
+    setSiteMessage(`No se pudo guardar: ${parseSupabaseError(error).slice(0, 120)}`, "danger");
   }
 }
 async function refreshRecords({ silent = false } = {}) {
@@ -1967,6 +2397,7 @@ function showView(name) {
   if (actualView !== "exit") stopCamera("exit");
   if (actualView === "entry") {
     setEntryLocationStatus("La ubicacion se solicitara al guardar entrada.");
+    window.setTimeout(() => ensureAttendanceCamera("entry"), 0);
   }
   if (actualView === "exit") {
     pickLifeChallenge();
@@ -1977,6 +2408,7 @@ function showView(name) {
       resetExitActiveRecord();
     }
     updateHeaderStatus({ force: true });
+    window.setTimeout(() => ensureAttendanceCamera("exit"), 0);
   }
   if (actualView === "records" || actualView === "admin" || actualView === "home") refreshRecords({ silent: true });
   if (targetName === "admin") {
@@ -2023,8 +2455,7 @@ function renderRolePanelCopy(activeTarget = "records") {
 
 const ADMIN_SECTION_COPY = {
   summary: "Resumen del dia, alertas y distribucion por sitio.",
-  organizations: "Crea organizaciones, revisa claves y estructura multiempresa.",
-  sites: "Configura ubicacion, radio GPS, horarios y llave del sitio.",
+  organizations: "Administra organizaciones, ubicaciones, horarios y politicas.",
   users: "Consulta personas por sitio, pendientes sin sitio y asignacion admin.",
   attendances: "Filtra registros, revisa evidencia y exporta si tienes permiso.",
   audit: "Historial de acciones administrativas visibles para tu rol.",
@@ -2081,11 +2512,11 @@ function setFaceStatus(element, message, tone = "neutral") {
 
 function syncCaptureControls() {
   const canUseFace = state.facialModelsLoaded && !state.facialModelsError;
-  els.startEntryCamera.disabled = !canUseFace;
   const canStartExit = canUseFace && Boolean(state.exitActiveRecord);
-  els.startExitCamera.disabled = !canStartExit;
-  els.takeEntryPhoto.disabled = !canUseFace || !state.entryStream;
-  els.takeExitPhoto.disabled = !canStartExit || !state.exitStream;
+  if (els.startEntryCamera) els.startEntryCamera.disabled = !canUseFace;
+  if (els.startExitCamera) els.startExitCamera.disabled = !canStartExit;
+  if (els.takeEntryPhoto) els.takeEntryPhoto.disabled = !canUseFace || !state.entryStream;
+  if (els.takeExitPhoto) els.takeExitPhoto.disabled = !canStartExit || !state.exitStream;
 }
 
 async function loadFaceModels() {
@@ -2132,6 +2563,10 @@ async function loadFaceModels() {
     setFaceStatus(els.exitFaceStatus, "Error al cargar modelos faciales.", "danger");
   } finally {
     syncCaptureControls();
+    const activeAttendanceView = document.querySelector('[data-view="entry"]:not(.is-hidden)')
+      ? "entry"
+      : document.querySelector('[data-view="exit"]:not(.is-hidden)') ? "exit" : "";
+    if (activeAttendanceView) ensureAttendanceCamera(activeAttendanceView);
   }
 }
 
@@ -2255,6 +2690,11 @@ function setAttendanceLocationStatus(kind, message, tone = "neutral") {
 
 function requestAttendanceLocation(kind) {
   const label = kind === "entry" ? "entrada" : "salida";
+  if (!state.permissionPreferences.location) {
+    const observacion = "Ubicacion desactivada por el usuario desde Perfil.";
+    setAttendanceLocationStatus(kind, "Ubicacion desactivada en Perfil. El registro quedara en revision.", "danger");
+    return Promise.resolve({ estado: "ubicacion_desactivada", observacion });
+  }
   setAttendanceLocationStatus(kind, "Solicitando ubicacion para validar presencia.", "pending");
   if (!navigator.geolocation) {
     const observacion = "No se pudo obtener ubicacion de " + label + ". El registro quedara en revision.";
@@ -2266,6 +2706,9 @@ function requestAttendanceLocation(kind) {
   return new Promise((resolve) => {
     navigator.geolocation.getCurrentPosition(
       (position) => {
+        state.permissionStatus.location = "granted";
+        savePermissionPreferences();
+        renderPermissionControls();
         const location = {
           estado: position.coords.accuracy > 200 ? "ubicacion_imprecisa" : "ubicacion_correcta",
           latitud: Number(position.coords.latitude.toFixed(7)),
@@ -2287,6 +2730,9 @@ function requestAttendanceLocation(kind) {
         resolve(location);
       },
       () => {
+        state.permissionStatus.location = "denied";
+        savePermissionPreferences();
+        renderPermissionControls();
         const observacion = kind === "entry"
           ? "Ubicacion de entrada no autorizada por el navegador."
           : "No se pudo obtener ubicacion de salida. El registro quedara en revision.";
@@ -2308,11 +2754,22 @@ function setLocationStatus(message, tone = "neutral") {
 function requestExitLocation() {
   return requestAttendanceLocation("exit");
 }
-async function startCamera(kind) {
+async function ensureAttendanceCamera(kind) {
+  const needsActiveEntry = kind === "exit" && !state.exitActiveRecord;
+  if (needsActiveEntry || state[`${kind}Stream`] || !state.facialModelsLoaded || state.facialModelsError) return;
+  await startCamera(kind, { silent: true });
+}
+
+async function startCamera(kind, { silent = false } = {}) {
   const video = kind === "entry" ? els.entryVideo : els.exitVideo;
 
+  if (!state.permissionPreferences.camera) {
+    if (!silent) showToast("Activa la cámara desde Perfil para tomar la foto.");
+    return;
+  }
+
   if (!state.facialModelsLoaded) {
-    showToast("Espera a que carguen los modelos faciales.");
+    if (!silent) showToast("Espera a que carguen los modelos faciales.");
     return;
   }
 
@@ -2324,10 +2781,20 @@ async function startCamera(kind) {
     });
     video.srcObject = stream;
     state[`${kind}Stream`] = stream;
+    state.permissionStatus.camera = "granted";
+    savePermissionPreferences();
+    renderPermissionControls();
     syncCaptureControls();
-    showToast("Camara activada. Ya puedes tomar la foto.");
+    setFaceStatus(
+      kind === "entry" ? els.entryFaceStatus : els.exitFaceStatus,
+      "Camara lista. Mira de frente y toma la foto.",
+      "success"
+    );
   } catch (error) {
-    showToast("No se pudo acceder a la camara. Revisa permisos o usa HTTPS.");
+    state.permissionStatus.camera = "denied";
+    savePermissionPreferences();
+    renderPermissionControls();
+    if (!silent) showToast("No se pudo acceder a la camara. Revisa permisos o usa HTTPS.");
   }
 }
 
@@ -2440,11 +2907,13 @@ async function openAttendanceView() {
   const record = todayRecordByMatricula(identity.matricula);
   if (!record?.horaEntrada) {
     showView("entry");
+    await ensureAttendanceCamera("entry");
     return;
   }
   if (!record.horaSalida) {
     showView("exit");
     await validateExitMatricula();
+    await ensureAttendanceCamera("exit");
     return;
   }
   showView("attendance-complete");
@@ -2508,6 +2977,7 @@ async function validateExitMatricula({ showErrors = false } = {}) {
     `;
   }
   syncCaptureControls();
+  ensureAttendanceCamera("exit");
   return record;
 }
 
@@ -3851,19 +4321,6 @@ function updateAdminControls() {
     element.classList.toggle("is-hidden", !canManageRecords && !hasPermission("view_evidence") && !demoAdmin);
   });
 
-  if (els.adminStatus) {
-    els.adminStatus.classList.toggle("is-blocked", !hasAdminSurface);
-    els.adminStatus.textContent = hasAdminSurface
-      ? hasPermission("manage_organization")
-        ? "Superadmin activo: administras organizaciones, sitios, usuarios, registros y auditoria global."
-        : roleAdmin
-          ? "Administrador de sitio activo: administras solo tu sitio u organizacion asignada."
-          : "Modo demo local: acceso administrativo temporal sin permisos de produccion."
-      : CLOUD_ENABLED
-        ? "Modo usuario: solo puedes registrar asistencia y consultar tus propios registros."
-        : "Modo local activo. Configura Supabase para lista global.";
-  }
-
   if (els.adminRoleBadge) {
     const role = getRoleDefinition();
     els.adminRoleBadge.textContent = role.label;
@@ -4281,7 +4738,7 @@ async function continueAsOperationalGuest() {
     isGuest: true,
   });
   showAppShell(guestUser);
-  await finishInitialization();
+  await finishInitialization({ requestPermissions: true });
   showToast("Modo operativo activo. Puedes registrar entrada y salida sin cuenta confirmada.");
 }
 async function loadOrganizationOptions() {
@@ -4440,7 +4897,7 @@ async function handleAuthSubmit(event) {
           }
         }
         showAppShell(user);
-        await finishInitialization();
+        await finishInitialization({ requestPermissions: true });
       } else {
         throw new Error("No se pudo obtener el usuario después del inicio de sesión.");
       }
@@ -4466,7 +4923,7 @@ async function handleAuthSubmit(event) {
         if (user) {
           if (isPhone) showEmailNudgePanel(true);
           showAppShell(user);
-          await finishInitialization();
+          await finishInitialization({ requestPermissions: true });
         }
       } else {
         showToast("Cuenta creada. Revisa tu correo para confirmar antes de iniciar sesión, o usa modo operativo.");
@@ -4572,8 +5029,12 @@ function handleUpdateProfile(event) {
         matricula: matricula
       };
       state.currentUser.email = email;
+      if (state.currentAppUser) {
+        state.currentAppUser = { ...state.currentAppUser, nombre, matricula, email };
+      }
 
       showToast("Perfil actualizado correctamente");
+      renderCurrentUserProfile();
 
       // Recargar las iniciales en el avatar
       if (els.userInitials) {
@@ -4594,7 +5055,7 @@ function handleUpdateProfile(event) {
     });
 }
 
-async function finishInitialization() {
+async function finishInitialization({ requestPermissions = false } = {}) {
   if (els.demoMode) els.demoMode.checked = state.demoMode;
   setFaceStatus(els.entryFaceStatus, "Espera a que carguen los modelos faciales.", "pending");
   setFaceStatus(els.exitFaceStatus, "Espera a que carguen los modelos faciales.", "pending");
@@ -4606,6 +5067,8 @@ async function finishInitialization() {
   if (!isGuestMode) {
     await loadCurrentAppUser({ silent: true });
   }
+  await loadPersistentAvatar();
+  await syncPermissionState();
   loadAttendanceStreak({ silent: true });
   loadActiveSite({ silent: true });
   loadOrganizationContext({ silent: true });
@@ -4615,6 +5078,10 @@ async function finishInitialization() {
   renderAdminAudit();
   updateAdminControls();
   showView(isRoleAdminSession() ? "admin" : "home");
+
+  if (requestPermissions) {
+    await requestInitialAttendancePermissions();
+  }
 
   if (CLOUD_ENABLED && !isGuestMode) {
     await refreshRecords({ silent: true });
@@ -4657,6 +5124,36 @@ async function init() {
     image?.addEventListener("error", () => removeLocalAvatar({ notify: false }));
   });
   window.addEventListener("beforeunload", releaseLocalAvatarUrl, { once: true });
+
+  els.requestAttendancePermissions?.addEventListener("click", openPermissionSettings);
+  window.addEventListener("focus", () => syncPermissionState());
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible") syncPermissionState();
+  });
+  els.profileCameraEnabled?.addEventListener("change", async () => {
+    state.permissionPreferences.camera = els.profileCameraEnabled.checked;
+    savePermissionPreferences();
+    if (state.permissionPreferences.camera) {
+      await requestCameraAccess();
+    } else {
+      stopCamera("entry");
+      stopCamera("exit");
+      state.permissionStatus.camera = "disabled";
+      savePermissionPreferences();
+      renderPermissionControls();
+    }
+  });
+  els.profileLocationEnabled?.addEventListener("change", async () => {
+    state.permissionPreferences.location = els.profileLocationEnabled.checked;
+    savePermissionPreferences();
+    if (state.permissionPreferences.location) {
+      await requestLocationAccess();
+    } else {
+      state.permissionStatus.location = "disabled";
+      savePermissionPreferences();
+      renderPermissionControls();
+    }
+  });
 
   // 2. Manejadores de autenticación
   if (els.toggleLoginBtn) {
@@ -4818,6 +5315,17 @@ async function init() {
   if (els.siteForm) els.siteForm.addEventListener("submit", handleSiteSubmit);
   if (els.organizationForm) els.organizationForm.addEventListener("submit", handleOrganizationSubmit);
   if (els.siteDirectory) els.siteDirectory.addEventListener("click", handleSiteDirectoryAction);
+  if (els.organizationList) els.organizationList.addEventListener("click", (event) => {
+    const button = event.target.closest("[data-organization-id]");
+    if (button) selectOrganization(button.dataset.organizationId);
+  });
+  if (els.organizationSearch) els.organizationSearch.addEventListener("input", renderOrganizations);
+  if (els.newOrganizationButton) els.newOrganizationButton.addEventListener("click", () => openOrganizationEditor());
+  if (els.editOrganizationButton) els.editOrganizationButton.addEventListener("click", () => openOrganizationEditor(getSelectedOrganization()));
+  if (els.deleteOrganizationButton) els.deleteOrganizationButton.addEventListener("click", deleteSelectedOrganization);
+  if (els.cancelOrganizationEdit) els.cancelOrganizationEdit.addEventListener("click", closeOrganizationEditor);
+  if (els.newSiteButton) els.newSiteButton.addEventListener("click", () => openSiteEditor());
+  if (els.cancelSiteEdit) els.cancelSiteEdit.addEventListener("click", closeSiteEditor);
   if (els.useAdminLocation) els.useAdminLocation.addEventListener("click", useAdminLocation);
   if (els.testAdminLocation) els.testAdminLocation.addEventListener("click", testAdminLocation);
   if (els.generateSiteKey) els.generateSiteKey.addEventListener("click", generateSiteKey);

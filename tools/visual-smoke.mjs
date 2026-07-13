@@ -54,7 +54,9 @@ async function runViewportSmoke(browser, label, profile) {
     ...profile,
     locale: "es-MX",
     colorScheme: "light",
+    geolocation: { latitude: 19.4326, longitude: -99.1332 },
   });
+  await context.grantPermissions(["camera", "geolocation"], { origin: new URL(baseUrl).origin });
   const page = await context.newPage();
   const prefix = label;
 
@@ -69,7 +71,10 @@ async function runViewportSmoke(browser, label, profile) {
     await enterGuestMode(page);
     await assertVisible(page, ".topbar h1", `${prefix}: app header`);
     await assertVisible(page, '[data-view="home"]', `${prefix}: home view`);
+    await assertVisible(page, ".home-welcome", `${prefix}: personalized welcome`);
     await assertNavActive(page, "home", `${prefix}: home nav active`);
+    const permissionAlertHidden = await page.locator("#permissionOnboarding").evaluate((node) => node.classList.contains("is-hidden"));
+    record(`${prefix}: permission alert clears after grant`, permissionAlertHidden);
     await screenshot(page, `${prefix}-02-home`);
 
     await page.locator('.nav-button[data-target="attendance"]').click();
@@ -78,6 +83,13 @@ async function runViewportSmoke(browser, label, profile) {
     await assertVisible(page, ".attendance-identity-summary", `${prefix}: automatic identity summary`);
     const visibleIdentityInputs = await page.locator('#entryName:visible, #entryMatricula:visible, #exitMatricula:visible').count();
     record(`${prefix}: identity inputs hidden`, visibleIdentityInputs === 0, `${visibleIdentityInputs} visible`);
+    const activateCameraButtons = await page.locator("#startEntryCamera, #startExitCamera").count();
+    record(`${prefix}: no activate camera step`, activateCameraButtons === 0, `${activateCameraButtons} buttons`);
+    const activeCamera = await page.waitForFunction(() => {
+      const video = document.querySelector('[data-view="entry"]:not(.is-hidden) video, [data-view="exit"]:not(.is-hidden) video');
+      return Boolean(video?.srcObject);
+    }, null, { timeout: 12000 }).then(() => true).catch(() => false);
+    record(`${prefix}: camera starts automatically`, activeCamera);
     await screenshot(page, `${prefix}-03-attendance`);
 
     await page.locator('.nav-button[data-target="records"]').click();
@@ -87,6 +99,13 @@ async function runViewportSmoke(browser, label, profile) {
     record(`${prefix}: records content`, recordsContentVisible);
     await assertVisible(page, ".records-overview", `${prefix}: records summary`);
     await assertVisible(page, ".records-filters", `${prefix}: records filters`);
+    if (profile.isMobile) {
+      const statusSelect = page.locator("#filterStatus");
+      const statusBox = await statusSelect.boundingBox();
+      const filterBox = await page.locator(".records-filters").boundingBox();
+      const statusFits = Boolean(statusBox && filterBox && statusBox.x >= filterBox.x && statusBox.x + statusBox.width <= filterBox.x + filterBox.width + 1);
+      record(`${prefix}: iOS status select fits`, statusFits, statusBox ? `w=${Math.round(statusBox.width)}` : "no box");
+    }
     await screenshot(page, `${prefix}-04-records`);
 
     if (profile.isMobile) {
@@ -123,6 +142,19 @@ async function runViewportSmoke(browser, label, profile) {
     const profileActive = await page.locator("#btn-profile").evaluate((node) => node.classList.contains("is-active"));
     record(`${prefix}: profile nav active`, profileActive);
     await assertVisible(page, "#profileForm", `${prefix}: profile content`);
+    await assertVisible(page, "#profileCameraEnabled", `${prefix}: camera preference`);
+    await assertVisible(page, "#profileLocationEnabled", `${prefix}: location preference`);
+    if (label === "mobile-390") {
+      const avatarPng = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=", "base64");
+      await page.locator("#profileAvatarInput").setInputFiles({ name: "avatar-smoke.png", mimeType: "image/png", buffer: avatarPng });
+      await page.waitForTimeout(300);
+      await assertVisible(page, "#profileAvatarImage", `${prefix}: avatar selected`);
+      await page.reload({ waitUntil: "domcontentloaded" });
+      await waitForAppReady(page);
+      await enterGuestMode(page);
+      await page.locator("#btn-profile").click();
+      await assertVisible(page, "#profileAvatarImage", `${prefix}: avatar persists after reload`);
+    }
     await screenshot(page, `${prefix}-05-profile`);
 
     if (profile.isMobile) {
@@ -166,6 +198,7 @@ async function runViewportSmoke(browser, label, profile) {
 const browser = await chromium.launch({
   headless: true,
   channel: process.env.SMOKE_BROWSER_CHANNEL || undefined,
+  args: ["--use-fake-ui-for-media-stream", "--use-fake-device-for-media-stream"],
 });
 try {
   for (const width of [320, 375, 390, 430]) {

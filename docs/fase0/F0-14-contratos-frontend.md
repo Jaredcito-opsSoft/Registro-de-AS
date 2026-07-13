@@ -64,6 +64,40 @@ Devuelve:
 - `radio_metros`;
 - flags UI.
 
+### Centro de organizaciones y sitios (Hito 14)
+
+Migracion: `supabase-hito14-organization-site-hub.sql`
+
+RPC: `admin_list_organization_hubs`
+
+- Superadmin recibe todas las organizaciones; admin recibe solo su organizacion.
+- Cada organizacion incluye `sitios` con ubicacion, radio, zona horaria, horarios, politicas y etiqueta de identificador.
+- Los conteos de usuarios y asistencias son informativos; no amplian el alcance del rol.
+
+RPC: `admin_upsert_organization`
+
+- Solo superadmin puede crear o editar.
+- La identidad y el rol se obtienen de `auth.uid()`; el cliente no envia usuario ni rol.
+- La clave es obligatoria al crear y opcional al editar.
+
+RPC: `admin_delete_organization`
+
+- Elimina solo cuando no existen usuarios ni asistencias vinculadas.
+- Si existe historial, desactiva la organizacion y sus sitios sin borrar evidencia.
+
+RPC: `admin_upsert_site`
+
+- Superadmin opera cualquier organizacion; admin queda limitado por su organizacion/sitio.
+- Valida coordenadas, radio, zona horaria, ventanas de entrada/salida y politicas.
+- Permite varios sitios activos por organizacion.
+
+RPC: `admin_delete_site`
+
+- Elimina un sitio vacio.
+- Si tiene usuarios o asistencias, lo desactiva y conserva el historial.
+
+La tabla `site_identifier_config` no tiene acceso directo desde cliente. Su lectura y escritura pasan por las RPC anteriores.
+
 ### Entrada
 
 RPC: `register_entry`

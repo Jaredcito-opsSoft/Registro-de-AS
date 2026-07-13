@@ -2,7 +2,7 @@
 
 ## Alcance
 
-Revision local del flujo simplificado en Inicio, Registro, Mis registros y Perfil. No se modificaron backend, SQL, Auth, camara, ubicacion, QR, persistencia ni permisos.
+Revision local del flujo simplificado en Inicio, Registro, Mis registros y Perfil. No se modificaron backend, SQL, Auth, QR ni contratos remotos.
 
 ## Viewports revisados
 
@@ -29,7 +29,15 @@ Revision local del flujo simplificado en Inicio, Registro, Mis registros y Perfi
 - Mis registros presenta resumen de jornadas, filtros compactos y estado vacio orientativo.
 - Tarjetas de jornada pendiente y completa verificadas con datos efimeros no persistentes.
 - Las validaciones de identidad, evidencia y ubicacion usan divulgacion progresiva.
-- Smoke automatizado: 136 comprobaciones aprobadas, 0 fallos.
+- Inicio presenta bienvenida personalizada y reloj sin indicador En vivo.
+- Preferencias de camara y ubicacion visibles como interruptores en Perfil.
+- El aviso de permisos se oculta al conceder camara y ubicacion y reaparece si falta cualquiera de los dos.
+- Registro inicia la camara automaticamente y elimina el paso intermedio Activar camara.
+- Selector Estado validado dentro de su contenedor en anchos iPhone, con fuente de 16 px.
+- Avatar local verificado antes y despues de recargar mediante IndexedDB.
+- Admin superadmin revisado con datos reales a 305 y 375 px utiles, sin desbordamiento de pagina.
+- Filtros, formularios y controles de Admin colapsan a una columna; Asistencias conserva desplazamiento dentro de la tabla.
+- Smoke automatizado: 178 comprobaciones aprobadas, 0 fallos.
 
 ## Flujos comprobados
 
@@ -39,11 +47,11 @@ Revision local del flujo simplificado en Inicio, Registro, Mis registros y Perfi
 - Inicio a Perfil.
 - Estado activo de la navegacion en cada ruta.
 - Identidad de sesion visible como resumen y campos internos ocultos.
-- Presencia de controles de camara y ubicacion en Registro.
+- Camara automatica en Registro con permisos concedidos y sin boton de activacion adicional.
 
 ## Limites de la prueba
 
-- No se aceptaron permisos de camara ni ubicacion.
+- Los permisos se validaron con camara y geolocalizacion simuladas por el navegador de pruebas.
 - No se guardaron asistencias reales.
-- No se probo una sesion administrativa autenticada.
+- La sesion administrativa autenticada se recorrio en modo lectura; no se crearon, editaron ni eliminaron datos.
 - No se completo una entrada o salida porque requiere permisos de camara, ubicacion y una captura facial valida.

@@ -16,7 +16,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="stylesheet"
     href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" />
-  <link rel="stylesheet" href="styles.css?v=2.25-records-redesign" />
+  <link rel="stylesheet" href="styles.css?v=2.30-organization-create-fallback" />
 </head>
 
 <body>
@@ -242,11 +242,29 @@
           <span>La app queda en modo lectura local. No se enviaran asistencias hasta recuperar conexion.</span>
         </div>
 
+        <section id="permissionOnboarding" class="permission-onboarding is-hidden" aria-labelledby="permissionOnboardingTitle">
+          <span class="permission-onboarding-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24"><path d="M4 7h3l2-3h6l2 3h3v12H4Z"/><circle cx="12" cy="13" r="3"/><path d="M18 4v4M16 6h4"/></svg>
+          </span>
+          <div>
+            <strong id="permissionOnboardingTitle">Activa cámara y ubicación</strong>
+            <span>Se usan al registrar tu asistencia.</span>
+          </div>
+          <div class="permission-onboarding-actions">
+            <button id="requestAttendancePermissions" class="primary" type="button">Revisar permisos</button>
+          </div>
+        </section>
+
         <section class="dashboard-grid" data-view="home">
+          <section class="home-welcome" aria-labelledby="homeWelcomeTitle">
+            <span id="homeGreeting">Bienvenido</span>
+            <h2 id="homeWelcomeTitle"><span id="homeWelcomeName">Usuario</span></h2>
+            <p>Tu jornada está lista para comenzar.</p>
+          </section>
+
           <section class="hero-panel" aria-labelledby="systemClockTitle">
             <div class="hero-topline">
               <span id="systemClockTitle">Hora del sistema</span>
-              <span class="hero-live-dot"><span class="sys-dot is-live" aria-hidden="true"></span> En vivo</span>
             </div>
             <div class="status-card" role="timer" aria-live="off" aria-atomic="true">
               <span class="clock-icon" aria-hidden="true">
@@ -367,7 +385,6 @@
                 entrada.</p>
               <p class="camera-help">Mira de frente y procura tener buena luz.</p>
               <div class="camera-actions">
-                <button id="startEntryCamera" class="secondary" type="button">Activar camara</button>
                 <button id="takeEntryPhoto" class="primary" type="button" disabled>Tomar foto</button>
               </div>
             </div>
@@ -432,7 +449,6 @@
               </p>
               <p class="camera-help">Sigue la indicacion y mira de frente.</p>
               <div class="camera-actions">
-                <button id="startExitCamera" class="secondary" type="button">Activar camara</button>
                 <button id="takeExitPhoto" class="primary" type="button" disabled>Tomar foto</button>
               </div>
             </div>
@@ -629,10 +645,6 @@
             </div>
           </div>
 
-          <div id="adminStatus" class="notice admin-status-banner" aria-live="polite">
-            Modo lectura activo. No se pueden modificar horarios, fotos, estados ni eliminar registros.
-          </div>
-
           <nav class="admin-config-nav admin-control is-hidden" aria-label="Secciones del panel administrativo">
             <button class="admin-nav-pill is-active" type="button" data-admin-section-target="summary">
               <span class="admin-nav-icon" aria-hidden="true">
@@ -641,19 +653,12 @@
               <strong class="admin-nav-label">Resumen</strong>
               <span class="admin-nav-desc">Estado del dia</span>
             </button>
-            <button class="admin-nav-pill superadmin-only is-hidden" type="button" data-admin-section-target="organizations">
+            <button class="admin-nav-pill" type="button" data-admin-section-target="organizations">
               <span class="admin-nav-icon" aria-hidden="true">
                 <svg viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9 12 2l9 7"/><path d="M9 22V12h6v10"/></svg>
               </span>
               <strong class="admin-nav-label">Organizaciones</strong>
-              <span class="admin-nav-desc">Empresas y claves</span>
-            </button>
-            <button class="admin-nav-pill" type="button" data-admin-section-target="sites">
-              <span class="admin-nav-icon" aria-hidden="true">
-                <svg viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13S3 17 3 10a9 9 0 1 1 18 0Z"/><circle cx="12" cy="10" r="3"/></svg>
-              </span>
-              <strong class="admin-nav-label">Sitios</strong>
-              <span class="admin-nav-desc">GPS y horarios</span>
+              <span class="admin-nav-desc">Empresas y sitios</span>
             </button>
             <button class="admin-nav-pill" type="button" data-admin-section-target="users">
               <span class="admin-nav-icon" aria-hidden="true">
@@ -681,8 +686,7 @@
           <div class="admin-quick-actions admin-control is-hidden" aria-label="Accesos rapidos">
             <button class="admin-quick-chip" type="button" data-admin-section-target="attendances">Ver asistencias</button>
             <button class="admin-quick-chip" type="button" data-admin-section-target="users">Revisar usuarios</button>
-            <button class="admin-quick-chip admin-quick-chip--site" type="button" data-admin-section-target="sites">Configurar sitio</button>
-            <button class="admin-quick-chip superadmin-only is-hidden" type="button" data-admin-section-target="organizations">Organizaciones</button>
+            <button class="admin-quick-chip admin-quick-chip--site" type="button" data-admin-section-target="organizations">Organizaciones y sitios</button>
           </div>
 
           <div class="admin-workspace">
@@ -846,95 +850,107 @@
             </div>
           </div>
 
-          <!-- Organización -->
+          <!-- Organizaciones y sitios -->
           <section class="org-admin-panel admin-control is-hidden admin-section is-hidden" data-admin-section="organizations" aria-labelledby="orgFoundationTitle">
-            <div class="site-admin-header">
+            <div class="site-admin-header organization-hub-header">
               <div>
                 <p class="section-kicker">Base multiempresa</p>
-                <h3 id="orgFoundationTitle">Organizacion principal</h3>
-                <p id="orgFoundationSummary">Estructura lista para organizaciones, sitios, usuarios y asistencias.</p>
+                <h3 id="orgFoundationTitle">Organizaciones y sitios</h3>
+                <p id="orgFoundationSummary">Administra cada empresa y sus ubicaciones desde un solo lugar.</p>
               </div>
-              <span id="orgStatusBadge" class="badge success">Preparado</span>
+              <button id="newOrganizationButton" class="primary compact superadmin-only is-hidden" type="button">Nueva organizacion</button>
             </div>
 
-            <div class="site-dashboard-grid org-dashboard-grid" aria-label="Estado multiempresa">
-              <article class="site-config-card">
-                <small>Organizacion</small>
-                <strong id="orgNameLabel">Organizacion principal</strong>
-                <span id="orgTypeLabel">empresa</span>
-              </article>
-              <article class="site-config-card">
-                <small>Sitios</small>
-                <strong id="orgSitesLabel">0</strong>
-                <span>Ubicaciones vinculadas</span>
-              </article>
-              <article class="site-config-card">
-                <small>Usuarios</small>
-                <strong id="orgUsersLabel">0</strong>
-                <span>Identificadores migrados</span>
-              </article>
-              <article class="site-config-card">
-                <small>Asistencias</small>
-                <strong id="orgAttendancesLabel">0</strong>
-                <span>Registros asignados</span>
-              </article>
+            <div id="organizationHubNotice" class="organization-hub-notice" role="status" aria-live="polite" hidden></div>
+            <div class="organization-hub-layout">
+              <aside class="organization-hub-sidebar" aria-label="Organizaciones disponibles">
+                <label class="organization-search-label" for="organizationSearch">Buscar</label>
+                <input id="organizationSearch" type="search" placeholder="Nombre o slug" autocomplete="off" />
+                <div id="organizationList" class="organization-list organization-picker" aria-live="polite"></div>
+              </aside>
+
+              <div class="organization-hub-main">
+                <section id="organizationDetail" class="organization-detail" aria-label="Organizacion seleccionada">
+                  <div class="organization-detail-header">
+                    <div>
+                      <span id="orgStatusBadge" class="badge default">Selecciona una</span>
+                      <h3 id="orgNameLabel">Organizacion</h3>
+                      <p><span id="orgTypeLabel">Empresa</span> · <span id="orgSlugLabel">sin-slug</span></p>
+                    </div>
+                    <div class="organization-detail-actions superadmin-only is-hidden">
+                      <button id="editOrganizationButton" class="ghost compact" type="button">Editar</button>
+                      <button id="deleteOrganizationButton" class="danger compact" type="button">Eliminar</button>
+                    </div>
+                  </div>
+                  <div class="organization-metrics" aria-label="Resumen de la organizacion">
+                    <span><strong id="orgSitesLabel">0</strong> sitios</span>
+                    <span><strong id="orgUsersLabel">0</strong> usuarios</span>
+                    <span><strong id="orgAttendancesLabel">0</strong> asistencias</span>
+                  </div>
+                  <div class="organization-sites-heading">
+                    <div><p class="section-kicker">Ubicaciones</p><h3>Sitios</h3></div>
+                    <button id="newSiteButton" class="primary compact" type="button">Nuevo sitio</button>
+                  </div>
+                  <div id="siteDirectory" class="organization-sites-list" aria-live="polite"></div>
+                </section>
+              </div>
             </div>
 
-            <form id="organizationForm" class="site-form-grid superadmin-only is-hidden" aria-label="Crear organizacion">
-              <label>
-                Nombre
-                <input id="orgCreateName" autocomplete="organization" placeholder="Ej. Colegio Central" />
-              </label>
-              <label>
-                Tipo
-                <select id="orgCreateType">
-                  <option value="empresa">Empresa</option>
-                  <option value="escuela">Escuela</option>
-                  <option value="negocio_local">Negocio</option>
-                  <option value="centro_trabajo">Centro de trabajo</option>
-                  <option value="otro">Otro</option>
-                </select>
-              </label>
-              <label>
-                Slug
-                <input id="orgCreateSlug" placeholder="colegio-central" />
-              </label>
-              <label>
-                Clave de acceso
-                <input id="orgCreateKey" placeholder="CENTRAL-2026" />
-              </label>
-              <div class="site-actions">
-                <button class="primary" type="submit">Crear organizacion</button>
+            <form id="organizationForm" class="organization-editor site-form-grid superadmin-only is-hidden" aria-label="Editar organizacion" hidden>
+              <input id="orgEditId" type="hidden" />
+              <div class="form-section-heading">
+                <div><p class="section-kicker">Organizacion</p><h3 id="organizationFormTitle">Nueva organizacion</h3></div>
+                <button id="cancelOrganizationEdit" class="ghost compact" type="button">Cancelar</button>
               </div>
-              <p class="site-test-result" data-tone="warning">Comparte esta clave solo con usuarios de esa organización.</p>
+              <label>Nombre<input id="orgCreateName" autocomplete="organization" placeholder="Ej. Colegio Central" required /></label>
+              <label>Tipo<select id="orgCreateType"><option value="empresa">Empresa</option><option value="escuela">Escuela</option><option value="negocio_local">Negocio</option><option value="centro_trabajo">Centro de trabajo</option><option value="otro">Otro</option></select></label>
+              <input id="orgCreateSlug" type="hidden" />
+              <label>Clave de acceso <small id="orgKeyHint">Obligatoria al crear</small><input id="orgCreateKey" type="password" autocomplete="new-password" placeholder="Minimo 8 caracteres" /></label>
+              <label class="inline-check"><input id="orgActive" type="checkbox" checked /> Organizacion activa</label>
+              <div class="site-actions"><button id="saveOrganizationButton" class="primary" type="submit">Guardar organizacion</button></div>
+              <p id="organizationFormStatus" class="site-test-result" data-tone="warning">Los cambios se registran en auditoria.</p>
             </form>
-            <div id="organizationList" class="organization-list" aria-label="Organizaciones disponibles"></div>
-            <div class="admin-directory-grid" aria-label="Directorios administrativos">
-              <section class="admin-directory-section">
-                <div class="site-admin-header compact">
-                  <div>
-                    <p class="section-kicker">Sitios gestionables</p>
-                    <h3>Ubicaciones y llaves</h3>
-                    <p>Controla sitios activos, horarios, radios GPS y llave especial por sitio.</p>
-                  </div>
-                </div>
-                <div id="siteDirectory" class="organization-list compact-list" aria-label="Sitios gestionables"></div>
-              </section>
-              <section class="admin-directory-section">
-                <div class="site-admin-header compact">
-                  <div>
-                    <p class="section-kicker">Usuarios gestionables</p>
-                    <h3>Personas y roles</h3>
-                    <p>Superadmin ve todo. Administrador de sitio solo ve usuarios de su alcance.</p>
-                  </div>
-                </div>
-                <div id="userDirectory" class="organization-list compact-list" aria-label="Usuarios gestionables"></div>
-              </section>
-            </div>
-            <div class="auth-roadmap" aria-label="Politica de administracion">
-              <span>Separacion activa</span>
-              <p>El acceso administrativo se decide por rol en Supabase, no por botones de desbloqueo visibles.</p>
-            </div>
+
+            <form id="siteForm" class="organization-editor site-form-grid" aria-label="Editar sitio" hidden>
+              <input id="siteEditId" type="hidden" />
+              <input id="siteOrganizationId" type="hidden" />
+              <div class="form-section-heading">
+                <div><p class="section-kicker">Sitio</p><h3 id="siteFormTitle">Nuevo sitio</h3></div>
+                <button id="cancelSiteEdit" class="ghost compact" type="button">Cancelar</button>
+              </div>
+              <label>Nombre<input id="siteName" autocomplete="organization" placeholder="Ej. Planta principal" required /></label>
+              <label>Direccion<input id="siteAddress" autocomplete="street-address" placeholder="Calle, numero, colonia" /></label>
+              <fieldset class="form-field-group">
+                <legend>Ubicacion exacta</legend>
+                <label>Latitud<input id="siteLat" inputmode="decimal" placeholder="19.432608" required /></label>
+                <label>Longitud<input id="siteLng" inputmode="decimal" placeholder="-99.133209" required /></label>
+                <label>Radio permitido (m)<input id="siteRadius" type="number" min="20" max="1000" step="1" value="150" required /></label>
+                <button id="useAdminLocation" class="ghost" type="button">Usar mi ubicacion</button>
+              </fieldset>
+              <fieldset class="form-field-group">
+                <legend>Horarios</legend>
+                <label>Entrada desde<input id="siteEntryStart" type="time" value="07:30" required /></label>
+                <label>Entrada hasta<input id="siteEntryEnd" type="time" value="08:15" required /></label>
+                <label>Salida desde<input id="siteExitStart" type="time" value="16:30" required /></label>
+                <label>Salida hasta<input id="siteExitEnd" type="time" value="17:10" required /></label>
+                <label>Zona horaria<input id="siteTimezone" value="America/Mexico_City" required /></label>
+              </fieldset>
+              <fieldset class="form-field-group">
+                <legend>Validaciones</legend>
+                <label>GPS<select id="siteGpsPolicy"><option value="revision">Enviar a revision</option><option value="obligatorio">Obligatorio</option><option value="bloqueo">Bloquear fuera de zona</option><option value="informativo">Solo informativo</option><option value="opcional">Opcional</option></select></label>
+                <label>Evidencia<select id="siteEvidencePolicy"><option value="rostro">Foto de rostro</option><option value="foto_simple">Foto simple</option><option value="documento">Documento</option><option value="rostro_documento">Rostro y documento</option></select></label>
+                <label>Nombre del identificador<input id="siteIdentifierLabel" value="Identificador" placeholder="Ej. Matricula" /></label>
+              </fieldset>
+              <label>Llave del sitio <small>Dejala vacia para conservarla</small><input id="siteKey" type="password" autocomplete="new-password" placeholder="Minimo 8 caracteres" /></label>
+              <label class="inline-check"><input id="siteActive" type="checkbox" checked /> Sitio activo</label>
+              <div class="site-actions">
+                <button id="generateSiteKey" class="ghost" type="button">Generar clave</button>
+                <button id="copySiteKey" class="ghost" type="button">Copiar</button>
+                <button id="testAdminLocation" class="secondary" type="button">Probar ubicacion</button>
+                <button class="primary" type="submit">Guardar sitio</button>
+              </div>
+              <p id="siteTestResult" class="site-test-result" data-tone="warning">Configura la ubicacion y el horario operativo.</p>
+            </form>
           </section>
 
 
@@ -989,100 +1005,6 @@
               </aside>
             </div>
           </section>
-          <!-- Configuración de Sitio -->
-          <section class="site-admin-panel admin-control is-hidden admin-section is-hidden" data-admin-section="sites" aria-labelledby="siteConfigTitle">
-            <div class="site-admin-header">
-              <div>
-                <p class="section-kicker">Configuracion del sitio</p>
-                <h3 id="siteConfigTitle">Ubicacion oficial</h3>
-                <p id="siteStatusSummary">Configura el sitio oficial para activar la validacion global de ubicacion.</p>
-              </div>
-              <span id="siteStatusBadge" class="badge warning">Sitio pendiente</span>
-            </div>
-
-            <div class="site-dashboard-grid" aria-label="Estado del sitio activo">
-              <article class="site-config-card">
-                <small>Sitio</small>
-                <strong id="siteNameLabel">Sin sitio configurado</strong>
-                <span id="siteAddressLabel">Pendiente de direccion</span>
-              </article>
-              <article class="site-config-card">
-                <small>Coordenadas</small>
-                <strong id="siteCoordsLabel">Pendiente</strong>
-                <span>Radio: <b id="siteRadiusLabel">Pendiente</b></span>
-              </article>
-              <article class="site-config-card">
-                <small>Horarios</small>
-                <strong>Entrada <span id="siteEntryHoursLabel">07:30 - 08:15</span></strong>
-                <span>Salida <b id="siteExitHoursLabel">16:30 - 17:10</b></span>
-              </article>
-              <article class="site-config-card">
-                <small>Zona y prueba</small>
-                <strong id="siteTimezoneLabel">America/Mexico_City</strong>
-                <span id="sitePrecisionLabel">Sin prueba reciente</span>
-              </article>
-            </div>
-
-            <form id="siteForm" class="site-form-grid">
-              <label>
-                Nombre del sitio
-                <input id="siteName" autocomplete="organization" placeholder="Ej. Planta principal" required />
-              </label>
-              <label>
-                Direccion
-                <input id="siteAddress" autocomplete="street-address" placeholder="Calle, numero, colonia" />
-              </label>
-              <label>
-                Latitud
-                <input id="siteLat" inputmode="decimal" placeholder="19.432608" required />
-              </label>
-              <label>
-                Longitud
-                <input id="siteLng" inputmode="decimal" placeholder="-99.133209" required />
-              </label>
-              <label>
-                Radio permitido (m)
-                <input id="siteRadius" type="number" min="20" max="1000" step="1" value="150" required />
-              </label>
-              <label>
-                Zona horaria
-                <input id="siteTimezone" value="America/Mexico_City" required />
-              </label>
-              <label>
-                Entrada inicio
-                <input id="siteEntryStart" type="time" value="07:30" required />
-              </label>
-              <label>
-                Entrada fin
-                <input id="siteEntryEnd" type="time" value="08:15" required />
-              </label>
-              <label>
-                Salida inicio
-                <input id="siteExitStart" type="time" value="16:30" required />
-              </label>
-              <label>
-                Salida fin
-                <input id="siteExitEnd" type="time" value="17:10" required />
-              </label>
-              <label>
-                Llave especial del sitio
-                <input id="siteKey" type="text" autocomplete="off" placeholder="Ej. PLANTA-A-2026" />
-              </label>
-              <label class="inline-check">
-                <input id="siteActive" type="checkbox" checked />
-                Mantener como sitio activo
-              </label>
-              <div class="site-actions">
-                <button id="generateSiteKey" class="ghost" type="button">Generar key</button>
-                <button id="copySiteKey" class="ghost" type="button">Copiar key</button>
-                <button id="useAdminLocation" class="ghost" type="button">Usar mi ubicacion</button>
-                <button id="testAdminLocation" class="secondary" type="button">Probar ubicacion</button>
-                <button class="primary" type="submit">Guardar sitio</button>
-              </div>
-              <p id="siteTestResult" class="site-test-result" data-tone="warning">Captura nombre, coordenadas, radio y horarios.</p>
-            </form>
-          </section>
-
           <!-- Auditoría -->
           <div class="audit-box admin-control is-hidden admin-section is-hidden" data-admin-section="audit">
             <h3>Auditoria administrativa</h3>
@@ -1113,13 +1035,12 @@
                   <label id="profileAvatarChangeLabel" class="profile-avatar-action" for="profileAvatarInput">Agregar foto</label>
                   <input id="profileAvatarInput" class="visually-hidden" type="file" accept="image/*" />
                   <button id="removeProfileAvatar" class="profile-avatar-action is-danger" type="button" disabled>Quitar foto</button>
-                  <small>Solo durante esta sesión; no se guarda en el sistema.</small>
+                  <small>Guardada en este dispositivo.</small>
                 </div>
               </div>
               <div class="profile-identity-copy">
                 <h3 id="profileDisplayName">Usuario</h3>
                 <p id="profileDisplayIdentifier" class="profile-identifier">Identificador pendiente</p>
-                <p class="profile-attendance-state"><span aria-hidden="true"></span>Perfil de asistencia activo</p>
               </div>
             </section>
 
@@ -1183,7 +1104,7 @@
                 </div>
               </section>
 
-              <fieldset class="profile-section profile-fieldset profile-context">
+              <fieldset id="profilePermissions" class="profile-section profile-fieldset profile-context" tabindex="-1">
                 <legend>Permisos y seguridad</legend>
                 <div class="profile-static-row">
                   <span class="profile-row-icon" aria-hidden="true">RL</span>
@@ -1193,14 +1114,17 @@
                   <span class="profile-row-icon" aria-hidden="true">OK</span>
                   <span class="profile-row-content"><strong>Alcance de permisos</strong><textarea id="profileScope" rows="3" readonly class="readonly-field profile-scope" aria-label="Alcance de permisos"></textarea></span>
                 </div>
-                <div class="profile-static-row">
+                <label class="profile-permission-row" for="profileCameraEnabled">
                   <span class="profile-row-icon" aria-hidden="true">CM</span>
-                  <span class="profile-row-content"><strong>Permiso de cámara</strong><small>Se solicitará al registrar asistencia</small></span>
-                </div>
-                <div class="profile-static-row">
+                  <span class="profile-row-content"><strong>Cámara</strong><small id="profileCameraPermissionStatus">Comprobando permiso</small></span>
+                  <input id="profileCameraEnabled" type="checkbox" role="switch" checked />
+                </label>
+                <label class="profile-permission-row" for="profileLocationEnabled">
                   <span class="profile-row-icon" aria-hidden="true">UB</span>
-                  <span class="profile-row-content"><strong>Ubicación</strong><small>Se solicitará al registrar asistencia</small></span>
-                </div>
+                  <span class="profile-row-content"><strong>Ubicación</strong><small id="profileLocationPermissionStatus">Comprobando permiso</small></span>
+                  <input id="profileLocationEnabled" type="checkbox" role="switch" checked />
+                </label>
+                <p class="profile-permission-help">En iPhone, los permisos del sistema se cambian desde Ajustes &gt; Safari.</p>
               </fieldset>
               <div class="form-actions profile-actions">
                 <button id="save-profile-btn" class="primary wide" type="submit">Guardar cambios</button>
@@ -1230,7 +1154,7 @@
   <script src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
   <script src="supabase-config.js?v=f0-mobile-shell"></script>
   <script src="auth.js?v=f0-mobile-shell"></script>
-  <script src="app.js?v=2.20-records-redesign"></script>
+  <script src="app.js?v=2.27-organization-hotfix-message"></script>
 </body>
 
 </html>
