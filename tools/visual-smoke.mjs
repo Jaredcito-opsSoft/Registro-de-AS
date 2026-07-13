@@ -83,8 +83,8 @@ async function runViewportSmoke(browser, label, profile) {
     await assertVisible(page, ".attendance-identity-summary", `${prefix}: automatic identity summary`);
     const visibleIdentityInputs = await page.locator('#entryName:visible, #entryMatricula:visible, #exitMatricula:visible').count();
     record(`${prefix}: identity inputs hidden`, visibleIdentityInputs === 0, `${visibleIdentityInputs} visible`);
-    const activateCameraButtons = await page.locator("#startEntryCamera, #startExitCamera").count();
-    record(`${prefix}: no activate camera step`, activateCameraButtons === 0, `${activateCameraButtons} buttons`);
+    const visibleCameraRetryButtons = await page.locator("#startEntryCamera:visible, #startExitCamera:visible").count();
+    record(`${prefix}: no activate camera step when stream works`, visibleCameraRetryButtons === 0, `${visibleCameraRetryButtons} visible`);
     const activeCamera = await page.waitForFunction(() => {
       const video = document.querySelector('[data-view="entry"]:not(.is-hidden) video, [data-view="exit"]:not(.is-hidden) video');
       const liveTrack = video?.srcObject?.getVideoTracks?.().some((track) => track.readyState === "live");

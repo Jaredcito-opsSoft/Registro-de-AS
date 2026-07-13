@@ -1,4 +1,4 @@
-const CACHE_VERSION = "asistencia-qr-static-v21-mobile-pwa-media";
+const CACHE_VERSION = "asistencia-qr-static-v22-name-liveness-daily";
 const STATIC_ASSETS = [
   "/",
   "/index.html",

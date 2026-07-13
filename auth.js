@@ -115,6 +115,9 @@ async function crearCuenta(email, password, nombre, matricula, organizationKey =
   const cleanMatricula = String(matricula || "").trim();
   const cleanOrganizationKey = String(organizationKey || organizationSlug || "").trim();
   const cleanPhone = String(phone || "").trim();
+  if (!/^\p{L}+(?:\s+\p{L}+)*$/u.test(cleanNombre) || cleanNombre.length < 2 || cleanNombre.length > 80) {
+    throw new Error("El nombre es obligatorio y solo puede contener letras y espacios.");
+  }
 
   try {
     const response = await fetch(`${window.SUPABASE_CONFIG.url}/auth/v1/signup`, {
@@ -264,6 +267,10 @@ async function actualizarPerfil(email, nombre, matricula) {
 
   const url = `${window.SUPABASE_CONFIG.url}/auth/v1/user`;
   const cleanEmail = String(email || "").trim().toLowerCase();
+  const cleanNombre = String(nombre || "").trim();
+  if (!/^\p{L}+(?:\s+\p{L}+)*$/u.test(cleanNombre) || cleanNombre.length < 2 || cleanNombre.length > 80) {
+    throw new Error("El nombre es obligatorio y solo puede contener letras y espacios.");
+  }
 
   try {
     const response = await fetch(url, {
@@ -272,7 +279,7 @@ async function actualizarPerfil(email, nombre, matricula) {
       body: JSON.stringify({
         email: cleanEmail,
         data: {
-          nombre: String(nombre || "").trim(),
+          nombre: cleanNombre,
           matricula: String(matricula || "").trim(),
         },
       }),

@@ -46,7 +46,8 @@
         <!-- Solo en registro -->
         <label id="label-name" class="is-hidden">
           Nombre completo
-          <input id="authName" type="text" autocomplete="name" placeholder="Ej. Ana Lopez Perez" />
+          <input id="authName" type="text" autocomplete="name" inputmode="text" minlength="2" maxlength="80"
+            pattern="[A-Za-zÁÉÍÓÚÜÑáéíóúüñ ]+" placeholder="Ej. Ana Lopez Perez" />
         </label>
 
         <label id="label-matricula" class="is-hidden">
@@ -1054,7 +1055,8 @@
                   <span class="profile-row-icon" aria-hidden="true">US</span>
                   <span class="profile-row-content">
                     <span class="profile-row-label">Nombre completo</span>
-                    <input id="profileName" type="text" placeholder="Ej. Ana Lopez Perez" required />
+                    <input id="profileName" type="text" inputmode="text" autocomplete="name" minlength="2" maxlength="80"
+                      pattern="[A-Za-zÁÉÍÓÚÜÑáéíóúüñ ]+" placeholder="Ej. Ana Lopez Perez" required />
                   </span>
                 </label>
                 <label class="profile-data-row">
@@ -1180,8 +1182,8 @@
 
   <script src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
   <script src="supabase-config.js?v=f0-mobile-shell"></script>
-  <script src="auth.js?v=f0-mobile-shell"></script>
-  <script src="app.js?v=2.33-mobile-pwa-media"></script>
+  <script src="auth.js?v=2.1-name-validation"></script>
+  <script src="app.js?v=2.34-name-liveness-daily"></script>
 </body>
 
 </html>

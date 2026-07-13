@@ -9,20 +9,11 @@ const FACE_MODEL_URL = window.location.origin + "/models";
 const DEFAULT_TIMEZONE = "America/Mexico_City";
 const FACE_DISTANCE_STRONG = 0.46;
 const FACE_DISTANCE_REVIEW = 0.62;
-const LIFE_CHALLENGES = [
-  "Mira a la izquierda",
-  "Mira a la derecha",
-  "Sonrie",
-  "Levanta la mano derecha",
-  "Levanta la mano izquierda",
-  "Toca tu oreja",
-  "Acercate ligeramente a la camara",
-];
 const SUPABASE = window.SUPABASE_CONFIG || {};
 const CLOUD_ENABLED = Boolean(SUPABASE.url && SUPABASE.publishableKey && SUPABASE.bucket);
 const PHOTO_BUCKET = SUPABASE.bucket || "attendance-photos";
 const GEO_PRECISION_MAX_METERS = 200;
-const LOCAL_ASSET_VERSION = "2.20-mobile-pwa-media";
+const LOCAL_ASSET_VERSION = "2.21-name-liveness-daily";
 const ATTENDANCE_STREAK_RPC_ENABLED = SUPABASE.enableAttendanceStreakRpc === true;
 const KNOWN_SUPERADMIN_EMAILS = new Set([
   "alexisdavid1177@gmail.com",
@@ -117,6 +108,9 @@ const state = {
   cameraStartPromises: { entry: null, exit: null },
   cameraRetryTimers: { entry: null, exit: null },
   cameraNeedsGesture: { entry: false, exit: false },
+  livenessRunning: { entry: false, exit: false },
+  livenessVerified: { entry: false, exit: false },
+  attendanceSubmitting: { entry: false, exit: false },
   loadingRecords: false,
   facialModelsLoaded: false,
   facialModelsError: false,
@@ -2669,8 +2663,8 @@ function syncCaptureControls() {
     els.startExitCamera.disabled = !state.permissionPreferences.camera || !state.exitActiveRecord;
     els.startExitCamera.classList.toggle("is-hidden", !state.cameraNeedsGesture.exit || Boolean(state.exitStream) || !state.exitActiveRecord);
   }
-  if (els.takeEntryPhoto) els.takeEntryPhoto.disabled = !canUseFace || !state.entryStream;
-  if (els.takeExitPhoto) els.takeExitPhoto.disabled = !canStartExit || !state.exitStream;
+  if (els.takeEntryPhoto) els.takeEntryPhoto.disabled = !canUseFace || !state.entryStream || state.livenessRunning.entry;
+  if (els.takeExitPhoto) els.takeExitPhoto.disabled = !canStartExit || !state.exitStream || state.livenessRunning.exit;
 }
 
 async function loadFaceModels() {
@@ -2731,6 +2725,7 @@ function descriptorToArray(descriptor) {
 function clearCapturedFace(kind) {
   state[`${kind}Photo`] = "";
   state[`${kind}Face`] = null;
+  state.livenessVerified[kind] = false;
   const preview = kind === "entry" ? els.entryPreview : els.exitPreview;
   preview.removeAttribute("src");
   preview.classList.add("is-hidden");
@@ -2822,7 +2817,7 @@ function evaluateFaceMatch(entryDescriptor, exitDescriptor) {
 }
 
 function pickLifeChallenge() {
-  state.lifeChallenge = LIFE_CHALLENGES[Math.floor(Math.random() * LIFE_CHALLENGES.length)];
+  state.lifeChallenge = "Parpadea una vez frente a la camara";
   if (els.lifeChallenge) els.lifeChallenge.textContent = state.lifeChallenge;
 }
 
@@ -3030,6 +3025,57 @@ function stopCamera(kind) {
   syncCaptureControls();
 }
 
+function pointDistance(a, b) {
+  return Math.hypot(Number(a.x) - Number(b.x), Number(a.y) - Number(b.y));
+}
+
+function eyeAspectRatio(points) {
+  if (!Array.isArray(points) || points.length < 6) return 0;
+  const horizontal = pointDistance(points[0], points[3]);
+  if (!horizontal) return 0;
+  return (pointDistance(points[1], points[5]) + pointDistance(points[2], points[4])) / (2 * horizontal);
+}
+
+async function verifyBlinkLiveness(video, kind) {
+  const status = kind === "entry" ? els.entryFaceStatus : els.exitFaceStatus;
+  const sample = document.createElement("canvas");
+  const sampleSize = 240;
+  sample.width = sampleSize;
+  sample.height = sampleSize;
+  const context = sample.getContext("2d", { willReadFrequently: true });
+  const deadline = Date.now() + 6500;
+  let baseline = 0;
+  let sawOpenEyes = false;
+  let sawClosedEyes = false;
+
+  setFaceStatus(status, "Prueba de vida: parpadea una vez.", "pending");
+  while (Date.now() < deadline) {
+    context.drawImage(video, 0, 0, sampleSize, sampleSize);
+    const detections = await faceapi
+      .detectAllFaces(sample, new faceapi.TinyFaceDetectorOptions({ inputSize: 224, scoreThreshold: 0.5 }))
+      .withFaceLandmarks();
+
+    if (detections.length === 1) {
+      const landmarks = detections[0].landmarks;
+      const ratio = (eyeAspectRatio(landmarks.getLeftEye()) + eyeAspectRatio(landmarks.getRightEye())) / 2;
+      baseline = Math.max(baseline, ratio);
+      if (baseline >= 0.16 && ratio >= baseline * 0.82) sawOpenEyes = true;
+      if (sawOpenEyes && ratio <= baseline * 0.68) sawClosedEyes = true;
+      if (sawClosedEyes && ratio >= baseline * 0.82) {
+        state.livenessVerified[kind] = true;
+        setFaceStatus(status, "Prueba de vida confirmada. Capturando foto...", "success");
+        return true;
+      }
+    }
+    await new Promise((resolve) => window.setTimeout(resolve, 120));
+  }
+
+  state.livenessVerified[kind] = false;
+  setFaceStatus(status, "No se detecto el parpadeo. No uses una foto o captura de pantalla.", "danger");
+  showToast("No se confirmo la prueba de vida. Parpadea frente a la camara e intenta otra vez.");
+  return false;
+}
+
 async function takePhoto(kind) {
   const video = kind === "entry" ? els.entryVideo : els.exitVideo;
   const canvas = kind === "entry" ? els.entryCanvas : els.exitCanvas;
@@ -3045,13 +3091,22 @@ async function takePhoto(kind) {
     return;
   }
 
-  const maxWidth = 960;
-  const scale = Math.min(1, maxWidth / video.videoWidth);
-  canvas.width = Math.round(video.videoWidth * scale);
-  canvas.height = Math.round(video.videoHeight * scale);
-  canvas.getContext("2d").drawImage(video, 0, 0, canvas.width, canvas.height);
-
+  if (state.livenessRunning[kind]) return;
+  state.livenessRunning[kind] = true;
+  state.livenessVerified[kind] = false;
+  syncCaptureControls();
   try {
+    const isLive = await verifyBlinkLiveness(video, kind);
+    if (!isLive) {
+      clearCapturedFace(kind);
+      return;
+    }
+
+    const maxWidth = 960;
+    const scale = Math.min(1, maxWidth / video.videoWidth);
+    canvas.width = Math.round(video.videoWidth * scale);
+    canvas.height = Math.round(video.videoHeight * scale);
+    canvas.getContext("2d").drawImage(video, 0, 0, canvas.width, canvas.height);
     const face = await detectSingleFace(canvas, kind);
     if (!face) {
       clearCapturedFace(kind);
@@ -3066,11 +3121,25 @@ async function takePhoto(kind) {
   } catch (error) {
     clearCapturedFace(kind);
     showToast("No se pudo analizar el rostro. Vuelve a tomar la foto.");
+  } finally {
+    state.livenessRunning[kind] = false;
+    syncCaptureControls();
   }
 }
 
 function normalizeMatricula(value) {
   return value.trim().toUpperCase();
+}
+
+function sanitizePersonName(value) {
+  return String(value || "")
+    .replace(/[^\p{L}\s]/gu, "")
+    .replace(/\s{2,}/g, " ");
+}
+
+function isValidPersonName(value) {
+  const normalized = String(value || "").trim();
+  return normalized.length >= 2 && normalized.length <= 80 && /^\p{L}+(?:\s+\p{L}+)*$/u.test(normalized);
 }
 
 function todayRecordByMatricula(matricula) {
@@ -3218,84 +3287,105 @@ async function validateExitMatricula({ showErrors = false } = {}) {
 
 async function handleEntrySubmit(event) {
   event.preventDefault();
-
   const nombre = els.entryName.value.trim();
   const matricula = normalizeMatricula(els.entryMatricula.value);
 
-  if (!state.entryPhoto || !state.entryFace || !nombre || !matricula) {
-    showToast("Falta foto con rostro valido, nombre o identificador para guardar la entrada.");
+  if (!state.entryPhoto || !state.entryFace || !state.livenessVerified.entry || !nombre || !matricula) {
+    showToast("Completa la prueba de vida y toma una foto valida antes de guardar la entrada.");
     return;
   }
+  if (state.attendanceSubmitting.entry) return;
 
-  await refreshRecords({ silent: true });
-
-  if (todayRecordByMatricula(matricula)) {
-    showToast("Ya existe un registro para ese identificador el dia de hoy.");
-    return;
-  }
-
-  const location = await requestAttendanceLocation("entry");
-
+  state.attendanceSubmitting.entry = true;
+  const submitButton = event.submitter || els.entryForm.querySelector('button[type="submit"]');
+  if (submitButton) submitButton.disabled = true;
   try {
-    const record = await insertEntryRecord({
-      nombre,
-      matricula,
-      fotoEntrada: state.entryPhoto,
-      descriptorEntrada: state.entryFace.descriptor,
-      location,
-    });
-    state.records.unshift(record);
-    persistLocalSnapshot();
-    state.entryPhoto = "";
-    state.entryFace = null;
-    els.entryForm.reset();
-    els.entryPreview.classList.add("is-hidden");
-    setFaceStatus(els.entryFaceStatus, "Listo para nueva captura.");
-    stopCamera("entry");
     await refreshRecords({ silent: true });
-    showGuidedPanel("entry");
-    showToast(record.riesgo === "normal" || record.riesgo === "entrada_registrada" ? "Entrada registrada correctamente." : "Entrada registrada, requiere revision administrativa.");
-  } catch (error) {
-    showToast("No se pudo guardar la entrada global. Intenta de nuevo.");
+    if (todayRecordByMatricula(matricula)) {
+      showToast("Hoy ya registraste tu entrada. Solo corresponde registrar la salida.");
+      await openAttendanceView();
+      return;
+    }
+
+    const location = await requestAttendanceLocation("entry");
+    try {
+      const record = await insertEntryRecord({
+        nombre,
+        matricula,
+        fotoEntrada: state.entryPhoto,
+        descriptorEntrada: state.entryFace.descriptor,
+        location,
+      });
+      state.records.unshift(record);
+      persistLocalSnapshot();
+      state.entryPhoto = "";
+      state.entryFace = null;
+      state.livenessVerified.entry = false;
+      els.entryForm.reset();
+      els.entryPreview.classList.add("is-hidden");
+      setFaceStatus(els.entryFaceStatus, "Listo para nueva captura.");
+      stopCamera("entry");
+      await refreshRecords({ silent: true });
+      showGuidedPanel("entry");
+      showToast(record.riesgo === "normal" || record.riesgo === "entrada_registrada" ? "Entrada registrada correctamente." : "Entrada registrada, requiere revision administrativa.");
+    } catch (error) {
+      const duplicate = /duplicate|unique|ya existe/i.test(String(error?.message || error));
+      showToast(duplicate ? "Hoy ya existe una entrada para esta cuenta." : "No se pudo guardar la entrada global. Intenta de nuevo.");
+    }
+  } finally {
+    state.attendanceSubmitting.entry = false;
+    if (submitButton) submitButton.disabled = false;
   }
 }
 async function handleExitSubmit(event) {
   event.preventDefault();
-
-
-  const record = await validateExitMatricula({ showErrors: true });
-  if (!record) return;
-
-  if (!state.exitPhoto || !state.exitFace) {
-    showToast("Falta foto de salida con rostro valido.");
+  if (state.attendanceSubmitting.exit) return;
+  if (!state.exitPhoto || !state.exitFace || !state.livenessVerified.exit) {
+    showToast("Completa la prueba de vida y toma una foto valida antes de guardar la salida.");
     return;
   }
 
-  const location = await requestExitLocation();
-
+  state.attendanceSubmitting.exit = true;
+  const submitButton = event.submitter || els.exitForm.querySelector('button[type="submit"]');
+  if (submitButton) submitButton.disabled = true;
   try {
-    const updated = await updateExitRecord(record, {
-      fotoSalida: state.exitPhoto,
-      descriptorSalida: state.exitFace.descriptor,
-      location,
-      lifeChallenge: state.lifeChallenge,
-    });
-    state.exitPhoto = "";
-    state.exitFace = null;
-    state.exitActiveRecord = null;
-    els.exitForm.reset();
-    els.exitPreview.classList.add("is-hidden");
-    setExitLookupInfo("Salida registrada correctamente.", "success");
-    setFaceStatus(els.exitFaceStatus, "Listo para nueva captura.");
-    pickLifeChallenge();
-    stopCamera("exit");
-    syncCaptureControls();
-    await refreshRecords({ silent: true });
-    showGuidedPanel("exit");
-    showToast(updated.riesgo === "normal" ? "Salida registrada y validada." : "Salida registrada, pero requiere revision administrativa.");
-  } catch (error) {
-    const message = "No se pudo guardar la salida segura. Intenta de nuevo.";
-    showToast(message);
+    const record = await validateExitMatricula({ showErrors: true });
+    if (!record) return;
+    if (record.horaSalida) {
+      showToast("La salida de hoy ya fue registrada.");
+      await openAttendanceView();
+      return;
+    }
+
+    const location = await requestExitLocation();
+    try {
+      const updated = await updateExitRecord(record, {
+        fotoSalida: state.exitPhoto,
+        descriptorSalida: state.exitFace.descriptor,
+        location,
+        lifeChallenge: state.lifeChallenge,
+      });
+      state.exitPhoto = "";
+      state.exitFace = null;
+      state.livenessVerified.exit = false;
+      state.exitActiveRecord = null;
+      els.exitForm.reset();
+      els.exitPreview.classList.add("is-hidden");
+      setExitLookupInfo("Salida registrada correctamente.", "success");
+      setFaceStatus(els.exitFaceStatus, "Listo para nueva captura.");
+      pickLifeChallenge();
+      stopCamera("exit");
+      syncCaptureControls();
+      await refreshRecords({ silent: true });
+      showGuidedPanel("exit");
+      showToast(updated.riesgo === "normal" ? "Salida registrada y validada." : "Salida registrada, pero requiere revision administrativa.");
+    } catch (error) {
+      const duplicate = /salida.*ya fue registrada|duplicate|unique/i.test(String(error?.message || error));
+      showToast(duplicate ? "La salida de hoy ya fue registrada." : "No se pudo guardar la salida segura. Intenta de nuevo.");
+    }
+  } finally {
+    state.attendanceSubmitting.exit = false;
+    if (submitButton) submitButton.disabled = false;
   }
 }
 function statusLabel(value) {
@@ -5148,6 +5238,13 @@ async function handleAuthSubmit(event) {
         els.authSubmitBtn.textContent = originalText;
         return;
       }
+      if (!isValidPersonName(nombre)) {
+        showToast("El nombre es obligatorio y solo puede contener letras y espacios.");
+        els.authName.focus();
+        els.authSubmitBtn.disabled = false;
+        els.authSubmitBtn.textContent = originalText;
+        return;
+      }
 
       const orgKey = els.authOrgKey?.value.trim() || "";
       if (orgKey) localStorage.setItem("registro_asistencia_org_key", orgKey);
@@ -5185,6 +5282,11 @@ function handleUpdateProfile(event) {
 
   if (!nombre || !matricula || !email) {
     showToast("Todos los campos del perfil son obligatorios.");
+    return;
+  }
+  if (!isValidPersonName(nombre)) {
+    showToast("El nombre es obligatorio y solo puede contener letras y espacios.");
+    els.profileName.focus();
     return;
   }
 
@@ -5333,6 +5435,16 @@ async function init() {
   console.log("Inicializando manejadores y eventos de la aplicación...");
 
   setupPwaInstall();
+
+  [els.authName, els.profileName].filter(Boolean).forEach((input) => {
+    input.addEventListener("input", () => {
+      const sanitized = sanitizePersonName(input.value);
+      if (input.value !== sanitized) input.value = sanitized;
+    });
+    input.addEventListener("blur", () => {
+      input.value = input.value.trim().replace(/\s+/g, " ");
+    });
+  });
 
   // 1. Registro de manejadores de navegación (usando querySelectorAll para obtener una lista real)
   document.querySelectorAll('[data-target]').forEach((button) => {
