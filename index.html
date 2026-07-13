@@ -16,7 +16,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="stylesheet"
     href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" />
-  <link rel="stylesheet" href="styles.css?v=2.13-mobile-nav" />
+  <link rel="stylesheet" href="styles.css?v=2.25-records-redesign" />
 </head>
 
 <body>
@@ -157,26 +157,14 @@
           </span>
           <span class="nav-label">Inicio</span>
         </button>
-        <button class="nav-button" data-target="entry" type="button" aria-label="Entrada">
+        <button class="nav-button" data-target="attendance" type="button" aria-label="Registro">
           <span class="nav-icon" aria-hidden="true">
             <svg viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" />
               <circle cx="12" cy="13" r="4" />
             </svg>
           </span>
-          <span class="nav-label">Entrada</span>
-        </button>
-        <button class="nav-button" data-target="exit" type="button" aria-label="Salida">
-          <span class="nav-icon" aria-hidden="true">
-            <svg viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
-              <rect x="7" y="7" width="3" height="3" />
-              <rect x="14" y="7" width="3" height="3" />
-              <rect x="7" y="14" width="3" height="3" />
-              <rect x="14" y="14" width="3" height="3" />
-            </svg>
-          </span>
-          <span class="nav-label">Salida</span>
+          <span class="nav-label">Registro</span>
         </button>
         <button class="nav-button" data-target="records" type="button" aria-label="Registros">
           <span class="nav-icon" aria-hidden="true">
@@ -235,15 +223,17 @@
           <h1>Asistencia QR</h1>
         </div>
 
-        <div class="sys-status-bar" aria-label="Estado del sistema">
-          <span class="sys-time-chip">
-            <span class="sys-dot is-live" aria-hidden="true"></span>
-            Sistema activo
+        <button id="headerProfileAvatar" class="header-profile-avatar header-avatar-trigger" data-target="profile" type="button" aria-label="Ir a perfil">
+          <span class="header-avatar-frame">
+            <img id="headerAvatarImage" class="header-avatar-image" alt="Foto de perfil seleccionada localmente" hidden />
+            <span id="headerAvatarFallback" class="header-avatar-fallback" aria-hidden="true">
+              <svg viewBox="0 0 24 24" focusable="false">
+                <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+                <circle cx="12" cy="7" r="4"></circle>
+              </svg>
+            </span>
           </span>
-          <span id="headerFaceState" class="sys-qr-chip" data-tone="pending">Facial:
-            cargando</span>
-          <span id="headerQrState" class="sys-qr-chip" data-tone="inactive">QR: verificando…</span>
-        </div>
+        </button>
       </header>
 
       <main>
@@ -253,21 +243,37 @@
         </div>
 
         <section class="dashboard-grid" data-view="home">
-          <section class="hero-panel">
+          <section class="hero-panel" aria-labelledby="systemClockTitle">
             <div class="hero-topline">
-              <span>Hora del sistema</span>
-              <span class="hero-live-dot"><span class="sys-dot is-live" aria-hidden="true" style="background:#fff;box-shadow:0 0 0 3px rgba(255,255,255,0.3)"></span> En vivo</span>
+              <span id="systemClockTitle">Hora del sistema</span>
+              <span class="hero-live-dot"><span class="sys-dot is-live" aria-hidden="true"></span> En vivo</span>
             </div>
-            <div class="status-card" aria-live="polite">
-              <small>Hora del sistema</small>
-              <span id="clockLabel">--:--</span>
+            <div class="status-card" role="timer" aria-live="off" aria-atomic="true">
+              <span class="clock-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" focusable="false">
+                  <circle cx="12" cy="12" r="9"></circle>
+                  <path d="M12 7v5l3 2"></path>
+                </svg>
+              </span>
+              <span class="clock-copy">
+                <time id="clockLabel" datetime="">--:--</time>
+                <time id="clockDateLabel" datetime="">Fecha del sistema</time>
+              </span>
             </div>
+          </section>
+
+          <section class="panel home-register-card">
+            <div>
+              <span>Tu jornada</span>
+              <h2>Registra tu asistencia</h2>
+              <p id="homeAttendanceHint">La app elegira entrada o salida automaticamente.</p>
+            </div>
+            <button class="primary" data-target="attendance" type="button">Registrar ahora</button>
           </section>
 
           <section class="panel stats-panel">
             <div class="panel-menu">
               <p class="section-kicker">Desglose de registros</p>
-              <span aria-hidden="true">...</span>
             </div>
             <div class="records-progress" aria-label="Resumen visual de asistencia del dia">
               <article class="metric-row metric-total">
@@ -301,48 +307,14 @@
 
           <div id="pwaInstallBanner" class="install-card is-hidden" aria-live="polite">
             <div>
-              <strong>Instalar asistencia QR</strong>
-              <span>Acceso rapido desde la pantalla de inicio para entrada, salida y consulta.</span>
+              <strong>Instalar app</strong>
+              <span>Accede mas rapido desde este dispositivo.</span>
               <small id="pwaInstallHelp" class="is-hidden">En Safari, toca Compartir y luego Agregar a pantalla de inicio.</small>
             </div>
             <button id="pwaInstallButton" class="primary" type="button">Instalar app</button>
           </div>
 
           <section class="panel activity-panel">
-            <div class="tab-strip" aria-label="Acciones principales">
-              <button class="is-active" data-target="home" type="button">Inicio</button>
-              <button data-target="entry" type="button">Entrada</button>
-              <button data-target="exit" type="button">Salida</button>
-              <button data-target="records" type="button">Mis registros</button>
-            </div>
-
-            <div class="hero-copy">
-              <p class="section-kicker">Sistema activo</p>
-              <h2>Registro rapido, evidencia visual protegida.</h2>
-              <p>
-                Captura entrada con foto, valida salida por identificador y conserva el historial en modo lectura
-                para evitar cambios no autorizados.
-              </p>
-            </div>
-            <div class="operation-strip" aria-label="Flujo de operacion">
-              <div>
-                <strong>01</strong>
-                <span>Registrar entrada</span>
-                <small>Captura foto, identificador y GPS.</small>
-              </div>
-              <div>
-                <strong>02</strong>
-                <span>Registrar salida</span>
-                <small>Usa identificador, foto final y ubicacion.</small>
-              </div>
-              <div>
-                <strong>03</strong>
-                <span>Ver registros</span>
-                <small>Revisa evidencia, riesgos y estado.</small>
-              </div>
-              <button data-target="records" type="button">Ver mis registros</button>
-            </div>
-
             <section class="streak-widget" aria-label="Racha de asistencia">
               <div class="streak-orb" aria-hidden="true">
                 <svg viewBox="0 0 24 24" focusable="false">
@@ -357,24 +329,6 @@
               </div>
               <button data-target="records" type="button">Ver historial</button>
             </section>
-
-            <div class="home-insights" aria-label="Informacion operativa">
-              <article>
-                <span>Ventana actual</span>
-                <strong>Entrada y salida con evidencia</strong>
-                <p>El sistema conserva foto, ubicacion, facial y validaciones de riesgo por cada registro.</p>
-              </article>
-              <article>
-                <span>Salida segura</span>
-                <strong>Salida por identificador</strong>
-                <p>La salida se habilita con entrada activa, prueba de vida y ubicacion dentro del rango permitido.</p>
-              </article>
-              <article>
-                <span>Historial personal</span>
-                <strong>Consulta tus evidencias</strong>
-                <p>Revisa tus entradas, salidas, fotos y estados sin acceder a datos de otros usuarios.</p>
-              </article>
-            </div>
 
             <!-- Widget de Actividad Reciente -->
             <div class="recent-activity-widget">
@@ -395,10 +349,9 @@
         <section class="panel form-panel is-hidden" data-view="entry">
           <div class="panel-heading">
             <div>
-              <p class="section-kicker">Paso 1 de 2</p>
-              <h2>Registrar entrada</h2>
-              <p class="view-subtitle">Primero captura una foto clara; al guardar se solicitara GPS y se creara la
-                asistencia global.</p>
+              <p class="section-kicker">Registro</p>
+              <h2>Entrada</h2>
+              <p class="view-subtitle">Toma una foto para iniciar tu jornada.</p>
             </div>
             <button class="back-button" data-target="home" type="button">Volver al inicio</button>
           </div>
@@ -412,7 +365,7 @@
               </p>
               <p id="entryLocationStatus" class="face-status" data-tone="neutral">La ubicacion se solicitara al guardar
                 entrada.</p>
-              <p class="camera-help">Posiciona tu rostro dentro del encuadre y toma la foto.</p>
+              <p class="camera-help">Mira de frente y procura tener buena luz.</p>
               <div class="camera-actions">
                 <button id="startEntryCamera" class="secondary" type="button">Activar camara</button>
                 <button id="takeEntryPhoto" class="primary" type="button" disabled>Tomar foto</button>
@@ -420,17 +373,16 @@
             </div>
 
             <form id="entryForm" class="data-form" novalidate>
-              <label>
-                Nombre completo
-                <input id="entryName" type="text" autocomplete="name" placeholder="Ej. Ana Lopez Perez" required />
-              </label>
-              <label>
-                Identificador
-                <input id="entryMatricula" type="text" autocomplete="off" placeholder="Ej. A00125" required />
-              </label>
+              <div class="attendance-identity-summary">
+                <span>Registrando como</span>
+                <strong data-attendance-name>Usuario</strong>
+                <small data-attendance-id>Sin identificador</small>
+              </div>
+              <input id="entryName" type="hidden" required />
+              <input id="entryMatricula" type="hidden" required />
               <div class="form-actions">
                 <button class="primary wide" type="submit">Guardar entrada</button>
-                <button class="back-button wide" data-target="home" type="button">Cancelar y volver</button>
+                <button class="back-button wide" data-target="home" type="button">Cancelar</button>
               </div>
             </form>
           </div>
@@ -439,12 +391,11 @@
             <div>
               <p class="section-kicker">Entrada guardada</p>
               <h3>Entrada registrada correctamente</h3>
-              <p>El siguiente paso natural es registrar la salida con identificador validado.</p>
+              <p>Tu llegada quedo registrada.</p>
             </div>
             <div class="flow-actions">
-              <button class="primary" data-target="exit" type="button">Registrar salida</button>
+              <button class="primary" data-target="attendance" type="button">Continuar</button>
               <button class="secondary" data-target="records" type="button">Ver registros</button>
-              <button class="ghost" data-target="entry" type="button">Registrar otra entrada</button>
             </div>
           </div>
         </section>
@@ -452,21 +403,18 @@
         <section class="panel form-panel is-hidden" data-view="exit">
           <div class="panel-heading">
             <div>
-              <p class="section-kicker">Paso 2 de 2</p>
-              <h2>Registrar salida</h2>
-              <p class="view-subtitle">Ingresa tu identificador para buscar tu entrada activa; despues toma foto final y
-                guarda la salida con GPS y validacion facial.</p>
+              <p class="section-kicker">Registro</p>
+              <h2>Salida</h2>
+              <p class="view-subtitle">Toma una foto para cerrar tu jornada.</p>
             </div>
             <button class="back-button" data-target="home" type="button">Volver al inicio</button>
           </div>
 
-          <div class="notice" id="exitGuard" aria-live="polite">
-            Ingresa tu identificador para buscar tu entrada activa.
-          </div>
+          <div class="notice is-hidden" id="exitGuard" aria-live="polite"></div>
 
           <div class="anti-fraud-strip">
             <div>
-              <strong>Reto de vida</strong>
+              <strong>Indicacion</strong>
               <span id="lifeChallenge">Preparando reto...</span>
             </div>
             <div>
@@ -482,7 +430,7 @@
               <img id="exitPreview" class="photo-preview is-hidden" alt="Foto de salida capturada" />
               <p id="exitFaceStatus" class="face-status" data-tone="pending">Espera a que carguen los modelos faciales.
               </p>
-              <p class="camera-help">Toma una foto de frente para confirmar tu salida.</p>
+              <p class="camera-help">Sigue la indicacion y mira de frente.</p>
               <div class="camera-actions">
                 <button id="startExitCamera" class="secondary" type="button">Activar camara</button>
                 <button id="takeExitPhoto" class="primary" type="button" disabled>Tomar foto</button>
@@ -490,16 +438,18 @@
             </div>
 
             <form id="exitForm" class="data-form" novalidate>
-              <label>
-                Identificador
-                <input id="exitMatricula" type="text" autocomplete="off" placeholder="Ej. A00125" required />
-              </label>
+              <div class="attendance-identity-summary">
+                <span>Registrando como</span>
+                <strong data-attendance-name>Usuario</strong>
+                <small data-attendance-id>Sin identificador</small>
+              </div>
+              <input id="exitMatricula" type="hidden" required />
               <div id="exitLookupInfo" class="exit-lookup" data-tone="neutral" aria-live="polite">
-                Ingresa el identificador para validar entrada activa antes de tomar foto de salida.
+                Validando tu entrada de hoy.
               </div>
               <div class="form-actions">
                 <button class="primary wide" type="submit">Guardar salida</button>
-                <button class="back-button wide" data-target="home" type="button">Cancelar y volver</button>
+                <button class="back-button wide" data-target="home" type="button">Cancelar</button>
               </div>
             </form>
           </div>
@@ -517,36 +467,71 @@
           </div>
         </section>
 
+        <section class="panel attendance-complete-panel is-hidden" data-view="attendance-complete">
+          <div class="attendance-complete-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" focusable="false">
+              <path d="m5 12 4 4L19 6"></path>
+            </svg>
+          </div>
+          <p class="section-kicker">Registro completo</p>
+          <h2>Tu jornada de hoy esta lista</h2>
+          <p>Entrada y salida registradas.</p>
+          <div class="form-actions">
+            <button class="primary wide" data-target="records" type="button">Ver mis registros</button>
+            <button class="back-button wide" data-target="home" type="button">Volver al inicio</button>
+          </div>
+        </section>
+
         <section class="panel records-panel is-hidden" data-view="records">
           <div class="panel-heading">
             <div>
-              <p id="recordsKicker" class="section-kicker">Historial</p>
+              <p id="recordsKicker" class="section-kicker">Tu asistencia</p>
               <h2 id="recordsTitle">Mis registros</h2>
-              <p id="recordsSubtitle" class="read-only-note">
-                Consulta tus entradas, salidas y evidencias registradas.
-              </p>
+              <p id="recordsSubtitle" class="read-only-note">Revisa tus jornadas y comprueba si falta una salida.</p>
             </div>
             <div class="button-row toolbar-actions">
               <button class="back-button" data-target="home" type="button">Volver al inicio</button>
             </div>
           </div>
 
+          <section class="records-overview" aria-label="Resumen de jornadas visibles">
+            <article>
+              <span>Jornadas</span>
+              <strong id="recordsSummaryTotal">0</strong>
+            </article>
+            <article data-tone="complete">
+              <span>Completas</span>
+              <strong id="recordsSummaryComplete">0</strong>
+            </article>
+            <article data-tone="pending">
+              <span>Pendientes</span>
+              <strong id="recordsSummaryPending">0</strong>
+            </article>
+          </section>
+
           <form class="ops-filters records-filters" aria-label="Filtros de registros">
-            <label>
-              Fecha
-              <input id="filterDate" type="date" />
+            <label class="ops-search-field records-search-field">
+              Buscar
+              <input id="filterSearch" type="search" autocomplete="off" placeholder="Fecha, nombre o identificador" />
             </label>
-            <label>
-              Estado
-              <select id="filterStatus">
-                <option value="all">Todos</option>
-                <option value="entrada_registrada">Pendiente de salida</option>
-                <option value="asistencia_completa">Asistencia completa</option>
-                <option value="revision_requerida">Revision requerida</option>
-                <option value="fallida">Fallida</option>
-              </select>
-            </label>
-            <label>
+            <div class="records-filter-row">
+              <label>
+                Fecha
+                <input id="filterDate" type="date" />
+              </label>
+              <label>
+                Estado
+                <select id="filterStatus">
+                  <option value="all">Todos</option>
+                  <option value="entrada_registrada">Salida pendiente</option>
+                  <option value="asistencia_completa">Completa</option>
+                  <option value="revision_requerida">Requiere revision</option>
+                  <option value="fallida">Fallida</option>
+                </select>
+              </label>
+              <button id="clearDashboardFilters" class="ghost filter-clear" type="button">Restablecer</button>
+            </div>
+            <label class="filter-advanced">
               Riesgo
               <select id="filterRisk">
                 <option value="all">Todos</option>
@@ -555,24 +540,30 @@
                 <option value="sospechoso">Sospechoso</option>
               </select>
             </label>
-            <label>
+            <label class="filter-advanced">
               Sitio
               <select id="filterSite">
                 <option value="all">Todos los sitios</option>
               </select>
             </label>
-            <label>
+            <label class="filter-advanced">
               Usuario
               <select id="filterUser">
                 <option value="all">Todos los usuarios</option>
               </select>
             </label>
-            <label class="ops-search-field">
-              Buscar
-              <input id="filterSearch" type="search" autocomplete="off" placeholder="Nombre o identificador" />
-            </label>
-            <button id="clearDashboardFilters" class="ghost filter-clear" type="button">Limpiar filtros</button>
           </form>
+
+          <div id="emptyRecords" class="records-empty-desktop is-hidden">
+            <span class="mobile-record-empty-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><path d="M8 2v4M16 2v4M3 9h18M5 4h14a2 2 0 0 1 2 2v14H3V6a2 2 0 0 1 2-2Z"/><path d="m8 15 2 2 5-5"/></svg>
+            </span>
+            <div>
+              <strong>Aun no hay jornadas</strong>
+              <span>Tu primera entrada aparecera aqui con sus horarios y estado.</span>
+            </div>
+            <button class="primary" data-target="attendance" type="button">Registrar asistencia</button>
+          </div>
 
           <div class="table-wrap">
             <table>
@@ -609,8 +600,8 @@
           <section class="mobile-records-shell" aria-labelledby="mobileRecordsTitle">
             <div class="mobile-records-head">
               <div>
-                <p class="section-kicker">Vista móvil</p>
-                <h3 id="mobileRecordsTitle">Mis asistencias</h3>
+                <p class="section-kicker">Por jornada</p>
+                <h3 id="mobileRecordsTitle">Tus dias registrados</h3>
               </div>
               <span id="mobileRecordsCount" class="badge default">0 visibles</span>
             </div>
@@ -1106,14 +1097,25 @@
             <div>
               <p class="section-kicker">Usuario activo</p>
               <h2>Perfil</h2>
-              <p class="view-subtitle">Tu cuenta, asistencia y permisos de registro.</p>
+              <p class="view-subtitle">Tus datos de cuenta.</p>
             </div>
             <button class="back-button" data-target="home" type="button">Volver al inicio</button>
           </div>
 
           <div class="profile-layout">
             <section class="profile-identity-card" aria-label="Resumen del perfil">
-              <div id="profileInitials" class="profile-avatar" aria-hidden="true">US</div>
+              <div class="profile-avatar-editor">
+                <div id="profileInitials" class="profile-avatar">
+                  <img id="profileAvatarImage" class="profile-avatar-image" alt="Foto de perfil seleccionada localmente" hidden />
+                  <span id="profileAvatarFallback" class="profile-avatar-initials" aria-hidden="true">US</span>
+                </div>
+                <div class="profile-avatar-actions" aria-label="Foto de perfil local">
+                  <label id="profileAvatarChangeLabel" class="profile-avatar-action" for="profileAvatarInput">Agregar foto</label>
+                  <input id="profileAvatarInput" class="visually-hidden" type="file" accept="image/*" />
+                  <button id="removeProfileAvatar" class="profile-avatar-action is-danger" type="button" disabled>Quitar foto</button>
+                  <small>Solo durante esta sesión; no se guarda en el sistema.</small>
+                </div>
+              </div>
               <div class="profile-identity-copy">
                 <h3 id="profileDisplayName">Usuario</h3>
                 <p id="profileDisplayIdentifier" class="profile-identifier">Identificador pendiente</p>
@@ -1147,39 +1149,6 @@
                   </span>
                 </label>
               </fieldset>
-
-              <section class="profile-section profile-attendance" aria-labelledby="profileAttendanceTitle">
-                <div class="profile-section-heading">
-                  <div>
-                    <p class="section-kicker">Asistencia</p>
-                    <h3 id="profileAttendanceTitle">Tu jornada</h3>
-                  </div>
-                </div>
-                <button class="profile-action-row" data-target="records" type="button">
-                  <span class="profile-row-icon" aria-hidden="true">RG</span>
-                  <span class="profile-row-content"><strong>Mis registros</strong><small>Consulta tu historial de asistencia</small></span>
-                  <span class="profile-row-arrow" aria-hidden="true">&gt;</span>
-                </button>
-                <button class="profile-action-row" data-target="entry" type="button">
-                  <span class="profile-row-icon" aria-hidden="true">IN</span>
-                  <span class="profile-row-content"><strong>Registrar entrada</strong><small>Inicia tu registro con evidencia</small></span>
-                  <span class="profile-row-arrow" aria-hidden="true">&gt;</span>
-                </button>
-                <button class="profile-action-row" data-target="exit" type="button">
-                  <span class="profile-row-icon" aria-hidden="true">OUT</span>
-                  <span class="profile-row-content"><strong>Registrar salida</strong><small>Finaliza tu asistencia activa</small></span>
-                  <span class="profile-row-arrow" aria-hidden="true">&gt;</span>
-                </button>
-                <div class="profile-static-row">
-                  <span class="profile-row-icon" aria-hidden="true">QR</span>
-                  <span class="profile-row-content"><strong>Acceso QR</strong><small>Disponible desde la pantalla de inicio</small></span>
-                  <span class="profile-row-status">Acceso</span>
-                </div>
-                <div class="profile-static-row">
-                  <span class="profile-row-icon" aria-hidden="true">FC</span>
-                  <span class="profile-row-content"><strong>Reconocimiento facial</strong><small>Se valida durante entrada y salida</small></span>
-                </div>
-              </section>
 
               <section class="streak-panel" aria-label="Racha y cumplimiento personal">
                 <div class="profile-section-heading">
@@ -1218,11 +1187,11 @@
                 <legend>Permisos y seguridad</legend>
                 <div class="profile-static-row">
                   <span class="profile-row-icon" aria-hidden="true">RL</span>
-                  <span class="profile-row-content"><strong>Rol operativo</strong><input id="profileRole" type="text" readonly class="readonly-field" /></span>
+                  <span class="profile-row-content"><strong>Rol operativo</strong><input id="profileRole" type="text" readonly class="readonly-field" aria-label="Rol operativo" /></span>
                 </div>
                 <div class="profile-static-row profile-scope-row">
                   <span class="profile-row-icon" aria-hidden="true">OK</span>
-                  <span class="profile-row-content"><strong>Alcance de permisos</strong><textarea id="profileScope" rows="3" readonly class="readonly-field profile-scope"></textarea></span>
+                  <span class="profile-row-content"><strong>Alcance de permisos</strong><textarea id="profileScope" rows="3" readonly class="readonly-field profile-scope" aria-label="Alcance de permisos"></textarea></span>
                 </div>
                 <div class="profile-static-row">
                   <span class="profile-row-icon" aria-hidden="true">CM</span>
@@ -1261,7 +1230,7 @@
   <script src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
   <script src="supabase-config.js?v=f0-mobile-shell"></script>
   <script src="auth.js?v=f0-mobile-shell"></script>
-  <script src="app.js?v=2.13-mobile-nav"></script>
+  <script src="app.js?v=2.20-records-redesign"></script>
 </body>
 
 </html>

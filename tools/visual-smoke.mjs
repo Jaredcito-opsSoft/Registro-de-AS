@@ -1,6 +1,9 @@
-import { chromium, devices } from "playwright";
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
+import { createRequire } from "node:module";
+
+const require = createRequire(import.meta.url);
+const { chromium } = require("playwright");
 
 const baseUrl = process.env.SMOKE_BASE_URL || "http://127.0.0.1:4173";
 const outDir = join(process.cwd(), "tools", "smoke-output");
@@ -46,14 +49,14 @@ async function screenshot(page, name) {
   return file;
 }
 
-async function runViewportSmoke(browser, profile) {
+async function runViewportSmoke(browser, label, profile) {
   const context = await browser.newContext({
     ...profile,
     locale: "es-MX",
     colorScheme: "light",
   });
   const page = await context.newPage();
-  const prefix = profile.isMobile ? "mobile" : "desktop";
+  const prefix = label;
 
   try {
     await page.goto(baseUrl, { waitUntil: "domcontentloaded", timeout: 20000 });
@@ -69,21 +72,58 @@ async function runViewportSmoke(browser, profile) {
     await assertNavActive(page, "home", `${prefix}: home nav active`);
     await screenshot(page, `${prefix}-02-home`);
 
-    const navTargets = [
-      ["entry", "Registrar entrada"],
-      ["exit", "Registrar salida"],
-      ["records", "Mis registros"],
-    ];
+    await page.locator('.nav-button[data-target="attendance"]').click();
+    await page.waitForSelector('[data-view="entry"]:not(.is-hidden), [data-view="exit"]:not(.is-hidden), [data-view="attendance-complete"]:not(.is-hidden)', { timeout: 8000 });
+    await assertNavActive(page, "attendance", `${prefix}: attendance nav active`);
+    await assertVisible(page, ".attendance-identity-summary", `${prefix}: automatic identity summary`);
+    const visibleIdentityInputs = await page.locator('#entryName:visible, #entryMatricula:visible, #exitMatricula:visible').count();
+    record(`${prefix}: identity inputs hidden`, visibleIdentityInputs === 0, `${visibleIdentityInputs} visible`);
+    await screenshot(page, `${prefix}-03-attendance`);
 
-    for (const [target, heading] of navTargets) {
-      await page.locator(`.nav-button[data-target="${target}"]`).first().click();
-      await page.waitForSelector(`[data-view="${target}"]:not(.is-hidden)`, { timeout: 8000 });
-      await page.waitForTimeout(400);
-      await assertNavActive(page, target, `${prefix}: ${target} nav active`);
-      const headingVisible = await page.getByRole("heading", { name: heading }).isVisible().catch(() => false);
-      record(`${prefix}: ${target} heading`, headingVisible, heading);
-      await screenshot(page, `${prefix}-03-${target}`);
+    await page.locator('.nav-button[data-target="records"]').click();
+    await page.waitForSelector('[data-view="records"]:not(.is-hidden)', { timeout: 8000 });
+    await assertNavActive(page, "records", `${prefix}: records nav active`);
+    const recordsContentVisible = await page.locator('#recordsMobileCards:visible, #emptyRecords:visible, .table-wrap:visible').count() > 0;
+    record(`${prefix}: records content`, recordsContentVisible);
+    await assertVisible(page, ".records-overview", `${prefix}: records summary`);
+    await assertVisible(page, ".records-filters", `${prefix}: records filters`);
+    await screenshot(page, `${prefix}-04-records`);
+
+    if (profile.isMobile) {
+      await page.evaluate(() => {
+        const base = {
+          id: "smoke-record",
+          nombre: "Usuario operativo",
+          matricula: "OPERATIVO",
+          fecha: new Date().toISOString().slice(0, 10),
+          sitioNombre: "Sitio principal",
+          horaEntrada: "08:05 a.m.",
+          validacionIdentidad: "identidad_validada",
+          ubicacionEntradaValidada: true,
+          evidenciaEntradaCompleta: true,
+          riesgo: "normal",
+        };
+        window.renderMobileRecordCards([
+          { ...base, id: "smoke-pending", estado: "entrada_registrada", horaSalida: "" },
+          { ...base, id: "smoke-complete", estado: "asistencia_completa", horaSalida: "05:15 p.m.", ubicacionSalidaValidada: true, evidenciaSalidaCompleta: true },
+        ]);
+      });
+      await assertVisible(page, ".mobile-record-result[data-tone='pending']", `${prefix}: pending journey guidance`);
+      await assertVisible(page, ".mobile-record-result[data-tone='complete']", `${prefix}: complete journey guidance`);
+      await assertVisible(page, ".mobile-record-next", `${prefix}: pending exit action`);
+      const validationDetails = await page.locator(".mobile-record-details").count();
+      record(`${prefix}: progressive validation details`, validationDetails === 2, `${validationDetails} details`);
+      await page.locator(".mobile-record-details summary").first().click();
+      await assertVisible(page, ".mobile-record-validation-grid", `${prefix}: validations expanded`);
+      await screenshot(page, `${prefix}-04b-record-states`);
     }
+
+    await page.locator("#btn-profile").click();
+    await page.waitForSelector('[data-view="profile"]:not(.is-hidden)', { timeout: 8000 });
+    const profileActive = await page.locator("#btn-profile").evaluate((node) => node.classList.contains("is-active"));
+    record(`${prefix}: profile nav active`, profileActive);
+    await assertVisible(page, "#profileForm", `${prefix}: profile content`);
+    await screenshot(page, `${prefix}-05-profile`);
 
     if (profile.isMobile) {
       const bottomNav = page.locator(".sidebar");
@@ -92,12 +132,13 @@ async function runViewportSmoke(browser, profile) {
       const dockedBottom = Boolean(box && viewport && box.y + box.height >= viewport.height - 4);
       record("mobile: bottom nav docked", dockedBottom, box ? `y=${Math.round(box.y)} h=${Math.round(box.height)}` : "no box");
 
-      const activeBtn = page.locator(".nav-button.is-active").first();
+      const activeBtn = page.locator(".nav-button.is-active, .sidebar-user-btn.is-active").first();
       const hasActive = await activeBtn.count() > 0;
       record("mobile: active nav marker css", hasActive, "is-active class on bottom nav");
 
       const navButtons = await page.locator(".top-nav .nav-button:not(.is-hidden)").count();
-      record("mobile: visible nav buttons", navButtons >= 4, `${navButtons} buttons`);
+      const profileVisible = await page.locator("#btn-profile").isVisible();
+      record(`${prefix}: four primary destinations`, navButtons === 3 && profileVisible, `${navButtons + Number(profileVisible)} destinations`);
     } else {
       const sidebar = page.locator(".sidebar");
       const box = await sidebar.boundingBox();
@@ -114,17 +155,35 @@ async function runViewportSmoke(browser, profile) {
     const hasStreak = await streakWidget.count() > 0;
     record(`${prefix}: home time widget present`, hasTime);
     record(`${prefix}: home streak widget present`, hasStreak);
-    await screenshot(page, `${prefix}-04-home-widgets`);
+    const horizontalOverflow = await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth + 1);
+    record(`${prefix}: no horizontal overflow`, !horizontalOverflow);
+    await screenshot(page, `${prefix}-06-home-widgets`);
   } finally {
     await context.close();
   }
 }
 
-const browser = await chromium.launch({ headless: true });
+const browser = await chromium.launch({
+  headless: true,
+  channel: process.env.SMOKE_BROWSER_CHANNEL || undefined,
+});
 try {
-  await runViewportSmoke(browser, devices["iPhone 13"]);
-  await runViewportSmoke(browser, {
-    viewport: { width: 1280, height: 800 },
+  for (const width of [320, 375, 390, 430]) {
+    await runViewportSmoke(browser, `mobile-${width}`, {
+      viewport: { width, height: 844 },
+      isMobile: true,
+      hasTouch: true,
+      deviceScaleFactor: 1,
+    });
+  }
+  await runViewportSmoke(browser, "tablet-768", {
+    viewport: { width: 768, height: 844 },
+    isMobile: false,
+    hasTouch: true,
+    deviceScaleFactor: 1,
+  });
+  await runViewportSmoke(browser, "desktop-1024", {
+    viewport: { width: 1024, height: 844 },
     isMobile: false,
     hasTouch: false,
     deviceScaleFactor: 1,

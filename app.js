@@ -149,9 +149,20 @@ const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => Array.from(document.querySelectorAll(selector));
 
 const els = {};
+let localAvatarObjectUrl = "";
 
 function populateElements() {
   els.clockLabel = $("#clockLabel");
+  els.clockDateLabel = $("#clockDateLabel");
+  els.homeAttendanceHint = $("#homeAttendanceHint");
+  els.headerProfileAvatar = $("#headerProfileAvatar");
+  els.headerAvatarImage = $("#headerAvatarImage");
+  els.headerAvatarFallback = $("#headerAvatarFallback");
+  els.profileAvatarInput = $("#profileAvatarInput");
+  els.profileAvatarImage = $("#profileAvatarImage");
+  els.profileAvatarFallback = $("#profileAvatarFallback");
+  els.profileAvatarChangeLabel = $("#profileAvatarChangeLabel");
+  els.removeProfileAvatar = $("#removeProfileAvatar");
   els.demoMode = $("#demoMode");
   els.toast = $("#toast");
   els.faceStatus = $("#faceStatus");
@@ -180,6 +191,9 @@ function populateElements() {
   els.recordsBody = $("#recordsBody");
   els.recordsMobileCards = $("#recordsMobileCards");
   els.mobileRecordsCount = $("#mobileRecordsCount");
+  els.recordsSummaryTotal = $("#recordsSummaryTotal");
+  els.recordsSummaryComplete = $("#recordsSummaryComplete");
+  els.recordsSummaryPending = $("#recordsSummaryPending");
   els.emptyRecords = $("#emptyRecords");
   els.unlockAdmin = $("#unlockAdmin");
   els.lockAdmin = $("#lockAdmin");
@@ -365,8 +379,8 @@ function updatePwaInstallUi() {
   if (els.pwaInstallHelp) {
     els.pwaInstallHelp.classList.toggle("is-hidden", false);
     els.pwaInstallHelp.textContent = showIosHelp
-      ? "En Safari, toca Compartir y luego Agregar a pantalla de inicio."
-      : "Si tu navegador muestra el permiso de instalacion, usa el boton. Si no aparece, abre el menu del navegador y elige Instalar app.";
+      ? "En Safari: Compartir y Agregar a inicio."
+      : "Tambien disponible desde el menu del navegador.";
   }
 }
 
@@ -605,6 +619,86 @@ function displayTime(value) {
     second: "2-digit",
     timeZone: getOperationalTimezone(),
   });
+}
+
+function displayLongDate(date = new Date()) {
+  const formatted = date.toLocaleDateString("es-MX", {
+    weekday: "long",
+    day: "2-digit",
+    month: "long",
+    year: "numeric",
+    timeZone: getOperationalTimezone(),
+  });
+  return formatted.charAt(0).toUpperCase() + formatted.slice(1);
+}
+
+function releaseLocalAvatarUrl() {
+  if (!localAvatarObjectUrl) return;
+  URL.revokeObjectURL(localAvatarObjectUrl);
+  localAvatarObjectUrl = "";
+}
+
+function showAvatarFallback() {
+  [els.headerAvatarImage, els.profileAvatarImage].forEach((image) => {
+    if (!image) return;
+    image.hidden = true;
+    image.removeAttribute("src");
+  });
+  els.headerAvatarFallback?.removeAttribute("hidden");
+  els.profileAvatarFallback?.removeAttribute("hidden");
+  if (els.profileAvatarChangeLabel) els.profileAvatarChangeLabel.textContent = "Agregar foto";
+  if (els.removeProfileAvatar) els.removeProfileAvatar.disabled = true;
+}
+
+function removeLocalAvatar({ notify = true } = {}) {
+  releaseLocalAvatarUrl();
+  if (els.profileAvatarInput) els.profileAvatarInput.value = "";
+  showAvatarFallback();
+  if (notify) showToast("Foto local eliminada. No se guardó en el sistema.");
+}
+
+function showLocalAvatar(objectUrl) {
+  [els.headerAvatarImage, els.profileAvatarImage].forEach((image) => {
+    if (!image) return;
+    image.src = objectUrl;
+    image.hidden = false;
+  });
+  els.headerAvatarFallback?.setAttribute("hidden", "");
+  els.profileAvatarFallback?.setAttribute("hidden", "");
+  if (els.profileAvatarChangeLabel) els.profileAvatarChangeLabel.textContent = "Cambiar foto";
+  if (els.removeProfileAvatar) els.removeProfileAvatar.disabled = false;
+}
+
+function handleLocalAvatarSelection(event) {
+  const file = event.target.files?.[0];
+  if (!file) return;
+
+  if (!file.type.startsWith("image/")) {
+    event.target.value = "";
+    showToast("Selecciona un archivo de imagen válido.");
+    return;
+  }
+
+  if (file.size > 5 * 1024 * 1024) {
+    event.target.value = "";
+    showToast("La foto debe pesar 5 MB o menos.");
+    return;
+  }
+
+  const nextObjectUrl = URL.createObjectURL(file);
+  const validationImage = new Image();
+  validationImage.onload = () => {
+    releaseLocalAvatarUrl();
+    localAvatarObjectUrl = nextObjectUrl;
+    showLocalAvatar(localAvatarObjectUrl);
+    showToast("Foto aplicada solo en esta sesión y en este dispositivo.");
+  };
+  validationImage.onerror = () => {
+    URL.revokeObjectURL(nextObjectUrl);
+    event.target.value = "";
+    showToast("No se pudo leer la imagen seleccionada.");
+  };
+  validationImage.src = nextObjectUrl;
 }
 
 function minutesFromStart(date = new Date()) {
@@ -889,10 +983,9 @@ function renderCurrentUserProfile() {
   if (els.profileEmail) els.profileEmail.value = email;
   if (els.profileRole) els.profileRole.value = role.label;
   if (els.profileScope) els.profileScope.value = role.scope;
-  const profileInitials = document.querySelector("#profileInitials");
   const profileDisplayName = document.querySelector("#profileDisplayName");
   const profileDisplayIdentifier = document.querySelector("#profileDisplayIdentifier");
-  if (profileInitials) profileInitials.textContent = initials || "US";
+  if (els.profileAvatarFallback) els.profileAvatarFallback.textContent = initials || "US";
   if (profileDisplayName) profileDisplayName.textContent = nombre;
   if (profileDisplayIdentifier) profileDisplayIdentifier.textContent = `Identificador: ${matricula}`;
   renderAttendanceStreak();
@@ -1799,7 +1892,17 @@ async function callAdminRpc(functionName, payload) {
 
 function updateHeaderStatus() {
   const now = new Date();
-  els.clockLabel.textContent = displayTime(now.toISOString());
+  const isoNow = now.toISOString();
+  const visibleTime = displayTime(isoNow);
+  if (els.clockLabel) {
+    els.clockLabel.textContent = visibleTime;
+    els.clockLabel.dateTime = isoNow;
+    els.clockLabel.setAttribute("aria-label", `Hora del sistema: ${visibleTime}`);
+  }
+  if (els.clockDateLabel) {
+    els.clockDateLabel.textContent = displayLongDate(now);
+    els.clockDateLabel.dateTime = todayIso(now);
+  }
   els.exitGuard.textContent = "Ingresa tu identificación para buscar tu entrada activa.";
   els.exitGuard.classList.remove("is-blocked");
 
@@ -1852,9 +1955,14 @@ function showView(name) {
   document.querySelectorAll('[data-view]').forEach((view) => {
     view.classList.toggle("is-hidden", view.dataset.view !== actualView);
   });
+  if (els.headerProfileAvatar) els.headerProfileAvatar.hidden = actualView === "profile";
 
-  setActiveNavigation(targetName);
-  renderRolePanelCopy(targetName);
+  const navigationTarget = ["entry", "exit", "attendance-complete"].includes(targetName)
+    ? "attendance"
+    : targetName;
+  setActiveNavigation(navigationTarget);
+  renderRolePanelCopy(navigationTarget);
+  if (actualView === "home") updateAttendanceShortcut();
   if (actualView !== "entry") stopCamera("entry");
   if (actualView !== "exit") stopCamera("exit");
   if (actualView === "entry") {
@@ -1893,16 +2001,16 @@ function setActiveNavigation(name) {
 function renderRolePanelCopy(activeTarget = "records") {
   const role = getRoleDefinition();
   const isAdminTarget = activeTarget === "admin" || isRoleAdminSession() || isDemoAdminUnlocked();
-  if (els.recordsKicker) els.recordsKicker.textContent = isAdminTarget ? "Panel operativo" : "Historial";
+  if (els.recordsKicker) els.recordsKicker.textContent = isAdminTarget ? "Panel operativo" : "Tu asistencia";
   if (els.recordsTitle) {
     els.recordsTitle.textContent = isAdminTarget
       ? (hasPermission("manage_organization") ? "Administracion central" : "Administracion del sitio")
-      : "Mis registros de asistencia";
+      : "Mis registros";
   }
   if (els.recordsSubtitle) {
     els.recordsSubtitle.textContent = isAdminTarget
       ? role.scope
-      : "Solo puedes consultar registros asociados a tu propio identificador.";
+      : "Revisa tus jornadas y comprueba si falta una salida.";
   }
   if (els.dashboardScopeLabel) {
     els.dashboardScopeLabel.textContent = hasPermission("view_all_records")
@@ -2283,6 +2391,63 @@ function todayRecordByMatricula(matricula) {
   return state.records.find(
     (record) => record.fecha === today && record.matricula === matricula
   );
+}
+
+function getAttendanceIdentity() {
+  const authUser = state.currentUser || {};
+  const metadata = authUser.user_metadata || {};
+  return {
+    nombre: String(state.currentAppUser?.nombre || metadata.nombre || metadata.full_name || authUser.email || "").trim(),
+    matricula: normalizeMatricula(state.currentAppUser?.matricula || metadata.matricula || ""),
+  };
+}
+
+function syncAttendanceIdentity() {
+  const identity = getAttendanceIdentity();
+  if (els.entryName) els.entryName.value = identity.nombre;
+  if (els.entryMatricula) els.entryMatricula.value = identity.matricula;
+  if (els.exitMatricula) els.exitMatricula.value = identity.matricula;
+
+  document.querySelectorAll("[data-attendance-name]").forEach((element) => {
+    element.textContent = identity.nombre || "Usuario";
+  });
+  document.querySelectorAll("[data-attendance-id]").forEach((element) => {
+    element.textContent = identity.matricula || "Sin identificador";
+  });
+  return identity;
+}
+
+function updateAttendanceShortcut() {
+  if (!els.homeAttendanceHint) return;
+  const { matricula } = getAttendanceIdentity();
+  const record = matricula ? todayRecordByMatricula(matricula) : null;
+  els.homeAttendanceHint.textContent = !record?.horaEntrada
+    ? "Tu siguiente registro es la entrada."
+    : !record.horaSalida
+      ? `Entrada registrada a las ${record.horaEntrada}. Sigue con tu salida.`
+      : "Tu jornada de hoy ya esta completa.";
+}
+
+async function openAttendanceView() {
+  const identity = syncAttendanceIdentity();
+  if (!identity.nombre || !identity.matricula) {
+    showToast("Completa tu nombre e identificador en Perfil para registrar asistencia.");
+    showView("profile");
+    return;
+  }
+
+  await refreshRecords({ silent: true });
+  const record = todayRecordByMatricula(identity.matricula);
+  if (!record?.horaEntrada) {
+    showView("entry");
+    return;
+  }
+  if (!record.horaSalida) {
+    showView("exit");
+    await validateExitMatricula();
+    return;
+  }
+  showView("attendance-complete");
 }
 
 function setExitLookupInfo(message, tone = "neutral") {
@@ -3426,11 +3591,21 @@ function resetDashboardFilters() {
   renderRecords();
 }
 
-function mobileRecordField(label, value) {
+function attendanceDurationText(record) {
+  const start = parseRecordTimeToMinutes(record.horaEntrada);
+  const end = parseRecordTimeToMinutes(record.horaSalida);
+  if (start === null || end === null || end <= start) return "Duracion pendiente";
+  const minutes = end - start;
+  const hours = Math.floor(minutes / 60);
+  const remainder = minutes % 60;
+  return `${hours ? `${hours} h` : ""}${hours && remainder ? " " : ""}${remainder ? `${remainder} min` : ""}`;
+}
+
+function mobileRecordValidation(label, value, tone = "neutral") {
   return `
-    <div class="mobile-record-card-row">
+    <div class="mobile-record-validation" data-tone="${tone}">
       <span>${escapeHtml(label)}</span>
-      <strong>${escapeHtml(value || "-")}</strong>
+      <strong>${escapeHtml(value || "Pendiente")}</strong>
     </div>
   `;
 }
@@ -3439,15 +3614,24 @@ function renderMobileRecordCards(records = []) {
   if (!els.recordsMobileCards) return;
 
   if (els.mobileRecordsCount) {
-    els.mobileRecordsCount.textContent = `${records.length} visibles`;
+    els.mobileRecordsCount.textContent = `${records.length} ${records.length === 1 ? "jornada" : "jornadas"}`;
   }
+
+  const completeCount = records.filter(isCompleteRecord).length;
+  const pendingCount = records.length - completeCount;
+  if (els.recordsSummaryTotal) els.recordsSummaryTotal.textContent = records.length;
+  if (els.recordsSummaryComplete) els.recordsSummaryComplete.textContent = completeCount;
+  if (els.recordsSummaryPending) els.recordsSummaryPending.textContent = pendingCount;
 
   if (!records.length) {
     els.recordsMobileCards.innerHTML = `
       <div class="mobile-record-empty">
-        <strong>No tienes registros todavía.</strong>
-        <span>Cuando registres tu entrada aparecerán aquí tus horarios, estado y evidencia.</span>
-        <button class="primary mini" data-target="entry" type="button">Registrar entrada</button>
+        <span class="mobile-record-empty-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24"><path d="M8 2v4M16 2v4M3 9h18M5 4h14a2 2 0 0 1 2 2v14H3V6a2 2 0 0 1 2-2Z"/><path d="m8 15 2 2 5-5"/></svg>
+        </span>
+        <strong>Aun no hay jornadas</strong>
+        <span>Tu primera entrada aparecera aqui con sus horarios y estado.</span>
+        <button class="primary" data-target="attendance" type="button">Registrar asistencia</button>
       </div>
     `;
     return;
@@ -3457,13 +3641,13 @@ function renderMobileRecordCards(records = []) {
 
   els.recordsMobileCards.innerHTML = records.map((record) => {
     const statusClass = statusBadgeClass(record.estado);
-    const riskClass = riskBadgeClass(record.riesgo);
     const canViewEvidence = canViewRecord(record) || hasPermission("view_evidence") || isDemoAdminUnlocked();
     const isComplete = isCompleteRecord(record);
     const statusText = statusLabel(record.estado);
     const locationText = record.ubicacionEntradaValidada && (record.horaSalida ? record.ubicacionSalidaValidada : true) ? "Ubicación validada" : "Revisar ubicación";
+    const evidenceText = hasCompleteEvidence(record) ? "Fotos completas" : "Evidencia parcial";
     const actionButtons = [
-      canViewEvidence ? `<button class="secondary mini" data-action="view-evidence" data-id="${record.id}">Ver evidencia</button>` : "",
+      canViewEvidence ? `<button class="secondary" data-action="view-evidence" data-id="${record.id}">Ver evidencia</button>` : "",
       canManageRecords ? `<button class="ghost mini" data-action="edit-observation" data-id="${record.id}">Observación</button>` : "",
       canManageRecords ? `<button class="danger mini" data-action="delete-record" data-id="${record.id}">Eliminar</button>` : "",
     ].filter(Boolean).join("");
@@ -3472,34 +3656,44 @@ function renderMobileRecordCards(records = []) {
       <article class="mobile-record-card">
         <div class="mobile-record-card-head">
           <div class="mobile-record-card-title">
-            <span>${escapeHtml(displayDate(record.fecha))}</span>
-            <strong>${escapeHtml(isComplete ? "Asistencia completa" : "Salida pendiente")}</strong>
+            <span>Jornada del ${escapeHtml(displayDate(record.fecha))}</span>
+            <strong>${escapeHtml(isComplete ? "Jornada completa" : "Salida pendiente")}</strong>
             <small>${escapeHtml(recordSiteName(record))}</small>
           </div>
           <span class="badge ${statusClass}">${escapeHtml(statusText)}</span>
         </div>
 
         <div class="mobile-record-timeline" aria-label="Horario de asistencia">
-          <div>
+          <div class="mobile-record-time">
             <span>Entrada</span>
             <strong>${escapeHtml(record.horaEntrada || "Pendiente")}</strong>
           </div>
-          <div class="mobile-record-line" aria-hidden="true"></div>
-          <div>
+          <div class="mobile-record-line ${isComplete ? "is-complete" : ""}" aria-hidden="true"><span></span></div>
+          <div class="mobile-record-time">
             <span>Salida</span>
             <strong>${escapeHtml(record.horaSalida || "Pendiente")}</strong>
           </div>
         </div>
 
-        <div class="mobile-record-card-grid">
-          ${mobileRecordField("Matrícula", record.matricula)}
-          ${mobileRecordField("Identidad", identityLabel(record.validacionIdentidad))}
-          ${mobileRecordField("Foto", hasCompleteEvidence(record) ? "Completa" : "Parcial")}
-          ${mobileRecordField("GPS", locationText)}
+        <div class="mobile-record-result" data-tone="${isComplete ? "complete" : "pending"}">
+          <strong>${escapeHtml(isComplete ? attendanceDurationText(record) : "Falta registrar tu salida")}</strong>
+          <span>${escapeHtml(isComplete ? "Jornada cerrada correctamente" : "Completa tu jornada cuando termines")}</span>
         </div>
 
+        ${!isComplete ? `<button class="primary mobile-record-next" data-target="attendance" type="button">Registrar salida</button>` : ""}
+
+        <details class="mobile-record-details">
+          <summary>Ver validaciones</summary>
+          <div class="mobile-record-validation-grid">
+            ${mobileRecordValidation("Identificador", record.matricula)}
+            ${mobileRecordValidation("Identidad", identityLabel(record.validacionIdentidad), record.validacionIdentidad === "identidad_validada" ? "success" : "neutral")}
+            ${mobileRecordValidation("Evidencia", evidenceText, hasCompleteEvidence(record) ? "success" : "neutral")}
+            ${mobileRecordValidation("Ubicacion", locationText, locationText.startsWith("Ubicaci") ? "success" : "warning")}
+          </div>
+          ${record.riesgo && record.riesgo !== "normal" ? `<p class="mobile-record-risk">Revision: ${escapeHtml(riskLabel(record.riesgo))}</p>` : ""}
+        </details>
+
         <div class="mobile-record-card-foot">
-          <span class="badge ${riskClass}">${escapeHtml(riskLabel(record.riesgo))}</span>
           <div class="mobile-record-actions">${actionButtons}</div>
         </div>
       </article>
@@ -3989,7 +4183,11 @@ function handleRecordAction(event) {
 
   const navButton = event.target.closest("button[data-target]");
   if (navButton) {
-    showView(navButton.dataset.target);
+    if (navButton.dataset.target === "attendance") {
+      openAttendanceView();
+    } else {
+      showView(navButton.dataset.target);
+    }
     return;
   }
 
@@ -3997,7 +4195,8 @@ function handleRecordAction(event) {
   if (!button) return;
 
   if (button.dataset.action === "view-evidence") {
-    if (!hasPermission("view_evidence") && !isDemoAdminUnlocked()) {
+    const record = state.records.find((item) => item.id === button.dataset.id);
+    if (!record || (!canViewRecord(record) && !hasPermission("view_evidence") && !isDemoAdminUnlocked())) {
       showToast("Tu rol no puede ver evidencia protegida.");
       return;
     }
@@ -4381,6 +4580,7 @@ function handleUpdateProfile(event) {
         const nombreUsuario = state.currentUser.user_metadata?.nombre || state.currentUser.user_metadata?.full_name || state.currentUser.email || "US";
         const iniciales = nombreUsuario.split(" ").filter(Boolean).map(n => n[0].toUpperCase()).slice(0, 2).join("");
         els.userInitials.textContent = iniciales || "US";
+        if (els.profileAvatarFallback) els.profileAvatarFallback.textContent = iniciales || "US";
       }
       
       els.profileSubmitBtn.disabled = false;
@@ -4434,6 +4634,10 @@ async function init() {
   // 1. Registro de manejadores de navegación (usando querySelectorAll para obtener una lista real)
   document.querySelectorAll('[data-target]').forEach((button) => {
     button.addEventListener("click", () => {
+      if (button.dataset.target === "attendance") {
+        openAttendanceView();
+        return;
+      }
       // Evitar que el perfil se marque en la navegación principal si es un botón especial
       if (button.dataset.target === "profile") {
         showView("profile");
@@ -4442,6 +4646,17 @@ async function init() {
       showView(button.dataset.target);
     });
   });
+
+  if (els.profileAvatarInput) {
+    els.profileAvatarInput.addEventListener("change", handleLocalAvatarSelection);
+  }
+  if (els.removeProfileAvatar) {
+    els.removeProfileAvatar.addEventListener("click", () => removeLocalAvatar());
+  }
+  [els.headerAvatarImage, els.profileAvatarImage].forEach((image) => {
+    image?.addEventListener("error", () => removeLocalAvatar({ notify: false }));
+  });
+  window.addEventListener("beforeunload", releaseLocalAvatarUrl, { once: true });
 
   // 2. Manejadores de autenticación
   if (els.toggleLoginBtn) {
@@ -4669,7 +4884,7 @@ async function init() {
   if (els.adminClearDashboardFilters) els.adminClearDashboardFilters.addEventListener("click", resetDashboardFilters);
 
   if (window.location.hash.startsWith("#salida")) {
-    showView("exit");
+    openAttendanceView();
   }
 
   // 4. Intervalos de actualización si está logueado
