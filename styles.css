@@ -5250,6 +5250,26 @@ tbody tr:hover {
   grid-template-columns: minmax(0, 1.35fr) minmax(260px, 0.75fr);
 }
 
+@media (min-width: 961px) {
+  .admin-users-main {
+    grid-area: users-main;
+  }
+
+  #userScopeAssignmentCard {
+    grid-area: user-scope;
+  }
+
+  #adminInviteCard {
+    grid-area: admin-invite;
+  }
+
+  .admin-users-grid:has(#userScopeAssignmentCard:not(.is-hidden)) {
+    grid-template-areas:
+      "users-main user-scope"
+      "users-main admin-invite";
+  }
+}
+
 .admin-users-main {
   display: grid;
   gap: 12px;

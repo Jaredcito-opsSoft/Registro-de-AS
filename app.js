@@ -304,6 +304,14 @@ function populateElements() {
   els.adminUsersCount = $("#adminUsersCount");
   els.adminUsersNoSiteCount = $("#adminUsersNoSiteCount");
   els.adminUsersBySite = $("#adminUsersBySite");
+  els.userScopeAssignmentCard = $("#userScopeAssignmentCard");
+  els.userScopeHelp = $("#userScopeHelp");
+  els.userScopeUser = $("#userScopeUser");
+  els.userScopeSite = $("#userScopeSite");
+  els.userScopeRole = $("#userScopeRole");
+  els.userScopeRoleWrap = $("#userScopeRoleWrap");
+  els.assignUserScopeButton = $("#assignUserScopeButton");
+  els.userScopeStatus = $("#userScopeStatus");
   els.adminInviteEmail = $("#adminInviteEmail");
   els.adminInviteSite = $("#adminInviteSite");
   els.adminInviteKey = $("#adminInviteKey");
@@ -1566,6 +1574,7 @@ function renderSelectedOrganization(org) {
 function renderManagedSites(rows = []) {
   state.managedSites = state.organizationHubs.flatMap((org) => org.sitios || []);
   populateAdminInviteSites();
+  populateUserScopeAssignment();
   if (!els.siteDirectory) return;
   if (!rows.length) {
     els.siteDirectory.innerHTML = `<div class="organization-empty"><strong>Sin sitios</strong><span>Agrega la primera ubicacion operativa.</span></div>`;
@@ -1592,6 +1601,7 @@ function renderManagedSites(rows = []) {
 
 function renderManagedUsers(rows = []) {
   state.managedUsers = Array.isArray(rows) ? rows : [];
+  populateUserScopeAssignment();
   renderAdminUsersSection(getVisibleRecords());
   if (!els.userDirectory) return;
   if (!isRoleAdminSession() && !isDemoAdminUnlocked()) {
@@ -4150,6 +4160,144 @@ function populateAdminInviteSites() {
   els.adminInviteSite.value = options.some((site) => site.label === previous) ? previous : "";
 }
 
+function canManageUserAssignments() {
+  return isRoleAdminSession() && hasAnyPermission(["manage_site", "manage_organization"]);
+}
+
+function getAssignableUsers() {
+  const actorIsSuperadmin = hasPermission("manage_organization");
+  return state.managedUsers.filter((user) => {
+    const role = normalizeAppRole(user.rol);
+    if (role === "superadmin") return false;
+    return actorIsSuperadmin || role === "usuario";
+  });
+}
+
+function getAssignableSitesForUser(user) {
+  if (!user?.organizacion_id) return [];
+  const actor = state.currentAppUser || {};
+  const canManageOrg = hasPermission("manage_organization");
+  return state.managedSites.filter((site) => {
+    if (site.activo === false || String(site.organizacion_id || "") !== String(user.organizacion_id)) return false;
+    if (canManageOrg) return true;
+    if (String(site.organizacion_id || "") !== String(actor.organizacion_id || "")) return false;
+    return !actor.sitio_id || site.id === actor.sitio_id;
+  });
+}
+
+function getManagedSiteOrganizationName(site) {
+  return site?.organizacion_nombre
+    || state.organizationHubs.find((organization) => organization.id === site?.organizacion_id)?.nombre
+    || "Organizacion";
+}
+
+function setUserScopeStatus(message, tone = "warning") {
+  if (!els.userScopeStatus) return;
+  els.userScopeStatus.textContent = message;
+  els.userScopeStatus.dataset.tone = tone;
+}
+
+function populateUserScopeAssignment() {
+  const card = els.userScopeAssignmentCard;
+  if (!card) return;
+
+  const allowed = canManageUserAssignments();
+  card.classList.toggle("is-hidden", !allowed);
+  if (!allowed) return;
+
+  const users = getAssignableUsers();
+  const previousUserId = els.userScopeUser?.value || "";
+  const previousSiteId = els.userScopeSite?.value || "";
+  const selectedUser = users.find((user) => user.id === previousUserId) || null;
+  const canManageRoles = hasPermission("manage_organization");
+
+  if (els.userScopeHelp) {
+    els.userScopeHelp.textContent = canManageRoles
+      ? "Superadmin puede vincular usuarios de la misma organizacion y definir su rol operativo."
+      : "Administrador de sitio: solo vincula usuarios regulares dentro de su alcance.";
+  }
+  if (els.userScopeRoleWrap) els.userScopeRoleWrap.classList.toggle("is-hidden", !canManageRoles);
+  if (els.userScopeRole) {
+    els.userScopeRole.disabled = !canManageRoles;
+    const currentRole = normalizeAppRole(selectedUser?.rol);
+    els.userScopeRole.value = canManageRoles ? (currentRole === "superadmin" ? "usuario" : currentRole) : "usuario";
+  }
+
+  if (els.userScopeUser) {
+    els.userScopeUser.innerHTML = `<option value="">Selecciona un usuario</option>`;
+    users.forEach((user) => {
+      const option = document.createElement("option");
+      option.value = user.id;
+      option.textContent = `${user.nombre || user.email || user.matricula || "Usuario"} - ${user.organizacion_nombre || "Organizacion"}`;
+      els.userScopeUser.appendChild(option);
+    });
+    els.userScopeUser.value = selectedUser?.id || "";
+  }
+
+  const sites = getAssignableSitesForUser(selectedUser);
+  if (els.userScopeSite) {
+    els.userScopeSite.innerHTML = `<option value="">${selectedUser ? "Selecciona un sitio" : "Selecciona primero un usuario"}</option>`;
+    sites.forEach((site) => {
+      const option = document.createElement("option");
+      option.value = site.id;
+      option.textContent = `${site.nombre || "Sitio sin nombre"} - ${getManagedSiteOrganizationName(site)}`;
+      els.userScopeSite.appendChild(option);
+    });
+    els.userScopeSite.disabled = !selectedUser || !sites.length;
+    els.userScopeSite.value = sites.some((site) => site.id === previousSiteId)
+      ? previousSiteId
+      : (sites.some((site) => site.id === selectedUser?.sitio_id) ? selectedUser.sitio_id : "");
+  }
+
+  if (els.assignUserScopeButton) {
+    els.assignUserScopeButton.disabled = !selectedUser || !els.userScopeSite?.value;
+  }
+
+  if (!users.length) {
+    setUserScopeStatus("No hay usuarios elegibles en tu alcance para vincular.", "warning");
+  } else if (selectedUser && !sites.length) {
+    setUserScopeStatus("No hay sitios activos compatibles con la organizacion de este usuario.", "danger");
+  } else {
+    setUserScopeStatus("La asignacion se guarda por RPC y queda registrada en auditoria.", "warning");
+  }
+}
+
+async function assignUserScope() {
+  if (!canManageUserAssignments()) {
+    showToast("No tienes permisos para asignar usuarios.");
+    return;
+  }
+
+  const userId = els.userScopeUser?.value || "";
+  const siteId = els.userScopeSite?.value || "";
+  const role = hasPermission("manage_organization") ? (els.userScopeRole?.value || "usuario") : "usuario";
+  if (!userId || !siteId) {
+    setUserScopeStatus("Selecciona un usuario y un sitio activo.", "danger");
+    return;
+  }
+
+  let successMessage = "";
+  if (els.assignUserScopeButton) els.assignUserScopeButton.disabled = true;
+  try {
+    const result = getRpcFirstRow(await callAdminRpc("admin_assign_user_scope", {
+      p_usuario_id: userId,
+      p_sitio_id: siteId,
+      p_rol: role,
+    }));
+    const assignedRole = getRoleDefinition(result?.rol || role).label;
+    successMessage = `Usuario vinculado correctamente como ${assignedRole}.`;
+    addAdminLog("user.scope_assigned", `${userId} / ${siteId} / ${result?.rol || role}`);
+    showToast("Asignacion de usuario guardada.");
+    await loadOrganizations({ silent: true });
+    await loadAdminDirectories({ silent: true });
+  } catch (error) {
+    setUserScopeStatus(`No se pudo guardar: ${parseSupabaseError(error).slice(0, 140)}`, "danger");
+  } finally {
+    populateUserScopeAssignment();
+    if (successMessage) setUserScopeStatus(successMessage, "success");
+  }
+}
+
 function renderAdminUsersSection(records = getVisibleRecords()) {
   if (!els.adminUsersBySite) return;
   const rows = getAdminUserRows();
@@ -4181,6 +4329,7 @@ function renderAdminUsersSection(records = getVisibleRecords()) {
   }
 
   populateAdminInviteSites();
+  populateUserScopeAssignment();
 
   if (!totalUsers) {
     els.adminUsersBySite.innerHTML = `
@@ -5746,6 +5895,9 @@ async function init() {
   if (els.copySiteKey) els.copySiteKey.addEventListener("click", copySiteKey);
   if (els.prepareAdminInvite) els.prepareAdminInvite.addEventListener("click", prepareAdminInviteKey);
   if (els.copyAdminInviteKey) els.copyAdminInviteKey.addEventListener("click", copyAdminInviteKey);
+  if (els.userScopeUser) els.userScopeUser.addEventListener("change", populateUserScopeAssignment);
+  if (els.userScopeSite) els.userScopeSite.addEventListener("change", populateUserScopeAssignment);
+  if (els.assignUserScopeButton) els.assignUserScopeButton.addEventListener("click", assignUserScope);
   document.querySelectorAll("[data-admin-section-target]").forEach((button) => {
     button.addEventListener("click", () => showAdminSection(button.dataset.adminSectionTarget));
   });

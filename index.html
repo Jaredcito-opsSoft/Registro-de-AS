@@ -990,7 +990,39 @@
                 <div id="adminUsersBySite" class="admin-users-by-site" aria-live="polite"></div>
               </section>
 
-              <aside class="admin-assignment-card superadmin-only is-hidden" aria-label="Asignar admin a sitio">
+              <aside id="userScopeAssignmentCard" class="admin-assignment-card is-hidden" aria-label="Vincular usuario a sitio">
+                <div>
+                  <p class="section-kicker">Alcance operativo</p>
+                  <h3>Vincular usuario a sitio</h3>
+                  <p id="userScopeHelp">Selecciona un usuario y un sitio para guardar su alcance operativo.</p>
+                </div>
+                <label>
+                  Usuario
+                  <select id="userScopeUser">
+                    <option value="">Selecciona un usuario</option>
+                  </select>
+                </label>
+                <label>
+                  Sitio
+                  <select id="userScopeSite" disabled>
+                    <option value="">Selecciona primero un usuario</option>
+                  </select>
+                </label>
+                <label id="userScopeRoleWrap">
+                  Rol operativo
+                  <select id="userScopeRole">
+                    <option value="usuario">Usuario</option>
+                    <option value="supervisor">Supervisor</option>
+                    <option value="admin">Administrador</option>
+                  </select>
+                </label>
+                <div class="site-actions">
+                  <button id="assignUserScopeButton" class="primary" type="button" disabled>Guardar asignacion</button>
+                </div>
+                <p id="userScopeStatus" class="site-test-result" data-tone="warning">Carga el directorio para vincular usuarios.</p>
+              </aside>
+
+              <aside id="adminInviteCard" class="admin-assignment-card superadmin-only is-hidden" aria-label="Asignar admin a sitio">
                 <div>
                   <p class="section-kicker">Key de administracion</p>
                   <h3>Asignar admin a sitio</h3>
