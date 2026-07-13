@@ -87,9 +87,10 @@ async function runViewportSmoke(browser, label, profile) {
     record(`${prefix}: no activate camera step`, activateCameraButtons === 0, `${activateCameraButtons} buttons`);
     const activeCamera = await page.waitForFunction(() => {
       const video = document.querySelector('[data-view="entry"]:not(.is-hidden) video, [data-view="exit"]:not(.is-hidden) video');
-      return Boolean(video?.srcObject);
+      const liveTrack = video?.srcObject?.getVideoTracks?.().some((track) => track.readyState === "live");
+      return Boolean(liveTrack && video.readyState >= 2 && video.videoWidth > 0);
     }, null, { timeout: 12000 }).then(() => true).catch(() => false);
-    record(`${prefix}: camera starts automatically`, activeCamera);
+    record(`${prefix}: camera starts automatically with live video`, activeCamera);
     await screenshot(page, `${prefix}-03-attendance`);
 
     await page.locator('.nav-button[data-target="records"]').click();
@@ -148,7 +149,10 @@ async function runViewportSmoke(browser, label, profile) {
       await assertVisible(page, "#profileAvatarChangeLabel", `${prefix}: avatar picker button`);
       const avatarPng = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=", "base64");
       await page.locator("#profileAvatarInput").setInputFiles({ name: "avatar-smoke.png", mimeType: "image/png", buffer: avatarPng });
-      await page.waitForTimeout(300);
+      await assertVisible(page, "#avatarCropModal:not(.is-hidden)", `${prefix}: avatar adjustment opens`);
+      await assertVisible(page, "#avatarCropZoom", `${prefix}: avatar zoom control`);
+      await page.locator("#avatarCropSave").click();
+      await page.waitForSelector("#avatarCropModal.is-hidden", { timeout: 8000 });
       await assertVisible(page, "#profileAvatarImage", `${prefix}: avatar selected`);
       await page.evaluate(() => {
         const key = Object.keys(localStorage).find((item) => item.startsWith("asistencia_permission_preferences:"));

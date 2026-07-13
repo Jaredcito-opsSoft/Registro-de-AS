@@ -22,7 +22,7 @@ const SUPABASE = window.SUPABASE_CONFIG || {};
 const CLOUD_ENABLED = Boolean(SUPABASE.url && SUPABASE.publishableKey && SUPABASE.bucket);
 const PHOTO_BUCKET = SUPABASE.bucket || "attendance-photos";
 const GEO_PRECISION_MAX_METERS = 200;
-const LOCAL_ASSET_VERSION = "2.16-permission-toggle-source";
+const LOCAL_ASSET_VERSION = "2.19-attendance-user-scope";
 const ATTENDANCE_STREAK_RPC_ENABLED = SUPABASE.enableAttendanceStreakRpc === true;
 const KNOWN_SUPERADMIN_EMAILS = new Set([
   "alexisdavid1177@gmail.com",
@@ -114,6 +114,8 @@ const state = {
   exitPhoto: "",
   entryStream: null,
   exitStream: null,
+  cameraStartPromises: { entry: null, exit: null },
+  cameraRetryTimers: { entry: null, exit: null },
   loadingRecords: false,
   facialModelsLoaded: false,
   facialModelsError: false,
@@ -158,6 +160,17 @@ const els = {};
 let localAvatarObjectUrl = "";
 const AVATAR_DB_NAME = "asistencia-profile-media";
 const AVATAR_STORE_NAME = "avatars";
+const avatarCropState = {
+  objectUrl: "",
+  baseWidth: 0,
+  baseHeight: 0,
+  zoom: 1,
+  x: 0,
+  y: 0,
+  pointerId: null,
+  pointerX: 0,
+  pointerY: 0,
+};
 
 function populateElements() {
   els.clockLabel = $("#clockLabel");
@@ -177,6 +190,14 @@ function populateElements() {
   els.profileAvatarFallback = $("#profileAvatarFallback");
   els.profileAvatarChangeLabel = $("#profileAvatarChangeLabel");
   els.removeProfileAvatar = $("#removeProfileAvatar");
+  els.avatarCropModal = $("#avatarCropModal");
+  els.avatarCropFrame = $("#avatarCropFrame");
+  els.avatarCropImage = $("#avatarCropImage");
+  els.avatarCropZoom = $("#avatarCropZoom");
+  els.avatarCropReset = $("#avatarCropReset");
+  els.avatarCropCancel = $("#avatarCropCancel");
+  els.avatarCropCancelIcon = $("#avatarCropCancelIcon");
+  els.avatarCropSave = $("#avatarCropSave");
   els.profileCameraEnabled = $("#profileCameraEnabled");
   els.profileLocationEnabled = $("#profileLocationEnabled");
   els.profileCameraPermissionStatus = $("#profileCameraPermissionStatus");
@@ -774,6 +795,98 @@ function showLocalAvatar(objectUrl) {
   if (els.removeProfileAvatar) els.removeProfileAvatar.disabled = false;
 }
 
+function clampAvatarCrop() {
+  const frameSize = els.avatarCropFrame?.clientWidth || 1;
+  const maxX = Math.max(0, (avatarCropState.baseWidth * avatarCropState.zoom - frameSize) / 2);
+  const maxY = Math.max(0, (avatarCropState.baseHeight * avatarCropState.zoom - frameSize) / 2);
+  avatarCropState.x = Math.max(-maxX, Math.min(maxX, avatarCropState.x));
+  avatarCropState.y = Math.max(-maxY, Math.min(maxY, avatarCropState.y));
+}
+
+function renderAvatarCrop() {
+  if (!els.avatarCropImage) return;
+  clampAvatarCrop();
+  els.avatarCropImage.style.width = `${avatarCropState.baseWidth}px`;
+  els.avatarCropImage.style.height = `${avatarCropState.baseHeight}px`;
+  els.avatarCropImage.style.transform = `translate(-50%, -50%) translate(${avatarCropState.x}px, ${avatarCropState.y}px) scale(${avatarCropState.zoom})`;
+}
+
+function resetAvatarCrop() {
+  if (!els.avatarCropImage?.naturalWidth || !els.avatarCropFrame) return;
+  const frameSize = els.avatarCropFrame.clientWidth;
+  const coverScale = Math.max(frameSize / els.avatarCropImage.naturalWidth, frameSize / els.avatarCropImage.naturalHeight);
+  avatarCropState.baseWidth = els.avatarCropImage.naturalWidth * coverScale;
+  avatarCropState.baseHeight = els.avatarCropImage.naturalHeight * coverScale;
+  avatarCropState.zoom = 1;
+  avatarCropState.x = 0;
+  avatarCropState.y = 0;
+  if (els.avatarCropZoom) els.avatarCropZoom.value = "1";
+  renderAvatarCrop();
+}
+
+function closeAvatarCropEditor() {
+  els.avatarCropModal?.classList.add("is-hidden");
+  els.avatarCropFrame?.classList.remove("is-dragging");
+  if (avatarCropState.objectUrl) URL.revokeObjectURL(avatarCropState.objectUrl);
+  avatarCropState.objectUrl = "";
+  avatarCropState.pointerId = null;
+  if (els.avatarCropImage) {
+    els.avatarCropImage.removeAttribute("src");
+    els.avatarCropImage.removeAttribute("style");
+  }
+  if (els.profileAvatarInput) els.profileAvatarInput.value = "";
+}
+
+function openAvatarCropEditor(file) {
+  if (avatarCropState.objectUrl) URL.revokeObjectURL(avatarCropState.objectUrl);
+  avatarCropState.objectUrl = URL.createObjectURL(file);
+  els.avatarCropModal?.classList.remove("is-hidden");
+  els.avatarCropImage.onload = resetAvatarCrop;
+  els.avatarCropImage.onerror = () => {
+    closeAvatarCropEditor();
+    showToast("No se pudo leer la imagen seleccionada.");
+  };
+  els.avatarCropImage.src = avatarCropState.objectUrl;
+  els.avatarCropCancelIcon?.focus();
+}
+
+async function saveAdjustedAvatar() {
+  if (!els.avatarCropImage?.naturalWidth || !els.avatarCropFrame) return;
+  const originalLabel = els.avatarCropSave.textContent;
+  els.avatarCropSave.disabled = true;
+  els.avatarCropSave.textContent = "Guardando...";
+  try {
+    const frameSize = els.avatarCropFrame.clientWidth;
+    const outputSize = 512;
+    const outputScale = outputSize / frameSize;
+    const drawWidth = avatarCropState.baseWidth * avatarCropState.zoom * outputScale;
+    const drawHeight = avatarCropState.baseHeight * avatarCropState.zoom * outputScale;
+    const canvas = document.createElement("canvas");
+    canvas.width = outputSize;
+    canvas.height = outputSize;
+    canvas.getContext("2d").drawImage(
+      els.avatarCropImage,
+      (frameSize / 2 + avatarCropState.x) * outputScale - drawWidth / 2,
+      (frameSize / 2 + avatarCropState.y) * outputScale - drawHeight / 2,
+      drawWidth,
+      drawHeight
+    );
+    const avatarBlob = await new Promise((resolve) => canvas.toBlob(resolve, "image/jpeg", 0.88));
+    if (!(avatarBlob instanceof Blob)) throw new Error("No se pudo preparar la imagen");
+    releaseLocalAvatarUrl();
+    localAvatarObjectUrl = URL.createObjectURL(avatarBlob);
+    showLocalAvatar(localAvatarObjectUrl);
+    const saved = await savePersistentAvatar(avatarBlob);
+    closeAvatarCropEditor();
+    showToast(saved ? "Foto ajustada y guardada." : "Foto aplicada; no se pudo guardar de forma permanente.");
+  } catch {
+    showToast("No se pudo guardar la foto ajustada. Prueba con JPG o PNG.");
+  } finally {
+    els.avatarCropSave.disabled = false;
+    els.avatarCropSave.textContent = originalLabel;
+  }
+}
+
 function handleLocalAvatarSelection(event) {
   const file = event.target.files?.[0];
   if (!file) return;
@@ -784,44 +897,12 @@ function handleLocalAvatarSelection(event) {
     showToast("Selecciona un archivo de imagen válido.");
     return;
   }
-
   if (file.size > 15 * 1024 * 1024) {
     event.target.value = "";
     showToast("La foto debe pesar 15 MB o menos.");
     return;
   }
-
-  const nextObjectUrl = URL.createObjectURL(file);
-  const validationImage = new Image();
-  validationImage.onload = async () => {
-    try {
-      const maxSide = 1200;
-      const scale = Math.min(1, maxSide / Math.max(validationImage.naturalWidth, validationImage.naturalHeight));
-      const canvas = document.createElement("canvas");
-      canvas.width = Math.max(1, Math.round(validationImage.naturalWidth * scale));
-      canvas.height = Math.max(1, Math.round(validationImage.naturalHeight * scale));
-      canvas.getContext("2d").drawImage(validationImage, 0, 0, canvas.width, canvas.height);
-      const avatarBlob = await new Promise((resolve) => canvas.toBlob(resolve, "image/jpeg", 0.86));
-      if (!(avatarBlob instanceof Blob)) throw new Error("No se pudo preparar la imagen");
-      URL.revokeObjectURL(nextObjectUrl);
-      releaseLocalAvatarUrl();
-      localAvatarObjectUrl = URL.createObjectURL(avatarBlob);
-      showLocalAvatar(localAvatarObjectUrl);
-      const saved = await savePersistentAvatar(avatarBlob);
-      event.target.value = "";
-      showToast(saved ? "Foto guardada en este dispositivo." : "Foto aplicada; no se pudo guardar de forma permanente.");
-    } catch {
-      URL.revokeObjectURL(nextObjectUrl);
-      event.target.value = "";
-      showToast("No se pudo preparar la foto. Prueba con JPG o PNG.");
-    }
-  };
-  validationImage.onerror = () => {
-    URL.revokeObjectURL(nextObjectUrl);
-    event.target.value = "";
-    showToast("No se pudo leer la imagen seleccionada.");
-  };
-  validationImage.src = nextObjectUrl;
+  openAvatarCropEditor(file);
 }
 
 function permissionPreferencesKey() {
@@ -1074,6 +1155,8 @@ async function supabaseRequest(path, options = {}) {
 function rowToRecord(row) {
   return normalizeRecord({
     id: row.id,
+    usuarioId: row.usuario_id || "",
+    organizacionId: row.organizacion_id || "",
     nombre: row.nombre,
     matricula: row.matricula,
     fecha: row.fecha,
@@ -1237,7 +1320,10 @@ function canViewRecord(record) {
     return false;
   }
 
-  return hasPermission("view_own_records") && normalizeMatricula(record.matricula) === getCurrentUserMatricula();
+  if (!hasPermission("view_own_records")) return false;
+  const currentAppUserId = String(state.currentAppUser?.id || "");
+  if (currentAppUserId && record.usuarioId) return String(record.usuarioId) === currentAppUserId;
+  return normalizeMatricula(record.matricula) === getCurrentUserMatricula();
 }
 
 function getVisibleRecords() {
@@ -2815,7 +2901,27 @@ async function ensureAttendanceCamera(kind) {
   await startCamera(kind, { silent: true });
 }
 
-async function startCamera(kind, { silent = false } = {}) {
+function isAttendanceCameraViewActive(kind) {
+  return Boolean(document.querySelector(`[data-view="${kind}"]:not(.is-hidden)`));
+}
+
+async function requestAttendanceCameraStream() {
+  try {
+    return await navigator.mediaDevices.getUserMedia({
+      video: {
+        facingMode: { ideal: "user" },
+        width: { ideal: 720 },
+        height: { ideal: 720 },
+      },
+      audio: false,
+    });
+  } catch (error) {
+    if (!["OverconstrainedError", "NotFoundError"].includes(error?.name)) throw error;
+    return navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+  }
+}
+
+async function startCamera(kind, { silent = false, retry = 0 } = {}) {
   const video = kind === "entry" ? els.entryVideo : els.exitVideo;
 
   if (!state.permissionPreferences.camera) {
@@ -2828,35 +2934,70 @@ async function startCamera(kind, { silent = false } = {}) {
     return;
   }
 
-  try {
+  if (state.cameraStartPromises[kind]) return state.cameraStartPromises[kind];
+
+  const startPromise = (async () => {
     stopCamera(kind);
-    const stream = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode: "user" },
-      audio: false,
-    });
-    video.srcObject = stream;
-    state[`${kind}Stream`] = stream;
-    state.permissionStatus.camera = "granted";
-    state.permissionApprovals.camera = true;
-    state.permissionSelections.camera = true;
-    savePermissionPreferences();
-    renderPermissionControls();
-    syncCaptureControls();
-    setFaceStatus(
-      kind === "entry" ? els.entryFaceStatus : els.exitFaceStatus,
-      "Camara lista. Mira de frente y toma la foto.",
-      "success"
-    );
-  } catch (error) {
-    state.permissionStatus.camera = "denied";
-    state.permissionApprovals.camera = false;
-    savePermissionPreferences();
-    renderPermissionControls();
-    if (!silent) showToast("No se pudo acceder a la camara. Revisa permisos o usa HTTPS.");
+    setFaceStatus(kind === "entry" ? els.entryFaceStatus : els.exitFaceStatus, "Iniciando camara...", "pending");
+    try {
+      const stream = await requestAttendanceCameraStream();
+      if (!isAttendanceCameraViewActive(kind)) {
+        stream.getTracks().forEach((track) => track.stop());
+        return;
+      }
+      video.srcObject = stream;
+      state[`${kind}Stream`] = stream;
+      await video.play().catch(() => undefined);
+      state.permissionStatus.camera = "granted";
+      state.permissionApprovals.camera = true;
+      state.permissionSelections.camera = true;
+      savePermissionPreferences();
+      renderPermissionControls();
+      syncCaptureControls();
+      setFaceStatus(
+        kind === "entry" ? els.entryFaceStatus : els.exitFaceStatus,
+        "Camara lista. Mira de frente y toma la foto.",
+        "success"
+      );
+    } catch (error) {
+      const permissionDenied = ["NotAllowedError", "SecurityError"].includes(error?.name);
+      if (permissionDenied) {
+        state.permissionStatus.camera = "denied";
+        state.permissionApprovals.camera = false;
+        savePermissionPreferences();
+        renderPermissionControls();
+      }
+      const canRetry = !permissionDenied && retry < 2 && isAttendanceCameraViewActive(kind);
+      if (canRetry) {
+        setFaceStatus(kind === "entry" ? els.entryFaceStatus : els.exitFaceStatus, "Preparando camara...", "pending");
+        state.cameraRetryTimers[kind] = window.setTimeout(() => {
+          state.cameraRetryTimers[kind] = null;
+          startCamera(kind, { silent: true, retry: retry + 1 });
+        }, 500);
+      } else {
+        setFaceStatus(
+          kind === "entry" ? els.entryFaceStatus : els.exitFaceStatus,
+          permissionDenied ? "Activa el permiso de camara en el navegador." : "No se pudo iniciar la camara. Intenta volver a entrar.",
+          "danger"
+        );
+        if (!silent) showToast("No se pudo acceder a la camara. Revisa permisos o usa HTTPS.");
+      }
+    }
+  })();
+
+  state.cameraStartPromises[kind] = startPromise;
+  try {
+    await startPromise;
+  } finally {
+    if (state.cameraStartPromises[kind] === startPromise) state.cameraStartPromises[kind] = null;
   }
 }
 
 function stopCamera(kind) {
+  if (state.cameraRetryTimers[kind]) {
+    window.clearTimeout(state.cameraRetryTimers[kind]);
+    state.cameraRetryTimers[kind] = null;
+  }
   const stream = state[`${kind}Stream`];
   const video = kind === "entry" ? els.entryVideo : els.exitVideo;
 
@@ -2913,8 +3054,15 @@ function normalizeMatricula(value) {
 
 function todayRecordByMatricula(matricula) {
   const today = todayIso();
+  const normalizedMatricula = normalizeMatricula(String(matricula || ""));
+  if (!normalizedMatricula) return null;
+  const currentAppUserId = String(state.currentAppUser?.id || "");
   return state.records.find(
-    (record) => record.fecha === today && record.matricula === matricula
+    (record) => {
+      if (record.fecha !== today || normalizeMatricula(String(record.matricula || "")) !== normalizedMatricula) return false;
+      if (!currentAppUserId || !record.usuarioId) return true;
+      return String(record.usuarioId) === currentAppUserId;
+    }
   );
 }
 
@@ -4759,9 +4907,10 @@ function showLoginView() {
 }
 
 function showAppShell(user) {
+  const keepsPreparedGuest = Boolean(user?.isGuest && state.currentAppUser?.isGuest);
   state.currentUser = user;
-  // Solo aplicar sesión si aún no se ha configurado (evita sobreescribir modo guest)
-  if (!state.currentAppUser) {
+  // Cada cuenta inicia con su propia identidad; finishInitialization carga después su rol remoto.
+  if (!keepsPreparedGuest) {
     applyAppUserSession(null);
   } else {
     renderCurrentUserProfile();
@@ -5181,6 +5330,42 @@ async function init() {
   if (els.removeProfileAvatar) {
     els.removeProfileAvatar.addEventListener("click", () => removeLocalAvatar());
   }
+  els.avatarCropZoom?.addEventListener("input", () => {
+    avatarCropState.zoom = Number(els.avatarCropZoom.value);
+    renderAvatarCrop();
+  });
+  els.avatarCropReset?.addEventListener("click", resetAvatarCrop);
+  els.avatarCropCancel?.addEventListener("click", closeAvatarCropEditor);
+  els.avatarCropCancelIcon?.addEventListener("click", closeAvatarCropEditor);
+  els.avatarCropSave?.addEventListener("click", saveAdjustedAvatar);
+  els.avatarCropModal?.addEventListener("click", (event) => {
+    if (event.target === els.avatarCropModal) closeAvatarCropEditor();
+  });
+  els.avatarCropFrame?.addEventListener("pointerdown", (event) => {
+    avatarCropState.pointerId = event.pointerId;
+    avatarCropState.pointerX = event.clientX;
+    avatarCropState.pointerY = event.clientY;
+    els.avatarCropFrame.setPointerCapture(event.pointerId);
+    els.avatarCropFrame.classList.add("is-dragging");
+  });
+  els.avatarCropFrame?.addEventListener("pointermove", (event) => {
+    if (avatarCropState.pointerId !== event.pointerId) return;
+    avatarCropState.x += event.clientX - avatarCropState.pointerX;
+    avatarCropState.y += event.clientY - avatarCropState.pointerY;
+    avatarCropState.pointerX = event.clientX;
+    avatarCropState.pointerY = event.clientY;
+    renderAvatarCrop();
+  });
+  const finishAvatarDrag = (event) => {
+    if (avatarCropState.pointerId !== event.pointerId) return;
+    avatarCropState.pointerId = null;
+    els.avatarCropFrame?.classList.remove("is-dragging");
+  };
+  els.avatarCropFrame?.addEventListener("pointerup", finishAvatarDrag);
+  els.avatarCropFrame?.addEventListener("pointercancel", finishAvatarDrag);
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && !els.avatarCropModal?.classList.contains("is-hidden")) closeAvatarCropEditor();
+  });
   [els.headerAvatarImage, els.profileAvatarImage].forEach((image) => {
     image?.addEventListener("error", () => removeLocalAvatar({ notify: false }));
   });

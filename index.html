@@ -1033,9 +1033,9 @@
                 </div>
                 <div class="profile-avatar-actions" aria-label="Foto de perfil local">
                   <button id="profileAvatarChangeLabel" class="profile-avatar-action" type="button">Agregar foto</button>
-                  <input id="profileAvatarInput" class="visually-hidden" type="file" accept="image/*" />
+                  <input id="profileAvatarInput" class="visually-hidden" type="file" accept="image/*" aria-describedby="profileAvatarHelp" />
                   <button id="removeProfileAvatar" class="profile-avatar-action is-danger" type="button" disabled>Quitar foto</button>
-                  <small>Guardada en este dispositivo.</small>
+                  <small id="profileAvatarHelp">Guardada en este dispositivo.</small>
                 </div>
               </div>
               <div class="profile-identity-copy">
@@ -1135,6 +1135,31 @@
         </section>
       </main>
     </div>
+    <div id="avatarCropModal" class="avatar-crop-overlay is-hidden" role="dialog" aria-modal="true" aria-labelledby="avatarCropTitle">
+      <section class="avatar-crop-dialog">
+        <header class="avatar-crop-header">
+          <div>
+            <p class="section-kicker">Foto de perfil</p>
+            <h2 id="avatarCropTitle">Ajusta tu foto</h2>
+          </div>
+          <button id="avatarCropCancelIcon" class="avatar-crop-close" type="button" aria-label="Cerrar ajuste de foto">&times;</button>
+        </header>
+        <div id="avatarCropFrame" class="avatar-crop-frame" aria-label="Vista previa del recorte">
+          <img id="avatarCropImage" alt="Foto seleccionada para ajustar" draggable="false" />
+        </div>
+        <label class="avatar-crop-zoom" for="avatarCropZoom">
+          <span>Zoom</span>
+          <input id="avatarCropZoom" type="range" min="1" max="3" step="0.01" value="1" />
+        </label>
+        <p class="avatar-crop-help">Arrastra la foto para centrarla.</p>
+        <div class="avatar-crop-actions">
+          <button id="avatarCropReset" class="ghost" type="button">Restablecer</button>
+          <button id="avatarCropCancel" class="secondary" type="button">Cancelar</button>
+          <button id="avatarCropSave" class="primary" type="button">Guardar foto</button>
+        </div>
+      </section>
+    </div>
+
     <div id="evidenceModal" class="modal-backdrop" hidden>
       <section class="evidence-modal" role="dialog" aria-modal="true" aria-labelledby="evidenceTitle">
         <header class="evidence-modal-header">
@@ -1154,7 +1179,7 @@
   <script src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
   <script src="supabase-config.js?v=f0-mobile-shell"></script>
   <script src="auth.js?v=f0-mobile-shell"></script>
-  <script src="app.js?v=2.29-permission-toggle-source"></script>
+  <script src="app.js?v=2.32-attendance-user-scope"></script>
 </body>
 
 </html>
