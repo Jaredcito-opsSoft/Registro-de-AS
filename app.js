@@ -12,8 +12,9 @@ const FACE_DISTANCE_REVIEW = 0.62;
 const SUPABASE = window.SUPABASE_CONFIG || {};
 const CLOUD_ENABLED = Boolean(SUPABASE.url && SUPABASE.publishableKey && SUPABASE.bucket);
 const PHOTO_BUCKET = SUPABASE.bucket || "attendance-photos";
+const PROFILE_AVATAR_BUCKET = "profile-avatars";
 const GEO_PRECISION_MAX_METERS = 200;
-const LOCAL_ASSET_VERSION = "2.48-user-reactivation";
+const LOCAL_ASSET_VERSION = "2.49-supervisor-site-operations";
 const ATTENDANCE_STREAK_RPC_ENABLED = SUPABASE.enableAttendanceStreakRpc === true;
 const NOTIFICATION_PREFERENCE_PREFIX = "registro_asistencia_notifications_v1";
 const NOTIFICATION_SENT_PREFIX = "registro_asistencia_notification_sent_v1";
@@ -39,6 +40,7 @@ const ROLE_DEFINITIONS = {
       view_evidence: false,
       export_records: false,
       manage_records: false,
+      delete_records: false,
       manage_site: false,
       manage_organization: false,
       manage_roles: false,
@@ -47,7 +49,7 @@ const ROLE_DEFINITIONS = {
   },
   supervisor: {
     label: "Supervisor",
-    scope: "Puede revisar registros y evidencia de su sitio operativo.",
+    scope: "Supervisa su sitio: revisa y corrige asistencias, evidencia, horarios y ubicacion.",
     rank: 20,
     permissions: {
       register_attendance: true,
@@ -56,8 +58,9 @@ const ROLE_DEFINITIONS = {
       view_all_records: false,
       view_evidence: true,
       export_records: false,
-      manage_records: false,
-      manage_site: false,
+      manage_records: true,
+      delete_records: false,
+      manage_site: true,
       manage_organization: false,
       manage_roles: false,
       view_audit: false,
@@ -75,6 +78,7 @@ const ROLE_DEFINITIONS = {
       view_evidence: true,
       export_records: true,
       manage_records: true,
+      delete_records: true,
       manage_site: true,
       manage_organization: false,
       manage_roles: false,
@@ -93,6 +97,7 @@ const ROLE_DEFINITIONS = {
       view_evidence: true,
       export_records: true,
       manage_records: true,
+      delete_records: true,
       manage_site: true,
       manage_organization: true,
       manage_roles: true,
@@ -258,6 +263,9 @@ function populateElements() {
   els.clearRecords = $("#clearRecords");
   els.adminSectionHint = $("#adminSectionHint");
   els.adminRoleBadge = $("#adminRoleBadge");
+  els.adminNavLabel = $("#adminNavLabel");
+  els.adminOrganizationsNavLabel = $("#adminOrganizationsNavLabel");
+  els.adminOrganizationsNavDescription = $("#adminOrganizationsNavDescription");
   els.adminAudit = $("#adminAudit");
   els.recordsKicker = $("#recordsKicker");
   els.recordsTitle = $("#recordsTitle");
@@ -335,10 +343,10 @@ function populateElements() {
   els.userScopeTitle = $("#userScopeTitle");
   els.userScopeHelp = $("#userScopeHelp");
   els.userScopeOrganization = $("#userScopeOrganization");
+  els.userScopeAction = $("#userScopeAction");
+  els.userScopeActionWrap = $("#userScopeActionWrap");
   els.userScopeUser = $("#userScopeUser");
   els.userScopeSite = $("#userScopeSite");
-  els.userScopeRole = $("#userScopeRole");
-  els.userScopeRoleWrap = $("#userScopeRoleWrap");
   els.assignUserScopeButton = $("#assignUserScopeButton");
   els.userScopeStatus = $("#userScopeStatus");
   els.adminInviteEmail = $("#adminInviteEmail");
@@ -987,6 +995,11 @@ async function deletePersistentAvatar() {
 
 async function loadPersistentAvatar() {
   releaseLocalAvatarUrl();
+  const remoteAvatarUrl = await getRemoteAvatarUrl();
+  if (remoteAvatarUrl) {
+    showLocalAvatar(remoteAvatarUrl);
+    return;
+  }
   try {
     const blob = await avatarStoreRequest("readonly", (store) => store.get(avatarStorageKey()));
     if (!(blob instanceof Blob)) {
@@ -998,6 +1011,59 @@ async function loadPersistentAvatar() {
   } catch {
     showAvatarFallback();
   }
+}
+
+function profileAvatarPath() {
+  const authUserId = String(state.currentUser?.id || "").trim();
+  return authUserId ? `${authUserId}/avatar.jpg` : "";
+}
+
+async function getRemoteAvatarUrl() {
+  if (!CLOUD_ENABLED || !state.currentUser?.id || !localStorage.getItem("registro_asistencia_token")) return "";
+  try {
+    const avatar = getRpcFirstRow(await callAdminRpc("get_my_avatar", {}));
+    const path = String(avatar?.avatar_path || "").trim();
+    if (!path) return "";
+    const encodedPath = path.split("/").map(encodeURIComponent).join("/");
+    const response = await fetch(`${SUPABASE.url}/storage/v1/object/sign/${PROFILE_AVATAR_BUCKET}/${encodedPath}`, {
+      method: "POST",
+      headers: cloudHeaders({ "Content-Type": "application/json" }),
+      body: JSON.stringify({ expiresIn: 300 }),
+    });
+    if (!response.ok) return "";
+    const data = await response.json();
+    const signedUrl = data.signedURL || data.signedUrl || data.url || "";
+    return signedUrl.startsWith("http") ? signedUrl : `${SUPABASE.url}${signedUrl}`;
+  } catch {
+    return "";
+  }
+}
+
+async function syncProfileAvatar(blob) {
+  const path = profileAvatarPath();
+  if (!CLOUD_ENABLED || !path || !localStorage.getItem("registro_asistencia_token")) return false;
+  const encodedPath = path.split("/").map(encodeURIComponent).join("/");
+  const response = await fetch(`${SUPABASE.url}/storage/v1/object/${PROFILE_AVATAR_BUCKET}/${encodedPath}`, {
+    method: "POST",
+    headers: cloudHeaders({ "Content-Type": "image/jpeg", "x-upsert": "true" }),
+    body: blob,
+  });
+  if (!response.ok) throw new Error("No se pudo subir la foto de perfil.");
+  await callAdminRpc("set_my_avatar_path", { p_avatar_path: path });
+  return true;
+}
+
+async function removeRemoteAvatar() {
+  const path = profileAvatarPath();
+  if (!CLOUD_ENABLED || !path || !localStorage.getItem("registro_asistencia_token")) return false;
+  await callAdminRpc("set_my_avatar_path", { p_avatar_path: null });
+  const encodedPath = path.split("/").map(encodeURIComponent).join("/");
+  const response = await fetch(`${SUPABASE.url}/storage/v1/object/${PROFILE_AVATAR_BUCKET}/${encodedPath}`, {
+    method: "DELETE",
+    headers: cloudHeaders(),
+  });
+  if (!response.ok && response.status !== 404) throw new Error("No se pudo eliminar la foto de perfil.");
+  return true;
 }
 
 function releaseLocalAvatarUrl() {
@@ -1023,7 +1089,14 @@ async function removeLocalAvatar({ notify = true, removeStored = true } = {}) {
   if (els.profileAvatarInput) els.profileAvatarInput.value = "";
   if (removeStored) await deletePersistentAvatar();
   showAvatarFallback();
-  if (notify) showToast("Foto eliminada de este dispositivo.");
+  if (notify) {
+    try {
+      const removedRemotely = await removeRemoteAvatar();
+      showToast(removedRemotely ? "Foto eliminada de tu perfil." : "Foto eliminada de este dispositivo.");
+    } catch {
+      showToast("La foto se eliminara de este dispositivo; no se pudo sincronizar el cambio.");
+    }
+  }
 }
 
 function showLocalAvatar(objectUrl) {
@@ -1120,8 +1193,16 @@ async function saveAdjustedAvatar() {
     localAvatarObjectUrl = URL.createObjectURL(avatarBlob);
     showLocalAvatar(localAvatarObjectUrl);
     const saved = await savePersistentAvatar(avatarBlob);
+    let synced = false;
+    try {
+      synced = await syncProfileAvatar(avatarBlob);
+    } catch {
+      synced = false;
+    }
     closeAvatarCropEditor();
-    showToast(saved ? "Foto ajustada y guardada." : "Foto aplicada; no se pudo guardar de forma permanente.");
+    showToast(synced
+      ? "Foto ajustada y sincronizada."
+      : (saved ? "Foto ajustada y guardada en este dispositivo." : "Foto aplicada; no se pudo guardar de forma permanente."));
   } catch {
     showToast("No se pudo guardar la foto ajustada. Prueba con JPG o PNG.");
   } finally {
@@ -1548,6 +1629,26 @@ function isRoleAdminSession() {
   return Boolean(state.currentUser && !state.currentUser.isGuest && state.currentAppUser && hasAdminRole() && canUseRoleAdminMode());
 }
 
+function isSupervisorSession() {
+  return Boolean(
+    state.currentUser
+    && !state.currentUser.isGuest
+    && state.currentAppUser
+    && state.currentRole === "supervisor"
+    && hasPermission("view_site_records")
+  );
+}
+
+function canUseOperationsPanel() {
+  return isRoleAdminSession() || isSupervisorSession() || isDemoAdminUnlocked();
+}
+
+function canManageAssignedSite(siteId = "") {
+  if (!hasPermission("manage_site")) return false;
+  if (!isSupervisorSession()) return true;
+  return Boolean(siteId) && String(siteId) === String(state.currentAppUser?.sitio_id || "");
+}
+
 function getCurrentUserMatricula() {
   return normalizeMatricula(state.currentAppUser?.matricula || state.currentUser?.user_metadata?.matricula || "");
 }
@@ -1715,10 +1816,16 @@ async function loadCurrentAppUser({ silent = false } = {}) {
     : (metadata.matricula || "");
   const affiliationKey = metadata.invitation_key || metadata.organization_key || metadata.org_key || localStorage.getItem("registro_asistencia_org_key") || "";
   try {
-    if (String(affiliationKey).trim().toUpperCase().startsWith("SITE-INV-")) {
+    const normalizedAffiliationKey = String(affiliationKey).trim().toUpperCase();
+    if (normalizedAffiliationKey.startsWith("AS-INV-")) {
+      try {
+        await callAdminRpc("accept_site_admin_invitation", { p_clave: affiliationKey });
+      } catch (error) {
+        // Una invitacion ya canjeada debe permitir que el usuario vuelva a iniciar sesion.
+        if (!parseSupabaseError(error).includes("invitacion_no_disponible")) throw error;
+      }
+    } else if (normalizedAffiliationKey.startsWith("SITE-INV-")) {
       await callAdminRpc("redeem_site_invite", { p_invite_key: affiliationKey });
-    } else if (String(affiliationKey).trim().toUpperCase().startsWith("AS-INV-")) {
-      await callAdminRpc("accept_site_admin_invitation", { p_clave: affiliationKey });
     }
     const result = await callAdminRpc("get_current_app_user", {
       p_nombre: metadata.nombre || metadata.full_name || state.currentUser.email || "Usuario",
@@ -1749,6 +1856,24 @@ async function loadOrganizations({ silent = false } = {}) {
     }
     renderOrganizations();
   } catch (error) {
+    if (isSupervisorSession()) {
+      const site = state.activeSite || await loadActiveSite({ silent: true });
+      if (site?.id) {
+        state.organizationHubs = [{
+          id: state.currentAppUser?.organizacion_id,
+          nombre: state.currentAppUser?.organizacion_nombre || "Mi organizacion",
+          slug: "",
+          tipo: "",
+          activo: true,
+          sitios: [site],
+          sitios_total: 1,
+        }];
+        state.selectedOrganizationId = state.currentAppUser?.organizacion_id || null;
+        renderOrganizations();
+        setOrganizationHubNotice("Solo puedes administrar el sitio que tienes asignado.", "warning");
+        return;
+      }
+    }
     try {
       const [organizations, sites] = await Promise.all([
         callAdminRpc("get_manageable_organizations", {}),
@@ -1817,7 +1942,7 @@ function renderSelectedOrganization(org) {
   els.orgAttendancesLabel.textContent = Number(org?.asistencias_total || 0);
   els.orgStatusBadge.className = `badge ${!org ? "default" : org.activo === false ? "danger" : "success"}`;
   els.orgStatusBadge.textContent = !org ? "Sin seleccion" : org.activo === false ? "Inactiva" : "Activa";
-  if (els.newSiteButton) els.newSiteButton.disabled = !org || org.activo === false;
+  if (els.newSiteButton) els.newSiteButton.disabled = !org || org.activo === false || isSupervisorSession();
   renderManagedSites(org?.sitios || []);
 }
 
@@ -1843,8 +1968,8 @@ function renderManagedSites(rows = []) {
           <small>${escapeHtml(schedule)} · ${escapeHtml(formatMeters(site.radio_metros))}</small>
         </div>
         <div class="organization-site-actions">
-          <button class="ghost mini" type="button" data-site-action="edit" data-site-id="${escapeHtml(site.id)}">Editar</button>
-          <button class="danger mini" type="button" data-site-action="delete" data-site-id="${escapeHtml(site.id)}">Eliminar</button>
+          ${canManageAssignedSite(site.id) ? `<button class="ghost mini" type="button" data-site-action="edit" data-site-id="${escapeHtml(site.id)}">Editar</button>` : ""}
+          ${!isSupervisorSession() && hasPermission("manage_site") ? `<button class="danger mini" type="button" data-site-action="delete" data-site-id="${escapeHtml(site.id)}">Eliminar</button>` : ""}
         </div>
       </article>
     `;
@@ -1900,7 +2025,7 @@ async function loadAdminDirectories({ silent = false } = {}) {
 }
 
 async function deleteManagedSite(siteId) {
-  if (!siteId || !hasPermission("manage_site")) {
+  if (!siteId || !canManageAssignedSite(siteId) || isSupervisorSession()) {
     showToast("No tienes permisos para modificar sitios.");
     return;
   }
@@ -2223,8 +2348,14 @@ function openSiteEditor(siteId = null) {
   const org = getSelectedOrganization();
   if (!org || !hasPermission("manage_site") || !els.siteForm) return;
   const site = (org.sitios || []).find((item) => item.id === siteId) || null;
+  if (isSupervisorSession() && (!site || !canManageAssignedSite(site.id))) {
+    showToast("Solo puedes administrar el sitio que tienes asignado.");
+    return;
+  }
   fillSiteForm(site);
-  els.siteFormTitle.textContent = site ? "Editar sitio" : `Nuevo sitio en ${org.nombre}`;
+  els.siteFormTitle.textContent = isSupervisorSession() ? "Administrar mi sitio" : (site ? "Editar sitio" : `Nuevo sitio en ${org.nombre}`);
+  const restrictedSiteFields = [els.siteKey?.closest("label"), els.siteActive?.closest("label"), els.generateSiteKey, els.copySiteKey];
+  restrictedSiteFields.forEach((element) => element?.classList.toggle("is-hidden", isSupervisorSession()));
   els.siteForm.hidden = false;
   els.siteForm.scrollIntoView({ behavior: "smooth", block: "start" });
   window.setTimeout(() => els.siteName.focus(), 250);
@@ -2299,7 +2430,7 @@ function getBrowserLocation() {
 }
 
 async function useAdminLocation() {
-  if (!requestAdminAccess()) return;
+  if (!canManageAssignedSite(els.siteEditId?.value || state.currentAppUser?.sitio_id || "")) return;
   setSiteMessage("Obteniendo ubicacion actual del administrador...", "warning");
   try {
     const position = await getBrowserLocation();
@@ -2318,7 +2449,7 @@ async function useAdminLocation() {
 }
 
 async function testAdminLocation() {
-  if (!requestAdminAccess()) return;
+  if (!canManageAssignedSite(els.siteEditId?.value || state.currentAppUser?.sitio_id || "")) return;
   if (!CLOUD_ENABLED) {
     setSiteMessage("La prueba requiere Supabase activo.", "danger");
     return;
@@ -2358,7 +2489,10 @@ function validateSiteForm(data) {
 
 async function handleSiteSubmit(event) {
   event.preventDefault();
-  if (!requestAdminAccess()) return;
+  if (!canManageAssignedSite(els.siteEditId?.value || "")) {
+    setSiteMessage("No tienes permisos para administrar este sitio.", "danger");
+    return;
+  }
   if (!CLOUD_ENABLED) {
     setSiteMessage("No se puede guardar sin Supabase configurado.", "danger");
     return;
@@ -2389,7 +2523,7 @@ async function handleSiteSubmit(event) {
 
   setSiteMessage("Guardando configuracion del sitio...", "warning");
   try {
-    await callAdminRpc("admin_upsert_site", {
+    const payload = {
       p_id: els.siteEditId?.value || null,
       p_organization_id: els.siteOrganizationId?.value || state.selectedOrganizationId,
       p_nombre: data.nombre,
@@ -2407,7 +2541,26 @@ async function handleSiteSubmit(event) {
       p_identificador_label: data.identifierLabel,
       p_clave: data.claveSitio || null,
       p_activo: data.activo,
-    });
+    };
+    if (isSupervisorSession()) {
+      await callAdminRpc("supervisor_update_assigned_site", {
+        p_nombre: data.nombre,
+        p_direccion: data.direccion,
+        p_latitud: data.latitud,
+        p_longitud: data.longitud,
+        p_radio_metros: data.radio,
+        p_hora_entrada_inicio: data.horaEntradaInicio,
+        p_hora_entrada_fin: data.horaEntradaFin,
+        p_hora_salida_inicio: data.horaSalidaInicio,
+        p_hora_salida_fin: data.horaSalidaFin,
+        p_zona_horaria: data.zonaHoraria,
+        p_gps_policy: data.gpsPolicy,
+        p_evidence_policy: data.evidencePolicy,
+        p_identificador_label: data.identifierLabel,
+      });
+    } else {
+      await callAdminRpc("admin_upsert_site", payload);
+    }
     addAdminLog("Sitio actualizado", data.nombre + " (" + data.radio + " m)");
     closeSiteEditor();
     await loadOrganizations({ silent: true });
@@ -2844,8 +2997,8 @@ function showView(name) {
   }
 
   if (name === "admin") {
-    const isAdminOrSuper = ["admin", "superadmin"].includes(state.currentRole);
-    if (!isAdminOrSuper) {
+    const canOpenOperations = ["supervisor", "admin", "superadmin"].includes(state.currentRole);
+    if (!canOpenOperations) {
       console.warn("Navegación rechazada: permiso insuficiente para la vista de administración.");
       showView("home");
       return;
@@ -2855,7 +3008,7 @@ function showView(name) {
   hideGuidedPanels();
   let targetName = name;
 
-  if (targetName === "admin" && !isRoleAdminSession() && !isDemoAdminUnlocked()) {
+  if (targetName === "admin" && !canUseOperationsPanel()) {
     showToast("Para acciones administrativas inicia sesi\u00f3n con una cuenta admin.");
     targetName = "home";
   }
@@ -2890,8 +3043,8 @@ function showView(name) {
   }
   if (actualView === "records" || actualView === "admin" || actualView === "home") refreshRecords({ silent: true });
   if (targetName === "admin") {
-    showAdminSection("summary");
-    loadAdminDirectories({ silent: true });
+    showAdminSection(isSupervisorSession() ? "attendances" : "summary");
+    if (isRoleAdminSession()) loadAdminDirectories({ silent: true });
   }
   window.scrollTo({ top: 0, behavior: "smooth" });
 }
@@ -2910,16 +3063,17 @@ function setActiveNavigation(name) {
 
 function renderRolePanelCopy(activeTarget = "records") {
   const role = getRoleDefinition();
-  const isAdminTarget = activeTarget === "admin" || isRoleAdminSession() || isDemoAdminUnlocked();
-  if (els.recordsKicker) els.recordsKicker.textContent = isAdminTarget ? "Panel operativo" : "Tu asistencia";
+  const isSupervisor = isSupervisorSession();
+  const isOperationsTarget = activeTarget === "admin" || canUseOperationsPanel();
+  if (els.recordsKicker) els.recordsKicker.textContent = isOperationsTarget ? (isSupervisor ? "Supervision operativa" : "Panel operativo") : "Tu asistencia";
   if (els.recordsTitle) {
-    els.recordsTitle.textContent = isAdminTarget
-      ? (hasPermission("manage_organization") ? "Administracion central" : "Administracion del sitio")
+    els.recordsTitle.textContent = isOperationsTarget
+      ? (isSupervisor ? "Supervisar" : (hasPermission("manage_organization") ? "Administracion central" : "Administracion del sitio"))
       : "Mis registros";
   }
   if (els.recordsSubtitle) {
-    els.recordsSubtitle.textContent = isAdminTarget
-      ? role.scope
+    els.recordsSubtitle.textContent = isOperationsTarget
+      ? (isSupervisor ? "Revisa asistencias y evidencia del sitio que supervisas." : role.scope)
       : "Revisa tus jornadas y comprueba si falta una salida.";
   }
   if (els.dashboardScopeLabel) {
@@ -4090,6 +4244,7 @@ function renderRecords() {
 
   const canViewEvidence = hasPermission("view_evidence") || isDemoAdminUnlocked();
   const canManageRecords = hasPermission("manage_records") || isDemoAdminUnlocked();
+  const canDeleteRecords = hasPermission("delete_records") || isDemoAdminUnlocked();
 
   filteredRecords.forEach((record) => {
     const statusClass = statusBadgeClass(record.estado);
@@ -4133,12 +4288,12 @@ function renderRecords() {
       const actionButtons = [
         canViewEvidence ? `<button class="secondary mini" data-action="view-evidence" data-id="${record.id}">Ver evidencia</button>` : "",
         canManageRecords ? `<button class="ghost mini" data-action="edit-observation" data-id="${record.id}">Observacion</button>` : "",
-        canManageRecords ? `<button class="danger mini" data-action="delete-record" data-id="${record.id}">Eliminar</button>` : "",
+        canDeleteRecords ? `<button class="danger mini" data-action="delete-record" data-id="${record.id}">Eliminar</button>` : "",
       ].filter(Boolean).join("");
 
       row.innerHTML = `
         ${commonColsHtml}
-        <td class="admin-only ${state.isAdmin ? "" : "is-hidden"}">
+        <td class="admin-only supervisor-visible ${state.isAdmin ? "" : "is-hidden"}">
           <div class="row-actions">
             ${actionButtons}
           </div>
@@ -4568,6 +4723,33 @@ function setUserScopeStatus(message, tone = "warning") {
   els.userScopeStatus.dataset.tone = tone;
 }
 
+function getUserScopeAction() {
+  const requested = els.userScopeAction?.value || "assign_site";
+  if (requested === "make_supervisor" && !hasPermission("manage_organization")) return "assign_site";
+  return ["assign_site", "change_site", "make_supervisor"].includes(requested) ? requested : "assign_site";
+}
+
+function getUserScopeActionCopy(action) {
+  const copy = {
+    assign_site: {
+      help: "Asigna a una persona sin sitio a una sede de su organizacion.",
+      button: "Asignar a sitio",
+      status: "Elige una persona sin sitio y su sede de destino.",
+    },
+    change_site: {
+      help: "Cambia a una persona que ya tiene sitio a otra sede de su organizacion.",
+      button: "Cambiar de sitio",
+      status: "Elige una persona con sitio y selecciona su nueva sede.",
+    },
+    make_supervisor: {
+      help: "Asigna el rol supervisor y define el sitio que podra supervisar.",
+      button: "Asignar supervisor",
+      status: "Elige una persona y el sitio que supervisara.",
+    },
+  };
+  return copy[action] || copy.assign_site;
+}
+
 function populateUserScopeAssignment() {
   const card = els.userScopeAssignmentCard;
   if (!card) return;
@@ -4584,7 +4766,14 @@ function populateUserScopeAssignment() {
     : (organizations.some((organization) => String(organization.id) === actorOrganizationId)
       ? actorOrganizationId
       : String(organizations[0]?.id || ""));
-  const users = getAssignableUsers().filter((user) => String(user.organizacion_id || "") === selectedOrganizationId);
+  const action = getUserScopeAction();
+  const copy = getUserScopeActionCopy(action);
+  const users = getAssignableUsers().filter((user) => {
+    if (String(user.organizacion_id || "") !== selectedOrganizationId) return false;
+    if (action === "assign_site") return !user.sitio_id;
+    if (action === "change_site") return Boolean(user.sitio_id);
+    return normalizeAppRole(user.rol) !== "supervisor";
+  });
   const previousUserId = els.userScopeUser?.value || "";
   const previousSiteId = els.userScopeSite?.value || "";
   const selectedUser = users.find((user) => user.id === previousUserId) || null;
@@ -4603,20 +4792,20 @@ function populateUserScopeAssignment() {
     { disabled: !hasPermission("manage_organization") || organizations.length <= 1 },
   );
 
-  if (els.userScopeHelp) {
-    els.userScopeHelp.textContent = canManageRoles
-      ? "Elige una persona y el sitio que supervisara. Si ya esta asignada, puedes cambiarla de sitio."
-      : "Solo puedes vincular usuarios regulares dentro de la organizacion de tu sitio.";
+  if (els.userScopeActionWrap) els.userScopeActionWrap.classList.toggle("is-hidden", false);
+  if (els.userScopeAction) {
+    const supervisorOption = els.userScopeAction.querySelector('option[value="make_supervisor"]');
+    if (supervisorOption) {
+      supervisorOption.hidden = !canManageRoles;
+      supervisorOption.disabled = !canManageRoles;
+    }
+    if (!canManageRoles && els.userScopeAction.value === "make_supervisor") els.userScopeAction.value = "assign_site";
   }
-  if (els.userScopeKicker) els.userScopeKicker.textContent = canManageRoles ? "Supervision operativa" : "Alcance operativo";
-  if (els.userScopeTitle) els.userScopeTitle.textContent = canManageRoles ? "Asignar supervisor a sitio" : "Vincular usuario a sitio";
-  if (els.userScopeRoleWrap) els.userScopeRoleWrap.classList.add("is-hidden");
-  if (els.userScopeRole) {
-    els.userScopeRole.disabled = true;
-    els.userScopeRole.value = canManageRoles ? "supervisor" : "usuario";
-  }
+  if (els.userScopeHelp) els.userScopeHelp.textContent = copy.help;
+  if (els.userScopeKicker) els.userScopeKicker.textContent = canManageRoles ? "Gestion operativa" : "Alcance operativo";
+  if (els.userScopeTitle) els.userScopeTitle.textContent = "Asignacion de usuario";
   if (els.assignUserScopeButton) {
-    els.assignUserScopeButton.textContent = canManageRoles ? "Asignar supervisor" : "Guardar asignacion";
+    els.assignUserScopeButton.textContent = copy.button;
   }
 
   if (els.userScopeUser) {
@@ -4640,13 +4829,16 @@ function populateUserScopeAssignment() {
       els.userScopeSite.appendChild(option);
     });
     els.userScopeSite.disabled = !selectedOrganizationId || !selectedUser || !sites.length;
+    const currentSiteId = String(selectedUser?.sitio_id || "");
     els.userScopeSite.value = sites.some((site) => site.id === previousSiteId)
       ? previousSiteId
-      : (sites.some((site) => site.id === selectedUser?.sitio_id) ? selectedUser.sitio_id : "");
+      : (action === "make_supervisor" && sites.some((site) => site.id === currentSiteId) ? currentSiteId : "");
   }
 
   if (els.assignUserScopeButton) {
-    els.assignUserScopeButton.disabled = !selectedUser || !els.userScopeSite?.value;
+    const destinationSiteId = String(els.userScopeSite?.value || "");
+    const changingToSameSite = action === "change_site" && destinationSiteId === String(selectedUser?.sitio_id || "");
+    els.assignUserScopeButton.disabled = !selectedUser || !destinationSiteId || changingToSameSite;
   }
 
   if (!selectedOrganizationId) {
@@ -4656,9 +4848,7 @@ function populateUserScopeAssignment() {
   } else if (selectedUser && !sites.length) {
     setUserScopeStatus("No hay sitios activos compatibles con la organizacion de este usuario.", "danger");
   } else if (els.userScopeStatus?.dataset.tone !== "success") {
-    setUserScopeStatus(canManageRoles
-      ? "La persona quedara como supervisor del sitio y el cambio se registrara en auditoria."
-      : "La asignacion se guarda por RPC y queda registrada en auditoria.", "warning");
+    setUserScopeStatus(copy.status, "warning");
   }
 }
 
@@ -4670,9 +4860,23 @@ async function assignUserScope() {
 
   const userId = els.userScopeUser?.value || "";
   const siteId = els.userScopeSite?.value || "";
-  const role = isRoleAdminSession() && hasPermission("manage_site") ? "supervisor" : "usuario";
+  const action = getUserScopeAction();
+  const selectedUser = getAssignableUsers().find((user) => String(user.id) === String(userId));
+  const role = action === "make_supervisor" ? "supervisor" : "usuario";
   if (!userId || !siteId) {
     setUserScopeStatus("Selecciona un usuario y un sitio activo.", "danger");
+    return;
+  }
+  if (action === "assign_site" && selectedUser?.sitio_id) {
+    setUserScopeStatus("Esta persona ya tiene sitio. Usa Cambiar usuario de sitio.", "danger");
+    return;
+  }
+  if (action === "change_site" && !selectedUser?.sitio_id) {
+    setUserScopeStatus("Esta persona aun no tiene sitio. Usa Asignar usuario sin sitio.", "danger");
+    return;
+  }
+  if (action === "change_site" && String(selectedUser.sitio_id) === String(siteId)) {
+    setUserScopeStatus("Selecciona un sitio distinto al actual.", "danger");
     return;
   }
 
@@ -4686,9 +4890,11 @@ async function assignUserScope() {
       p_rol: role,
     }));
     const assignedRole = getRoleDefinition(result?.rol || role).label;
-    successMessage = `${assignedRole} asignado correctamente al sitio.`;
+    successMessage = action === "change_site"
+      ? `${assignedRole} cambiado correctamente de sitio.`
+      : `${assignedRole} asignado correctamente al sitio.`;
     addAdminLog("user.scope_assigned", `${userId} / ${siteId} / ${result?.rol || role}`);
-    showToast(role === "supervisor" ? "Supervisor asignado al sitio." : "Asignacion de usuario guardada.");
+    showToast(role === "supervisor" ? "Supervisor asignado al sitio." : (action === "change_site" ? "Sitio actualizado." : "Usuario asignado al sitio."));
     await loadOrganizations({ silent: true });
     await loadAdminDirectories({ silent: true });
   } catch (error) {
@@ -5221,6 +5427,7 @@ function renderMobileRecordCards(records = []) {
   }
 
   const canManageRecords = hasPermission("manage_records") || isDemoAdminUnlocked();
+  const canDeleteRecords = hasPermission("delete_records") || isDemoAdminUnlocked();
 
   els.recordsMobileCards.innerHTML = records.map((record) => {
     const statusClass = statusBadgeClass(record.estado);
@@ -5232,7 +5439,7 @@ function renderMobileRecordCards(records = []) {
     const actionButtons = [
       canViewEvidence ? `<button class="secondary" data-action="view-evidence" data-id="${record.id}">Ver evidencia</button>` : "",
       canManageRecords ? `<button class="ghost mini" data-action="edit-observation" data-id="${record.id}">Observación</button>` : "",
-      canManageRecords ? `<button class="danger mini" data-action="delete-record" data-id="${record.id}">Eliminar</button>` : "",
+      canDeleteRecords ? `<button class="danger mini" data-action="delete-record" data-id="${record.id}">Eliminar</button>` : "",
     ].filter(Boolean).join("");
 
     return `
@@ -5382,6 +5589,7 @@ function lockAdmin() {
 
 function updateAdminControls() {
   const roleAdmin = isRoleAdminSession();
+  const supervisorSession = isSupervisorSession();
   const demoAdmin = isDemoAdminUnlocked();
   if (roleAdmin) state.isAdmin = true;
   if (!roleAdmin && !demoAdmin) state.isAdmin = false;
@@ -5391,13 +5599,19 @@ function updateAdminControls() {
   const canManageRecords = hasPermission("manage_records") || demoAdmin;
   const canExport = hasPermission("export_records") || demoAdmin;
   const canViewAudit = hasPermission("view_audit") || demoAdmin;
-  const hasAdminSurface = roleAdmin || demoAdmin;
+  const hasOperationsSurface = roleAdmin || supervisorSession || demoAdmin;
 
   document.querySelectorAll(".admin-nav").forEach((element) => {
-    element.classList.toggle("is-hidden", !hasAdminSurface);
+    element.classList.toggle("is-hidden", !hasOperationsSurface);
   });
   document.querySelectorAll(".admin-control, .admin-only").forEach((element) => {
     element.classList.toggle("is-hidden", !state.isAdmin);
+  });
+  document.querySelectorAll(".supervisor-visible").forEach((element) => {
+    element.classList.toggle("is-hidden", !hasOperationsSurface);
+  });
+  document.querySelectorAll(".supervisor-hidden").forEach((element) => {
+    element.classList.toggle("is-hidden", supervisorSession);
   });
 
   // Control de botones de bloqueo y administración
@@ -5436,12 +5650,14 @@ function updateAdminControls() {
 
   if (els.adminRoleBadge) {
     const role = getRoleDefinition();
-    els.adminRoleBadge.textContent = role.label;
+    els.adminRoleBadge.textContent = supervisorSession ? "Supervisar" : role.label;
     els.adminRoleBadge.dataset.tone = hasPermission("manage_organization")
       ? "superadmin"
       : roleAdmin
         ? "admin"
-        : "demo";
+        : supervisorSession
+          ? "supervisor"
+          : "demo";
   }
 
   const adminView = document.querySelector('[data-view="admin"]');
@@ -5462,15 +5678,19 @@ function updateAdminControls() {
     tabRecordsBtn.classList.toggle("is-hidden", !canViewRecordsTab);
   }
 
-  const isAuthorizedToAdmin = ["admin", "superadmin"].includes(state.currentRole);
+  const isAuthorizedToAdmin = ["supervisor", "admin", "superadmin"].includes(state.currentRole);
   const navAdminBtn = document.querySelector('button.nav-button[data-target="admin"]');
   if (navAdminBtn) {
     navAdminBtn.classList.toggle("is-hidden", !isAuthorizedToAdmin);
+    navAdminBtn.setAttribute("aria-label", supervisorSession ? "Supervisar" : "Administracion");
   }
   const tabAdminBtn = document.querySelector('.tab-strip button[data-target="admin"]');
   if (tabAdminBtn) {
     tabAdminBtn.classList.toggle("is-hidden", !isAuthorizedToAdmin);
   }
+  if (els.adminNavLabel) els.adminNavLabel.textContent = supervisorSession ? "Supervisar" : "Admin";
+  if (els.adminOrganizationsNavLabel) els.adminOrganizationsNavLabel.textContent = supervisorSession ? "Mi sitio" : "Organizaciones";
+  if (els.adminOrganizationsNavDescription) els.adminOrganizationsNavDescription.textContent = supervisorSession ? "Configuracion" : "Empresas y sitios";
 
   renderRolePanelCopy();
 }
@@ -5675,7 +5895,10 @@ async function clearRecords() {
 }
 
 async function editAdminObservation(id) {
-  if (!requestAdminAccess()) return;
+  if (!hasPermission("manage_records") && !isDemoAdminUnlocked()) {
+    showToast("Tu rol no puede modificar registros.");
+    return;
+  }
   const record = state.records.find((item) => item.id === id);
   if (!record) return;
 
@@ -5687,11 +5910,9 @@ async function editAdminObservation(id) {
 
   try {
     if (CLOUD_ENABLED) {
-      await callAdminRpc("admin_update_observacion_asistencia", {
-        p_id: id,
-        p_admin_key: getAdminRpcKey(),
-        p_observacion: value.trim(),
-      });
+      await callAdminRpc(isSupervisorSession() ? "supervisor_update_asistencia_observacion" : "admin_update_observacion_asistencia", isSupervisorSession()
+        ? { p_id: id, p_observacion: value.trim() }
+        : { p_id: id, p_admin_key: getAdminRpcKey(), p_observacion: value.trim() });
       await refreshRecords({ silent: true });
     } else {
       record.observacion_admin = value.trim();
@@ -5782,7 +6003,7 @@ function handleRecordAction(event) {
   }
 
   if (button.dataset.action === "delete-record") {
-    if (!hasPermission("manage_records") && !isDemoAdminUnlocked()) {
+    if (!hasPermission("delete_records") && !isDemoAdminUnlocked()) {
       showToast("Tu rol no puede eliminar registros.");
       return;
     }
@@ -6373,6 +6594,9 @@ function bindAdminPanelControls() {
     const editUserScopeButton = event.target.closest("[data-edit-user-scope]");
     if (editUserScopeButton) {
       const userId = editUserScopeButton.dataset.editUserScope || "";
+      const user = getAssignableUsers().find((candidate) => String(candidate.id) === String(userId));
+      if (els.userScopeAction) els.userScopeAction.value = user?.sitio_id ? "change_site" : "assign_site";
+      populateUserScopeAssignment();
       if (els.userScopeUser) els.userScopeUser.value = userId;
       populateUserScopeAssignment();
       els.userScopeAssignmentCard?.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -6403,6 +6627,8 @@ function bindAdminPanelControls() {
       return;
     }
     if (event.target.closest("[data-assign-unassigned-users]")) {
+      if (els.userScopeAction) els.userScopeAction.value = "assign_site";
+      populateUserScopeAssignment();
       els.userScopeAssignmentCard?.scrollIntoView({ behavior: "smooth", block: "start" });
       els.userScopeUser?.focus({ preventScroll: true });
     }
@@ -6418,8 +6644,8 @@ function bindAdminPanelControls() {
       renderAdminUsersSection(getVisibleRecords());
       return;
     }
-    if (target === els.userScopeUser || target === els.userScopeSite) {
-      setUserScopeStatus("Selecciona un usuario y su sitio de destino.", "warning");
+    if (target === els.userScopeAction || target === els.userScopeUser || target === els.userScopeSite) {
+      setUserScopeStatus(getUserScopeActionCopy(getUserScopeAction()).status, "warning");
       populateUserScopeAssignment();
       return;
     }
@@ -6509,7 +6735,7 @@ async function init() {
     if (event.key === "Escape" && !els.avatarCropModal?.classList.contains("is-hidden")) closeAvatarCropEditor();
   });
   [els.headerAvatarImage, els.profileAvatarImage].forEach((image) => {
-    image?.addEventListener("error", () => removeLocalAvatar({ notify: false }));
+    image?.addEventListener("error", () => showAvatarFallback());
   });
   window.addEventListener("beforeunload", releaseLocalAvatarUrl, { once: true });
 

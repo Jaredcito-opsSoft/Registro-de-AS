@@ -199,14 +199,14 @@
           <span class="nav-label">Mis registros</span>
         </button>
 
-        <button class="nav-button admin-nav is-hidden" data-target="admin" type="button" aria-label="Admin" id="btn-admin">
+        <button class="nav-button admin-nav is-hidden" data-target="admin" type="button" aria-label="Administracion" id="btn-admin">
           <span class="nav-icon" aria-hidden="true">
             <svg viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="stroke: currentColor; fill: none;">
               <circle cx="12" cy="12" r="3" />
               <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
             </svg>
           </span>
-          <span class="nav-label">Admin</span>
+          <span id="adminNavLabel" class="nav-label">Admin</span>
         </button>
       </nav>
 
@@ -682,10 +682,10 @@
               <span class="admin-nav-icon" aria-hidden="true">
                 <svg viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9 12 2l9 7"/><path d="M9 22V12h6v10"/></svg>
               </span>
-              <strong class="admin-nav-label">Organizaciones</strong>
-              <span class="admin-nav-desc">Empresas y sitios</span>
+              <strong id="adminOrganizationsNavLabel" class="admin-nav-label">Organizaciones</strong>
+              <span id="adminOrganizationsNavDescription" class="admin-nav-desc">Empresas y sitios</span>
             </button>
-            <button class="admin-nav-pill" type="button" data-admin-section-target="users">
+            <button class="admin-nav-pill supervisor-hidden" type="button" data-admin-section-target="users">
               <span class="admin-nav-icon" aria-hidden="true">
                 <svg viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
               </span>
@@ -699,7 +699,7 @@
               <strong class="admin-nav-label">Asistencias</strong>
               <span class="admin-nav-desc">Registros</span>
             </button>
-            <button class="admin-nav-pill" type="button" data-admin-section-target="audit">
+            <button class="admin-nav-pill supervisor-hidden" type="button" data-admin-section-target="audit">
               <span class="admin-nav-icon" aria-hidden="true">
                 <svg viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z"/></svg>
               </span>
@@ -796,7 +796,7 @@
           </section>
           </section>
 
-          <div class="table-wrap admin-control is-hidden admin-section is-hidden" data-admin-section="attendances">
+          <div class="table-wrap admin-control supervisor-visible is-hidden admin-section" data-admin-section="attendances">
             <div class="ops-dashboard-head admin-records-head">
               <div>
                 <p class="section-kicker">Consulta diaria</p>
@@ -1041,16 +1041,24 @@
                 <div id="adminUsersBySite" class="admin-users-by-site" aria-live="polite"></div>
               </section>
 
-              <aside id="userScopeAssignmentCard" class="admin-assignment-card is-hidden" aria-label="Asignar supervisor a sitio">
+              <aside id="userScopeAssignmentCard" class="admin-assignment-card is-hidden" aria-label="Gestionar asignacion de usuario">
                 <div>
-                  <p id="userScopeKicker" class="section-kicker">Supervision operativa</p>
-                  <h3 id="userScopeTitle">Asignar supervisor a sitio</h3>
-                  <p id="userScopeHelp">Selecciona una persona y el sitio que supervisara.</p>
+                  <p id="userScopeKicker" class="section-kicker">Gestion de usuarios</p>
+                  <h3 id="userScopeTitle">Asignar sitio o supervisor</h3>
+                  <p id="userScopeHelp">Elige la accion antes de seleccionar a la persona.</p>
                 </div>
                 <label>
                   Organizacion
                   <select id="userScopeOrganization">
                     <option value="">Selecciona una organizacion</option>
+                  </select>
+                </label>
+                <label id="userScopeActionWrap">
+                  Accion
+                  <select id="userScopeAction">
+                    <option value="assign_site">Asignar usuario sin sitio</option>
+                    <option value="change_site">Cambiar usuario de sitio</option>
+                    <option value="make_supervisor">Asignar rol supervisor</option>
                   </select>
                 </label>
                 <label>
@@ -1065,24 +1073,17 @@
                     <option value="">Selecciona primero un usuario</option>
                   </select>
                 </label>
-                <label id="userScopeRoleWrap" class="is-hidden">
-                  Rol operativo
-                  <select id="userScopeRole">
-                    <option value="usuario">Usuario</option>
-                    <option value="supervisor">Supervisor</option>
-                  </select>
-                </label>
                 <div class="site-actions">
-                  <button id="assignUserScopeButton" class="primary" type="button" disabled>Asignar supervisor</button>
+                  <button id="assignUserScopeButton" class="primary" type="button" disabled>Guardar asignacion</button>
                 </div>
-                <p id="userScopeStatus" class="site-test-result" data-tone="warning">Carga el directorio para asignar supervisores.</p>
+                <p id="userScopeStatus" class="site-test-result" data-tone="warning">Carga el directorio para gestionar asignaciones.</p>
               </aside>
 
               <aside id="adminInviteCard" class="admin-assignment-card superadmin-only is-hidden" aria-label="Invitar supervisor a sitio">
                 <div>
                   <p class="section-kicker">Nuevo supervisor</p>
                   <h3>Invitar supervisor a sitio</h3>
-                  <p>Genera una invitacion de un solo uso para un supervisor que aun no aparece en el directorio.</p>
+                  <p>Genera una clave de un solo uso para el correo indicado. Comparte la clave por un canal seguro.</p>
                 </div>
                 <label>
                   Correo del supervisor
@@ -1102,7 +1103,7 @@
                   <button id="prepareAdminInvite" class="primary" type="button">Preparar key</button>
                   <button id="copyAdminInviteKey" class="ghost" type="button">Copiar</button>
                 </div>
-                <p id="adminInviteStatus" class="site-test-result" data-tone="warning">La clave expira en 72 horas y se entrega una sola vez.</p>
+                <p id="adminInviteStatus" class="site-test-result" data-tone="warning">La clave expira en 72 horas. Esta pantalla no envia correos automaticamente.</p>
               </aside>
 
               <aside id="organizationAdminCard" class="admin-assignment-card superadmin-only is-hidden" aria-label="Asignar admin de organizacion">
@@ -1157,14 +1158,14 @@
             <section class="profile-identity-card" aria-label="Resumen del perfil">
               <div class="profile-avatar-editor">
                 <div id="profileInitials" class="profile-avatar">
-                  <img id="profileAvatarImage" class="profile-avatar-image" alt="Foto de perfil seleccionada localmente" hidden />
+                  <img id="profileAvatarImage" class="profile-avatar-image" alt="Foto de perfil" hidden />
                   <span id="profileAvatarFallback" class="profile-avatar-initials" aria-hidden="true">US</span>
                 </div>
-                <div class="profile-avatar-actions" aria-label="Foto de perfil local">
+                <div class="profile-avatar-actions" aria-label="Foto de perfil">
                   <label id="profileAvatarChangeLabel" class="profile-avatar-action" for="profileAvatarInput">Agregar foto</label>
                   <input id="profileAvatarInput" class="visually-hidden" type="file" accept="image/*" aria-describedby="profileAvatarHelp" />
                   <button id="removeProfileAvatar" class="profile-avatar-action is-danger" type="button" disabled>Quitar foto</button>
-                  <small id="profileAvatarHelp">Guardada en este dispositivo.</small>
+                  <small id="profileAvatarHelp">Se sincroniza al guardar.</small>
                 </div>
               </div>
               <div class="profile-identity-copy">
@@ -1326,7 +1327,7 @@
   <script src="supabase-config.js?v=f0-mobile-shell"></script>
   <script src="auth.js?v=2.48-user-reactivation"></script>
   <script src="notification-rules.js?v=1.0-attendance-reminders"></script>
-  <script src="app.js?v=2.48-user-reactivation"></script>
+  <script src="app.js?v=2.49-supervisor-site-operations"></script>
 </body>
 
 </html>
