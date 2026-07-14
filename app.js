@@ -14,7 +14,7 @@ const CLOUD_ENABLED = Boolean(SUPABASE.url && SUPABASE.publishableKey && SUPABAS
 const PHOTO_BUCKET = SUPABASE.bucket || "attendance-photos";
 const PROFILE_AVATAR_BUCKET = "profile-avatars";
 const GEO_PRECISION_MAX_METERS = 200;
-const LOCAL_ASSET_VERSION = "2.49-supervisor-site-operations";
+const LOCAL_ASSET_VERSION = "2.50-avatar-cloud-sync";
 const ATTENDANCE_STREAK_RPC_ENABLED = SUPABASE.enableAttendanceStreakRpc === true;
 const NOTIFICATION_PREFERENCE_PREFIX = "registro_asistencia_notifications_v1";
 const NOTIFICATION_SENT_PREFIX = "registro_asistencia_notification_sent_v1";
