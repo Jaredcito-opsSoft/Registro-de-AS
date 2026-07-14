@@ -13,7 +13,7 @@ const SUPABASE = window.SUPABASE_CONFIG || {};
 const CLOUD_ENABLED = Boolean(SUPABASE.url && SUPABASE.publishableKey && SUPABASE.bucket);
 const PHOTO_BUCKET = SUPABASE.bucket || "attendance-photos";
 const GEO_PRECISION_MAX_METERS = 200;
-const LOCAL_ASSET_VERSION = "2.37-admin-directory-sync";
+const LOCAL_ASSET_VERSION = "2.39-photo-gps-flow";
 const ATTENDANCE_STREAK_RPC_ENABLED = SUPABASE.enableAttendanceStreakRpc === true;
 const NOTIFICATION_PREFERENCE_PREFIX = "registro_asistencia_notifications_v1";
 const NOTIFICATION_SENT_PREFIX = "registro_asistencia_notification_sent_v1";
@@ -112,15 +112,13 @@ const state = {
   cameraStartPromises: { entry: null, exit: null },
   cameraRetryTimers: { entry: null, exit: null },
   cameraNeedsGesture: { entry: false, exit: false },
-  livenessRunning: { entry: false, exit: false },
-  livenessVerified: { entry: false, exit: false },
+  photoCaptureRunning: { entry: false, exit: false },
   attendanceSubmitting: { entry: false, exit: false },
   loadingRecords: false,
   facialModelsLoaded: false,
   facialModelsError: false,
   entryFace: null,
   exitFace: null,
-  lifeChallenge: "",
   serverClockOffset: 0,
   nextQrRefreshAt: 0,
   activeSite: null,
@@ -221,7 +219,6 @@ function populateElements() {
   els.faceStatus = $("#faceStatus");
   els.entryFaceStatus = $("#entryFaceStatus");
   els.exitFaceStatus = $("#exitFaceStatus");
-  els.lifeChallenge = $("#lifeChallenge");
   els.entryLocationStatus = $("#entryLocationStatus");
   els.locationStatus = $("#locationStatus");
   els.entryVideo = $("#entryVideo");
@@ -2627,7 +2624,7 @@ async function insertEntryRecord({ nombre, matricula, fotoEntrada, descriptorEnt
   const row = await callAdminRpc("registrar_entrada_segura", payload);
   return rowToRecord(row);
 }
-async function updateExitRecord(record, { fotoSalida, descriptorSalida, location, lifeChallenge }) {
+async function updateExitRecord(record, { fotoSalida, descriptorSalida, location }) {
   const evidence = await uploadEvidence(fotoSalida, record.matricula, "exit", location);
 
   if (!CLOUD_ENABLED) {
@@ -2653,8 +2650,9 @@ async function updateExitRecord(record, { fotoSalida, descriptorSalida, location
     record.ubicacionSalidaObservacion = location.observacion || "Ubicacion de salida capturada localmente.";
     record.ubicacionValidada = record.ubicacionSalidaValidada;
     record.precisionUbicacion = record.precisionSalida;
-    record.retoVida = lifeChallenge;
-    record.retoVidaCumplido = Boolean(lifeChallenge);
+    record.retoVida = "";
+    record.retoVidaCumplido = false;
+    record.retoVidaObservacion = "Validacion de reto retirada del flujo MVP.";
     record.riesgo = record.ubicacionValidada && faceValidation.status === "identidad_validada" ? "normal" : "revision_multiple";
     record.fotoSalidaMetadata = evidence.metadata;
     record.fotoSalidaHash = evidence.hash;
@@ -2684,7 +2682,6 @@ async function updateExitRecord(record, { fotoSalida, descriptorSalida, location
     p_longitud: location.longitud ?? null,
     p_precision: location.precision ?? null,
     p_ubicacion_estado: location.estado || "ubicacion_denegada",
-    p_reto_vida: lifeChallenge || "",
     p_foto_salida_metadata: evidence.metadata,
     p_foto_salida_hash: evidence.hash,
     p_foto_salida_storage_path: evidence.path,
@@ -2790,7 +2787,6 @@ function showView(name) {
     window.setTimeout(() => ensureAttendanceCamera("entry"), 0);
   }
   if (actualView === "exit") {
-    pickLifeChallenge();
     setLocationStatus("La ubicacion se solicitara al guardar salida.");
     if (els.exitMatricula.value.trim()) {
       validateExitMatricula();
@@ -2911,8 +2907,8 @@ function syncCaptureControls() {
     els.startExitCamera.disabled = !state.permissionPreferences.camera || !state.exitActiveRecord;
     els.startExitCamera.classList.toggle("is-hidden", !state.cameraNeedsGesture.exit || Boolean(state.exitStream) || !state.exitActiveRecord);
   }
-  if (els.takeEntryPhoto) els.takeEntryPhoto.disabled = !canUseFace || !state.entryStream || state.livenessRunning.entry;
-  if (els.takeExitPhoto) els.takeExitPhoto.disabled = !canStartExit || !state.exitStream || state.livenessRunning.exit;
+  if (els.takeEntryPhoto) els.takeEntryPhoto.disabled = !canUseFace || !state.entryStream || state.photoCaptureRunning.entry;
+  if (els.takeExitPhoto) els.takeExitPhoto.disabled = !canStartExit || !state.exitStream || state.photoCaptureRunning.exit;
 }
 
 async function loadFaceModels() {
@@ -2973,7 +2969,6 @@ function descriptorToArray(descriptor) {
 function clearCapturedFace(kind) {
   state[`${kind}Photo`] = "";
   state[`${kind}Face`] = null;
-  state.livenessVerified[kind] = false;
   const preview = kind === "entry" ? els.entryPreview : els.exitPreview;
   preview.removeAttribute("src");
   preview.classList.add("is-hidden");
@@ -3062,11 +3057,6 @@ function evaluateFaceMatch(entryDescriptor, exitDescriptor) {
     observacion: "La foto de salida no parece coincidir con la foto de entrada.",
     toast: "La foto no coincide suficientemente con la entrada.",
   };
-}
-
-function pickLifeChallenge() {
-  state.lifeChallenge = "Parpadea una vez frente a la camara";
-  if (els.lifeChallenge) els.lifeChallenge.textContent = state.lifeChallenge;
 }
 
 function setEntryLocationStatus(message, tone = "neutral") {
@@ -3273,57 +3263,6 @@ function stopCamera(kind) {
   syncCaptureControls();
 }
 
-function pointDistance(a, b) {
-  return Math.hypot(Number(a.x) - Number(b.x), Number(a.y) - Number(b.y));
-}
-
-function eyeAspectRatio(points) {
-  if (!Array.isArray(points) || points.length < 6) return 0;
-  const horizontal = pointDistance(points[0], points[3]);
-  if (!horizontal) return 0;
-  return (pointDistance(points[1], points[5]) + pointDistance(points[2], points[4])) / (2 * horizontal);
-}
-
-async function verifyBlinkLiveness(video, kind) {
-  const status = kind === "entry" ? els.entryFaceStatus : els.exitFaceStatus;
-  const sample = document.createElement("canvas");
-  const sampleSize = 240;
-  sample.width = sampleSize;
-  sample.height = sampleSize;
-  const context = sample.getContext("2d", { willReadFrequently: true });
-  const deadline = Date.now() + 6500;
-  let baseline = 0;
-  let sawOpenEyes = false;
-  let sawClosedEyes = false;
-
-  setFaceStatus(status, "Prueba de vida: parpadea una vez.", "pending");
-  while (Date.now() < deadline) {
-    context.drawImage(video, 0, 0, sampleSize, sampleSize);
-    const detections = await faceapi
-      .detectAllFaces(sample, new faceapi.TinyFaceDetectorOptions({ inputSize: 224, scoreThreshold: 0.5 }))
-      .withFaceLandmarks();
-
-    if (detections.length === 1) {
-      const landmarks = detections[0].landmarks;
-      const ratio = (eyeAspectRatio(landmarks.getLeftEye()) + eyeAspectRatio(landmarks.getRightEye())) / 2;
-      baseline = Math.max(baseline, ratio);
-      if (baseline >= 0.16 && ratio >= baseline * 0.82) sawOpenEyes = true;
-      if (sawOpenEyes && ratio <= baseline * 0.68) sawClosedEyes = true;
-      if (sawClosedEyes && ratio >= baseline * 0.82) {
-        state.livenessVerified[kind] = true;
-        setFaceStatus(status, "Prueba de vida confirmada. Capturando foto...", "success");
-        return true;
-      }
-    }
-    await new Promise((resolve) => window.setTimeout(resolve, 120));
-  }
-
-  state.livenessVerified[kind] = false;
-  setFaceStatus(status, "No se detecto el parpadeo. No uses una foto o captura de pantalla.", "danger");
-  showToast("No se confirmo la prueba de vida. Parpadea frente a la camara e intenta otra vez.");
-  return false;
-}
-
 async function takePhoto(kind) {
   const video = kind === "entry" ? els.entryVideo : els.exitVideo;
   const canvas = kind === "entry" ? els.entryCanvas : els.exitCanvas;
@@ -3339,17 +3278,10 @@ async function takePhoto(kind) {
     return;
   }
 
-  if (state.livenessRunning[kind]) return;
-  state.livenessRunning[kind] = true;
-  state.livenessVerified[kind] = false;
+  if (state.photoCaptureRunning[kind]) return;
+  state.photoCaptureRunning[kind] = true;
   syncCaptureControls();
   try {
-    const isLive = await verifyBlinkLiveness(video, kind);
-    if (!isLive) {
-      clearCapturedFace(kind);
-      return;
-    }
-
     const maxWidth = 960;
     const scale = Math.min(1, maxWidth / video.videoWidth);
     canvas.width = Math.round(video.videoWidth * scale);
@@ -3370,7 +3302,7 @@ async function takePhoto(kind) {
     clearCapturedFace(kind);
     showToast("No se pudo analizar el rostro. Vuelve a tomar la foto.");
   } finally {
-    state.livenessRunning[kind] = false;
+    state.photoCaptureRunning[kind] = false;
     syncCaptureControls();
   }
 }
@@ -3538,8 +3470,8 @@ async function handleEntrySubmit(event) {
   const nombre = els.entryName.value.trim();
   const matricula = normalizeMatricula(els.entryMatricula.value);
 
-  if (!state.entryPhoto || !state.entryFace || !state.livenessVerified.entry || !nombre || !matricula) {
-    showToast("Completa la prueba de vida y toma una foto valida antes de guardar la entrada.");
+  if (!state.entryPhoto || !state.entryFace || !nombre || !matricula) {
+    showToast("Toma una foto valida antes de guardar la entrada.");
     return;
   }
   if (state.attendanceSubmitting.entry) return;
@@ -3568,7 +3500,6 @@ async function handleEntrySubmit(event) {
       persistLocalSnapshot();
       state.entryPhoto = "";
       state.entryFace = null;
-      state.livenessVerified.entry = false;
       els.entryForm.reset();
       els.entryPreview.classList.add("is-hidden");
       setFaceStatus(els.entryFaceStatus, "Listo para nueva captura.");
@@ -3588,8 +3519,8 @@ async function handleEntrySubmit(event) {
 async function handleExitSubmit(event) {
   event.preventDefault();
   if (state.attendanceSubmitting.exit) return;
-  if (!state.exitPhoto || !state.exitFace || !state.livenessVerified.exit) {
-    showToast("Completa la prueba de vida y toma una foto valida antes de guardar la salida.");
+  if (!state.exitPhoto || !state.exitFace) {
+    showToast("Toma una foto valida antes de guardar la salida.");
     return;
   }
 
@@ -3611,17 +3542,14 @@ async function handleExitSubmit(event) {
         fotoSalida: state.exitPhoto,
         descriptorSalida: state.exitFace.descriptor,
         location,
-        lifeChallenge: state.lifeChallenge,
       });
       state.exitPhoto = "";
       state.exitFace = null;
-      state.livenessVerified.exit = false;
       state.exitActiveRecord = null;
       els.exitForm.reset();
       els.exitPreview.classList.add("is-hidden");
       setExitLookupInfo("Salida registrada correctamente.", "success");
       setFaceStatus(els.exitFaceStatus, "Listo para nueva captura.");
-      pickLifeChallenge();
       stopCamera("exit");
       syncCaptureControls();
       await refreshRecords({ silent: true });
@@ -3853,7 +3781,7 @@ async function showEvidenceDetail(id) {
     evidenceField("Geo entrada", record.evidenciaEntradaGeolocalizada ? "Completa" : "Parcial"),
     evidenceField("Geo salida", record.evidenciaSalidaGeolocalizada ? "Completa" : "Parcial"),
     evidenceField("Observacion geo", record.evidenciaGeolocalizadaObservacion),
-    evidenceField("Reto", record.retoVida),
+    evidenceField("Validacion adicional", record.retoVida || "No aplica"),
     evidenceField("Riesgo", riskLabel(record.riesgo)),
     evidenceField("Observacion", record.observacion || record.observaciones),
     evidenceField("Privacidad", record.fotosPrivadas ? "Preparado para fotos privadas" : "URL publica temporal"),
@@ -4039,7 +3967,7 @@ function renderRecords() {
       <td>${booleanBadge(record.ubicacionEntradaValidada && (record.horaSalida ? record.ubicacionSalidaValidada : true), "Correcta", "Revision")}</td>
       <td>${escapeHtml(formatMeters(record.precisionSalida || record.precisionEntrada || record.precisionUbicacion))}</td>
       <td>${escapeHtml(formatMeters(record.distanciaSalidaMetros || record.distanciaEntradaMetros || record.distanciaEmpresaMetros))}</td>
-      <td>${escapeHtml(record.retoVida || "Pendiente")}</td>
+      <td>${escapeHtml(record.retoVida || "No aplica")}</td>
       <td><span class="badge ${riskClass}">${escapeHtml(riskLabel(record.riesgo))}</span></td>
       <td>${evidenceCell(record)}</td>
       <td>${escapeHtml(record.observacion || record.observaciones || "Sin observacion")}</td>
@@ -5352,8 +5280,8 @@ function exportCsv() {
     "evidencia_entrada_geolocalizada",
     "evidencia_salida_geolocalizada",
     "evidencia_geolocalizada_observacion",
-    "Reto de vida",
-    "Reto cumplido",
+    "Validacion adicional (legado)",
+    "Validacion adicional completada (legado)",
     "Riesgo",
     "Alertas",
     "Metodo de salida",

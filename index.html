@@ -16,7 +16,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="stylesheet"
     href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" />
-  <link rel="stylesheet" href="styles.css?v=2.38-ios-viewport-active-state" />
+  <link rel="stylesheet" href="styles.css?v=2.39-photo-gps-flow" />
 </head>
 
 <body>
@@ -452,17 +452,6 @@
 
           <div class="notice is-hidden" id="exitGuard" aria-live="polite"></div>
 
-          <div class="anti-fraud-strip">
-            <div>
-              <strong>Indicacion</strong>
-              <span id="lifeChallenge">Preparando reto...</span>
-            </div>
-            <div>
-              <strong>Ubicacion</strong>
-              <span id="locationStatus" data-tone="neutral">La ubicacion se solicitara al guardar salida.</span>
-            </div>
-          </div>
-
           <div class="capture-layout">
             <div class="camera-card">
               <video id="exitVideo" playsinline autoplay muted aria-label="Vista de camara para salida"></video>
@@ -470,7 +459,9 @@
               <img id="exitPreview" class="photo-preview is-hidden" alt="Foto de salida capturada" />
               <p id="exitFaceStatus" class="face-status" data-tone="pending">Espera a que carguen los modelos faciales.
               </p>
-              <p class="camera-help">Sigue la indicacion y mira de frente.</p>
+              <p id="locationStatus" class="face-status" data-tone="neutral">La ubicacion se solicitara al guardar
+                salida.</p>
+              <p class="camera-help">Mira de frente y procura tener buena luz.</p>
               <div class="camera-actions">
                 <button id="startExitCamera" class="secondary camera-retry is-hidden" type="button">Activar cámara</button>
                 <button id="takeExitPhoto" class="primary" type="button" disabled>Tomar foto</button>
@@ -625,7 +616,7 @@
                   <th>Ubicacion</th>
                   <th>Precision</th>
                   <th>Distancia</th>
-                  <th>Reto</th>
+                  <th>Validacion adicional</th>
                   <th>Riesgo</th>
                   <th>Evidencia</th>
                   <th>Observacion</th>
@@ -871,7 +862,7 @@
                   <th>Ubicacion</th>
                   <th>Precision</th>
                   <th>Distancia</th>
-                  <th>Reto</th>
+                  <th>Validacion adicional</th>
                   <th>Riesgo</th>
                   <th>Evidencia</th>
                   <th>Observacion</th>
@@ -1312,7 +1303,7 @@
   <script src="supabase-config.js?v=f0-mobile-shell"></script>
   <script src="auth.js?v=2.1-name-validation"></script>
   <script src="notification-rules.js?v=1.0-attendance-reminders"></script>
-  <script src="app.js?v=2.37-admin-directory-sync"></script>
+  <script src="app.js?v=2.39-photo-gps-flow"></script>
 </body>
 
 </html>
