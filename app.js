@@ -13,7 +13,7 @@ const SUPABASE = window.SUPABASE_CONFIG || {};
 const CLOUD_ENABLED = Boolean(SUPABASE.url && SUPABASE.publishableKey && SUPABASE.bucket);
 const PHOTO_BUCKET = SUPABASE.bucket || "attendance-photos";
 const GEO_PRECISION_MAX_METERS = 200;
-const LOCAL_ASSET_VERSION = "2.47-owner-controls";
+const LOCAL_ASSET_VERSION = "2.48-user-reactivation";
 const ATTENDANCE_STREAK_RPC_ENABLED = SUPABASE.enableAttendanceStreakRpc === true;
 const NOTIFICATION_PREFERENCE_PREFIX = "registro_asistencia_notifications_v1";
 const NOTIFICATION_SENT_PREFIX = "registro_asistencia_notification_sent_v1";
@@ -4781,7 +4781,7 @@ function adminUserListItem(user) {
   const actorRole = normalizeAppRole(state.currentAppUser?.rol || state.currentRole);
   const targetIsSuperadmin = normalizedRole === "superadmin";
   const targetIsProtectedOwner = isKnownOwnerEmail(user.email);
-  const canDeactivate = ["admin", "superadmin"].includes(actorRole)
+  const canManageLifecycle = ["admin", "superadmin"].includes(actorRole)
     && (!targetIsSuperadmin || isKnownOwnerSession())
     && !targetIsProtectedOwner
     && String(user.id || "") !== String(state.currentAppUser?.id || "")
@@ -4789,6 +4789,8 @@ function adminUserListItem(user) {
       ["usuario", "supervisor"].includes(normalizedRole)
       && String(user.organizacion_id || "") === String(state.currentAppUser?.organizacion_id || "")
     ));
+  const canDeactivate = canManageLifecycle && user.activo !== false;
+  const canReactivate = canManageLifecycle && user.activo === false;
   const canPurge = actorRole === "superadmin"
     && (!targetIsSuperadmin || isKnownOwnerSession())
     && !targetIsProtectedOwner
@@ -4804,6 +4806,7 @@ function adminUserListItem(user) {
         <span class="badge ${statusClass}">${user.activo === false ? "Inactivo" : escapeHtml(role.label)}</span>
         ${canEditScope ? `<button class="ghost compact" type="button" data-edit-user-scope="${escapeHtml(user.id || "")}">${scopeLabel}</button>` : ""}
         ${canDeactivate ? `<button class="ghost compact" type="button" data-deactivate-user="${escapeHtml(user.id || "")}">Volver inactivo</button>` : ""}
+        ${canReactivate ? `<button class="secondary compact" type="button" data-reactivate-user="${escapeHtml(user.id || "")}">Reactivar</button>` : ""}
         ${canPurge ? `<button class="danger compact" type="button" data-purge-user="${escapeHtml(user.id || "")}">Borrar definitivo</button>` : ""}
       </div>
     </li>
@@ -4857,6 +4860,26 @@ async function purgeManagedUser(userId) {
     renderAdminUsersSection(getVisibleRecords());
   } catch (error) {
     showToast(`No se pudo borrar definitivamente: ${parseSupabaseError(error).slice(0, 140)}`);
+  }
+}
+
+async function reactivateManagedUser(userId) {
+  if (!canManageUserAssignments()) {
+    showToast("Solo administradores autorizados pueden reactivar usuarios.");
+    return;
+  }
+  const user = state.managedUsers.find((item) => String(item.id || "") === String(userId || ""));
+  if (!user) return;
+  const label = user.nombre || user.email || user.matricula || "este usuario";
+  if (!confirm(`Reactivar a ${label}? Podra volver a iniciar sesion y registrar asistencia.`)) return;
+  try {
+    await callAdminRpc("admin_reactivate_user", { p_usuario_id: user.id });
+    addAdminLog("user.reactivated", user.id);
+    showToast("Usuario reactivado.");
+    await loadAdminDirectories({ silent: true });
+    renderAdminUsersSection(getVisibleRecords());
+  } catch (error) {
+    showToast(`No se pudo reactivar: ${parseSupabaseError(error).slice(0, 140)}`);
   }
 }
 
@@ -6358,6 +6381,11 @@ function bindAdminPanelControls() {
     const deactivateUserButton = event.target.closest("[data-deactivate-user]");
     if (deactivateUserButton) {
       deactivateManagedUser(deactivateUserButton.dataset.deactivateUser || "");
+      return;
+    }
+    const reactivateUserButton = event.target.closest("[data-reactivate-user]");
+    if (reactivateUserButton) {
+      reactivateManagedUser(reactivateUserButton.dataset.reactivateUser || "");
       return;
     }
     const purgeUserButton = event.target.closest("[data-purge-user]");
