@@ -108,13 +108,15 @@ async function refrescarSesion() {
   }
 }
 
-async function crearCuenta(email, password, nombre, matricula, organizationKey = "", organizationSlug = "", phone = "") {
+async function crearCuenta(email, password, nombre, matricula, organizationKey = "", organizationSlug = "", phone = "", siteId = "", siteName = "") {
   assertSupabaseAuthConfig();
   const cleanEmail = String(email || "").trim().toLowerCase();
   const cleanNombre = String(nombre || "").trim();
   const cleanMatricula = String(matricula || "").trim();
   const cleanOrganizationKey = String(organizationKey || organizationSlug || "").trim();
   const cleanPhone = String(phone || "").trim();
+  const cleanSiteId = String(siteId || "").trim();
+  const cleanSiteName = String(siteName || "").trim();
   if (!/^\p{L}+(?:\s+\p{L}+)*$/u.test(cleanNombre) || cleanNombre.length < 2 || cleanNombre.length > 80) {
     throw new Error("El nombre es obligatorio y solo puede contener letras y espacios.");
   }
@@ -131,6 +133,9 @@ async function crearCuenta(email, password, nombre, matricula, organizationKey =
           matricula: cleanMatricula,
           rol: "usuario",
           organization_key: cleanOrganizationKey,
+          organization_slug: String(organizationSlug || "").trim(),
+          ...(cleanSiteId ? { site_id: cleanSiteId } : {}),
+          ...(cleanSiteName ? { site_name: cleanSiteName } : {}),
           ...(cleanPhone ? { telefono: cleanPhone } : {}),
         },
       }),

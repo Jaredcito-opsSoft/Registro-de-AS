@@ -130,9 +130,11 @@ const state = {
   currentRole: "usuario",
   currentPermissions: { ...ROLE_DEFINITIONS.usuario.permissions },
   activeAdminSection: "summary",
+  adminUserDirectoryView: "unassigned",
   attendanceStreak: null,
   organizationContext: null,
   organizationHubs: [],
+  registrationAffiliations: [],
   selectedOrganizationId: null,
   managedSites: [],
   managedUsers: [],
@@ -226,6 +228,7 @@ function populateElements() {
   els.entryPreview = $("#entryPreview");
   els.startEntryCamera = $("#startEntryCamera");
   els.takeEntryPhoto = $("#takeEntryPhoto");
+  els.retakeEntryPhoto = $("#retakeEntryPhoto");
   els.entryForm = $("#entryForm");
   els.entryName = $("#entryName");
   els.entryMatricula = $("#entryMatricula");
@@ -235,6 +238,7 @@ function populateElements() {
   els.exitPreview = $("#exitPreview");
   els.startExitCamera = $("#startExitCamera");
   els.takeExitPhoto = $("#takeExitPhoto");
+  els.retakeExitPhoto = $("#retakeExitPhoto");
   els.exitForm = $("#exitForm");
   els.exitMatricula = $("#exitMatricula");
   els.exitLookupInfo = $("#exitLookupInfo");
@@ -318,10 +322,13 @@ function populateElements() {
   els.adminUsersScopeBadge = $("#adminUsersScopeBadge");
   els.adminUsersCount = $("#adminUsersCount");
   els.adminUsersNoSiteCount = $("#adminUsersNoSiteCount");
+  els.adminUsersUnassignedTabCount = $("#adminUsersUnassignedTabCount");
+  els.adminUsersAssignedTabCount = $("#adminUsersAssignedTabCount");
   els.adminUsersOrganizationFilter = $("#adminUsersOrganizationFilter");
-  els.adminOrganizationPeople = $("#adminOrganizationPeople");
   els.adminUsersBySite = $("#adminUsersBySite");
   els.userScopeAssignmentCard = $("#userScopeAssignmentCard");
+  els.userScopeKicker = $("#userScopeKicker");
+  els.userScopeTitle = $("#userScopeTitle");
   els.userScopeHelp = $("#userScopeHelp");
   els.userScopeOrganization = $("#userScopeOrganization");
   els.userScopeUser = $("#userScopeUser");
@@ -395,6 +402,7 @@ function populateElements() {
   els.authMatricula = $("#authMatricula");
   els.authOrgKey = $("#authOrgKey");
   els.authOrgSelect = $("#authOrgSelect");
+  els.authSiteSelect = $("#authSiteSelect");
   els.authOrgSelectFallback = $("#authOrgSelectFallback");
   els.authOrgSelectFallbackWrap = $("#authOrgSelectFallbackWrap");
   els.authPhone = $("#authPhone");
@@ -409,6 +417,7 @@ function populateElements() {
   els.labelMatricula = $("#label-matricula");
   els.labelPhone = $("#label-phone");
   els.labelOrgSelect = $("#label-org-select");
+  els.labelSiteSelect = $("#label-site-select");
   els.labelOrgKey = $("#label-org-key");
   els.labelEmailText = $("#label-email-text");
   els.labelEmailHint = $("#label-email-hint");
@@ -2899,6 +2908,8 @@ function setFaceStatus(element, message, tone = "neutral") {
 function syncCaptureControls() {
   const canUseFace = state.facialModelsLoaded && !state.facialModelsError;
   const canStartExit = canUseFace && Boolean(state.exitActiveRecord);
+  const entryCaptured = Boolean(state.entryPhoto);
+  const exitCaptured = Boolean(state.exitPhoto);
   if (els.startEntryCamera) {
     els.startEntryCamera.disabled = !state.permissionPreferences.camera;
     els.startEntryCamera.classList.toggle("is-hidden", !state.cameraNeedsGesture.entry || Boolean(state.entryStream));
@@ -2907,8 +2918,22 @@ function syncCaptureControls() {
     els.startExitCamera.disabled = !state.permissionPreferences.camera || !state.exitActiveRecord;
     els.startExitCamera.classList.toggle("is-hidden", !state.cameraNeedsGesture.exit || Boolean(state.exitStream) || !state.exitActiveRecord);
   }
-  if (els.takeEntryPhoto) els.takeEntryPhoto.disabled = !canUseFace || !state.entryStream || state.photoCaptureRunning.entry;
-  if (els.takeExitPhoto) els.takeExitPhoto.disabled = !canStartExit || !state.exitStream || state.photoCaptureRunning.exit;
+  if (els.takeEntryPhoto) {
+    els.takeEntryPhoto.disabled = !canUseFace || !state.entryStream || state.photoCaptureRunning.entry;
+    els.takeEntryPhoto.classList.toggle("is-hidden", entryCaptured);
+  }
+  if (els.takeExitPhoto) {
+    els.takeExitPhoto.disabled = !canStartExit || !state.exitStream || state.photoCaptureRunning.exit;
+    els.takeExitPhoto.classList.toggle("is-hidden", exitCaptured);
+  }
+  if (els.retakeEntryPhoto) {
+    els.retakeEntryPhoto.disabled = state.photoCaptureRunning.entry;
+    els.retakeEntryPhoto.classList.toggle("is-hidden", !entryCaptured);
+  }
+  if (els.retakeExitPhoto) {
+    els.retakeExitPhoto.disabled = state.photoCaptureRunning.exit;
+    els.retakeExitPhoto.classList.toggle("is-hidden", !exitCaptured);
+  }
 }
 
 async function loadFaceModels() {
@@ -2970,8 +2995,18 @@ function clearCapturedFace(kind) {
   state[`${kind}Photo`] = "";
   state[`${kind}Face`] = null;
   const preview = kind === "entry" ? els.entryPreview : els.exitPreview;
+  const video = kind === "entry" ? els.entryVideo : els.exitVideo;
   preview.removeAttribute("src");
   preview.classList.add("is-hidden");
+  video.classList.remove("is-hidden");
+  syncCaptureControls();
+}
+
+function retakeAttendancePhoto(kind) {
+  clearCapturedFace(kind);
+  const status = kind === "entry" ? els.entryFaceStatus : els.exitFaceStatus;
+  setFaceStatus(status, "Camara lista. Toma una nueva foto.", "success");
+  if (!state[`${kind}Stream`]) ensureAttendanceCamera(kind);
 }
 
 async function detectSingleFace(canvas, kind) {
@@ -3298,6 +3333,12 @@ async function takePhoto(kind) {
     state[`${kind}Face`] = face;
     preview.src = image;
     preview.classList.remove("is-hidden");
+    video.classList.add("is-hidden");
+    setFaceStatus(
+      kind === "entry" ? els.entryFaceStatus : els.exitFaceStatus,
+      "Foto lista para guardar.",
+      "success",
+    );
   } catch (error) {
     clearCapturedFace(kind);
     showToast("No se pudo analizar el rostro. Vuelve a tomar la foto.");
@@ -3498,10 +3539,8 @@ async function handleEntrySubmit(event) {
       });
       state.records.unshift(record);
       persistLocalSnapshot();
-      state.entryPhoto = "";
-      state.entryFace = null;
+      clearCapturedFace("entry");
       els.entryForm.reset();
-      els.entryPreview.classList.add("is-hidden");
       setFaceStatus(els.entryFaceStatus, "Listo para nueva captura.");
       stopCamera("entry");
       await refreshRecords({ silent: true });
@@ -3542,11 +3581,9 @@ async function handleExitSubmit(event) {
         descriptorSalida: state.exitFace.descriptor,
         location,
       });
-      state.exitPhoto = "";
-      state.exitFace = null;
+      clearCapturedFace("exit");
       state.exitActiveRecord = null;
       els.exitForm.reset();
-      els.exitPreview.classList.add("is-hidden");
       setExitLookupInfo("Salida registrada correctamente.", "success");
       setFaceStatus(els.exitFaceStatus, "Listo para nueva captura.");
       stopCamera("exit");
@@ -4377,7 +4414,8 @@ function getAssignableUsers() {
   const actorIsSuperadmin = hasPermission("manage_organization");
   return state.managedUsers.filter((user) => {
     const role = normalizeAppRole(user.rol);
-    if (role === "superadmin") return false;
+    if (role === "superadmin" || role === "admin") return false;
+    if (actorIsSuperadmin) return role === "usuario" || role === "supervisor";
     return actorIsSuperadmin || role === "usuario";
   });
 }
@@ -4483,14 +4521,18 @@ function populateUserScopeAssignment() {
 
   if (els.userScopeHelp) {
     els.userScopeHelp.textContent = canManageRoles
-      ? "Elige una organizacion para encontrar solo sus usuarios; despues define sitio y rol operativo."
+      ? "Elige una persona y el sitio que supervisara. Si ya esta asignada, puedes cambiarla de sitio."
       : "Solo puedes vincular usuarios regulares dentro de la organizacion de tu sitio.";
   }
-  if (els.userScopeRoleWrap) els.userScopeRoleWrap.classList.toggle("is-hidden", !canManageRoles);
+  if (els.userScopeKicker) els.userScopeKicker.textContent = canManageRoles ? "Supervision operativa" : "Alcance operativo";
+  if (els.userScopeTitle) els.userScopeTitle.textContent = canManageRoles ? "Asignar supervisor a sitio" : "Vincular usuario a sitio";
+  if (els.userScopeRoleWrap) els.userScopeRoleWrap.classList.add("is-hidden");
   if (els.userScopeRole) {
-    els.userScopeRole.disabled = !canManageRoles;
-    const currentRole = normalizeAppRole(selectedUser?.rol);
-    els.userScopeRole.value = canManageRoles ? (currentRole === "superadmin" ? "usuario" : currentRole) : "usuario";
+    els.userScopeRole.disabled = true;
+    els.userScopeRole.value = canManageRoles ? "supervisor" : "usuario";
+  }
+  if (els.assignUserScopeButton) {
+    els.assignUserScopeButton.textContent = canManageRoles ? "Asignar supervisor" : "Guardar asignacion";
   }
 
   if (els.userScopeUser) {
@@ -4530,7 +4572,9 @@ function populateUserScopeAssignment() {
   } else if (selectedUser && !sites.length) {
     setUserScopeStatus("No hay sitios activos compatibles con la organizacion de este usuario.", "danger");
   } else if (els.userScopeStatus?.dataset.tone !== "success") {
-    setUserScopeStatus("La asignacion se guarda por RPC y queda registrada en auditoria.", "warning");
+    setUserScopeStatus(canManageRoles
+      ? "La persona quedara como supervisor del sitio y el cambio se registrara en auditoria."
+      : "La asignacion se guarda por RPC y queda registrada en auditoria.", "warning");
   }
 }
 
@@ -4542,7 +4586,7 @@ async function assignUserScope() {
 
   const userId = els.userScopeUser?.value || "";
   const siteId = els.userScopeSite?.value || "";
-  const role = hasPermission("manage_organization") ? (els.userScopeRole?.value || "usuario") : "usuario";
+  const role = hasPermission("manage_organization") ? "supervisor" : "usuario";
   if (!userId || !siteId) {
     setUserScopeStatus("Selecciona un usuario y un sitio activo.", "danger");
     return;
@@ -4558,9 +4602,9 @@ async function assignUserScope() {
       p_rol: role,
     }));
     const assignedRole = getRoleDefinition(result?.rol || role).label;
-    successMessage = `Usuario vinculado correctamente como ${assignedRole}.`;
+    successMessage = `${assignedRole} asignado correctamente al sitio.`;
     addAdminLog("user.scope_assigned", `${userId} / ${siteId} / ${result?.rol || role}`);
-    showToast("Asignacion de usuario guardada.");
+    showToast(role === "supervisor" ? "Supervisor asignado al sitio." : "Asignacion de usuario guardada.");
     await loadOrganizations({ silent: true });
     await loadAdminDirectories({ silent: true });
   } catch (error) {
@@ -4641,124 +4685,127 @@ async function assignOrganizationAdmin() {
   }
 }
 
+function adminUserHasSite(user) {
+  return Boolean(user?.sitio_id || String(user?.sitio_nombre || user?.sitioNombre || "").trim());
+}
+
+function adminUserListItem(user) {
+  const role = getRoleDefinition(user.rol || "usuario");
+  const statusClass = user.activo === false ? "danger" : "success";
+  const normalizedRole = normalizeAppRole(user.rol);
+  const canEditScope = canManageUserAssignments() && !["admin", "superadmin"].includes(normalizedRole);
+  const canDelete = hasPermission("manage_organization")
+    && normalizedRole !== "superadmin"
+    && String(user.id || "") !== String(state.currentAppUser?.id || "");
+  const scopeLabel = adminUserHasSite(user) ? "Cambiar sitio" : "Asignar sitio";
+  return `
+    <li class="admin-user-row">
+      <div class="admin-user-identity">
+        <strong>${escapeHtml(user.nombre || user.email || user.matricula || "Usuario")}</strong>
+        <span>${escapeHtml(user.email || user.matricula || "Sin identificador")}</span>
+      </div>
+      <div class="admin-user-row-actions">
+        <span class="badge ${statusClass}">${user.activo === false ? "Inactivo" : escapeHtml(role.label)}</span>
+        ${canEditScope ? `<button class="ghost compact" type="button" data-edit-user-scope="${escapeHtml(user.id || "")}">${scopeLabel}</button>` : ""}
+        ${canDelete ? `<button class="danger compact" type="button" data-deactivate-user="${escapeHtml(user.id || "")}">Eliminar</button>` : ""}
+      </div>
+    </li>
+  `;
+}
+
+async function deactivateManagedUser(userId) {
+  if (!hasPermission("manage_organization")) {
+    showToast("Solo superadmin puede eliminar usuarios.");
+    return;
+  }
+  const user = state.managedUsers.find((item) => String(item.id || "") === String(userId || ""));
+  if (!user) return;
+  const label = user.nombre || user.email || user.matricula || "este usuario";
+  if (!confirm(`Eliminar a ${label}? Su historial de asistencia se conservara.`)) return;
+
+  try {
+    await callAdminRpc("superadmin_deactivate_user", { p_usuario_id: user.id });
+    addAdminLog("user.deactivated", user.id);
+    showToast("Usuario eliminado del directorio activo.");
+    await loadAdminDirectories({ silent: true });
+    renderAdminUsersSection(getVisibleRecords());
+  } catch (error) {
+    showToast(`No se pudo eliminar: ${parseSupabaseError(error).slice(0, 140)}`);
+  }
+}
+
 function renderAdminUsersSection(records = getVisibleRecords()) {
   if (!els.adminUsersBySite) return;
   populateUserScopeAssignment();
   populateOrganizationAdminAssignment();
+  populateAdminInviteSites();
+
   const selectedOrganizationId = getSelectedUserScopeOrganizationId();
   const selectedOrganizationName = getUserScopeOrganizationName(selectedOrganizationId);
   const rows = getAdminUserRows().filter((user) => String(user.organizacion_id || "") === selectedOrganizationId);
+  const withoutSite = rows.filter((user) => !adminUserHasSite(user));
+  const assigned = rows.filter(adminUserHasSite);
+  const activeView = state.adminUserDirectoryView === "assigned" ? "assigned" : "unassigned";
+  const visibleRows = activeView === "assigned" ? assigned : withoutSite;
   const bySite = new Map();
-  const withoutSite = [];
 
-  rows.forEach((user) => {
-    const site = String(user.sitio_nombre || user.sitioNombre || "Sin sitio").trim() || "Sin sitio";
+  visibleRows.forEach((user) => {
+    const site = activeView === "assigned"
+      ? String(user.sitio_nombre || user.sitioNombre || "Sitio asignado").trim()
+      : "Sin sitio";
     if (!bySite.has(site)) bySite.set(site, []);
     bySite.get(site).push(user);
-    if (site === "Sin sitio") withoutSite.push(user);
   });
 
-  const totalUsers = rows.length;
   if (els.adminUsersCount) {
-    els.adminUsersCount.textContent = `${totalUsers} ${totalUsers === 1 ? "usuario" : "usuarios"} en ${selectedOrganizationName}`;
+    els.adminUsersCount.textContent = `${rows.length} ${rows.length === 1 ? "usuario" : "usuarios"} en ${selectedOrganizationName}`;
   }
-  if (els.adminUsersNoSiteCount) {
-    els.adminUsersNoSiteCount.textContent = `${withoutSite.length} sin sitio`;
-  }
+  if (els.adminUsersNoSiteCount) els.adminUsersNoSiteCount.textContent = `${withoutSite.length} sin sitio`;
+  if (els.adminUsersUnassignedTabCount) els.adminUsersUnassignedTabCount.textContent = String(withoutSite.length);
+  if (els.adminUsersAssignedTabCount) els.adminUsersAssignedTabCount.textContent = String(assigned.length);
+  document.querySelectorAll("[data-admin-user-view]").forEach((button) => {
+    const selected = button.dataset.adminUserView === activeView;
+    button.classList.toggle("is-active", selected);
+    button.setAttribute("aria-pressed", String(selected));
+  });
+
   if (els.adminUsersScopeBadge) {
     els.adminUsersScopeBadge.className = `badge ${hasPermission("view_all_records") ? "admin" : "default"}`;
     els.adminUsersScopeBadge.textContent = hasPermission("view_all_records") ? "Por organizacion" : "Alcance de sitio";
   }
   if (els.adminUsersSummary) {
-    els.adminUsersSummary.textContent = hasPermission("view_all_records")
-      ? `Mostrando usuarios de ${selectedOrganizationName}, agrupados por sitio. Cambia la organizacion para gestionar otro directorio.`
-      : `Mostrando usuarios de ${selectedOrganizationName} dentro de tu alcance operativo.`;
+    els.adminUsersSummary.textContent = activeView === "assigned"
+      ? `Supervisores y usuarios con sitio en ${selectedOrganizationName}. Usa Cambiar sitio cuando sea necesario.`
+      : `Personas de ${selectedOrganizationName} que aun necesitan un sitio operativo.`;
   }
 
-  if (els.adminOrganizationPeople) {
-    const visiblePeople = rows.slice(0, 6).map((user) => {
-      const label = user.nombre || user.email || user.matricula || "Usuario";
-      const site = user.sitio_nombre || "Sin sitio";
-      return `<li><strong>${escapeHtml(label)}</strong><span>${escapeHtml(site)}</span></li>`;
-    }).join("");
-    const hiddenPeople = rows.slice(6).map((user) => {
-      const label = user.nombre || user.email || user.matricula || "Usuario";
-      const site = user.sitio_nombre || "Sin sitio";
-      return `<li><strong>${escapeHtml(label)}</strong><span>${escapeHtml(site)}</span></li>`;
-    }).join("");
-    const toggle = rows.length > 6
-      ? `<button class="ghost compact" type="button" data-admin-people-toggle aria-expanded="false">Ver ${rows.length - 6} mas</button>`
-      : "";
-    els.adminOrganizationPeople.innerHTML = rows.length
-      ? `<div class="admin-people-heading"><strong>Personas de la organizacion</strong><span>${rows.length} en total</span></div><ul class="admin-people-list">${visiblePeople}</ul>${hiddenPeople ? `<ul class="admin-people-list is-hidden" data-admin-people-overflow>${hiddenPeople}</ul>` : ""}${toggle}`
-      : `<p class="muted-note">No hay personas asociadas a esta organizacion.</p>`;
-  }
-
-  populateAdminInviteSites();
-
-  if (!totalUsers) {
+  if (!visibleRows.length) {
     els.adminUsersBySite.innerHTML = `
       <article class="admin-user-site-card is-empty">
-        <strong>Sin usuarios visibles</strong>
-        <p>Cuando existan registros o el RPC de usuarios responda, aqui apareceran agrupados por sitio.</p>
+        <strong>${activeView === "assigned" ? "Aun no hay personas asignadas" : "Todos tienen sitio"}</strong>
+        <p>${activeView === "assigned" ? "Las asignaciones apareceran aqui por sitio." : "No hay usuarios pendientes de asignacion en esta organizacion."}</p>
       </article>
     `;
     return;
   }
 
   els.adminUsersBySite.innerHTML = Array.from(bySite.entries())
-    .sort((a, b) => (a[0] === "Sin sitio" ? 1 : b[0] === "Sin sitio" ? -1 : a[0].localeCompare(b[0])))
-    .map(([site, users], siteIndex) => {
-      const isUnassigned = site === "Sin sitio";
-      const visibleLimit = isUnassigned ? 4 : 8;
+    .sort((a, b) => a[0].localeCompare(b[0]))
+    .map(([site, users]) => {
       const uniqueRecords = records.filter((record) => {
         const recordUser = normalizeMatricula(String(record.matricula || ""));
         return users.some((user) => normalizeMatricula(String(user.matricula || "")) === recordUser);
       }).length;
-      const people = users.slice(0, visibleLimit).map((user) => {
-        const role = getRoleDefinition(user.rol || "usuario");
-        const statusClass = user.activo === false ? "danger" : "success";
-        return `
-          <li>
-            <div>
-              <strong>${escapeHtml(user.nombre || user.email || user.matricula || "Usuario")}</strong>
-              <span>${escapeHtml(user.email || user.matricula || "Sin identificador")}</span>
-            </div>
-            <span class="badge ${statusClass}">${user.activo === false ? "Inactivo" : escapeHtml(role.label)}</span>
-          </li>
-        `;
-      }).join("");
-      const overflowPeople = users.slice(visibleLimit).map((user) => {
-        const role = getRoleDefinition(user.rol || "usuario");
-        const statusClass = user.activo === false ? "danger" : "success";
-        return `
-          <li>
-            <div>
-              <strong>${escapeHtml(user.nombre || user.email || user.matricula || "Usuario")}</strong>
-              <span>${escapeHtml(user.email || user.matricula || "Sin identificador")}</span>
-            </div>
-            <span class="badge ${statusClass}">${user.activo === false ? "Inactivo" : escapeHtml(role.label)}</span>
-          </li>
-        `;
-      }).join("");
-      const overflowId = `site-users-overflow-${siteIndex}`;
-      const overflow = overflowPeople
-        ? `<ul id="${overflowId}" class="is-hidden" data-site-users-overflow>${overflowPeople}</ul><button class="ghost compact" type="button" data-site-people-toggle aria-controls="${overflowId}" aria-expanded="false">Ver ${users.length - visibleLimit} mas</button>`
-        : "";
-      const assignAction = isUnassigned
-        ? `<button class="primary compact" type="button" data-assign-unassigned-users>Asignar usuarios</button>`
-        : "";
       return `
-        <article class="admin-user-site-card ${isUnassigned ? "needs-attention unassigned-users-card" : ""}">
+        <article class="admin-user-site-card ${activeView === "unassigned" ? "needs-attention unassigned-users-card" : ""}">
           <header>
             <div>
               <strong>${escapeHtml(site)}</strong>
-              <span>${users.length} ${users.length === 1 ? "usuario" : "usuarios"} / ${uniqueRecords} registros</span>
+              <span>${users.length} ${users.length === 1 ? "persona" : "personas"} / ${uniqueRecords} registros</span>
             </div>
-            <span class="badge ${isUnassigned ? "warning" : "success"}">${isUnassigned ? "Requiere sitio" : "Vinculado"}</span>
+            <span class="badge ${activeView === "unassigned" ? "warning" : "success"}">${activeView === "unassigned" ? "Pendiente" : "Asignado"}</span>
           </header>
-          <ul>${people}</ul>
-          <div class="admin-user-site-actions">${assignAction}${overflow}</div>
+          <ul>${users.map(adminUserListItem).join("")}</ul>
         </article>
       `;
     }).join("");
@@ -4766,7 +4813,7 @@ function renderAdminUsersSection(records = getVisibleRecords()) {
 
 async function prepareAdminInviteKey() {
   if (!hasPermission("manage_organization")) {
-    showToast("Solo superadmin puede preparar keys de administracion.");
+    showToast("Solo superadmin puede preparar invitaciones de supervisor.");
     return;
   }
   const email = els.adminInviteEmail?.value.trim() || "";
@@ -4783,12 +4830,12 @@ async function prepareAdminInviteKey() {
     const invite = getRpcFirstRow(await callAdminRpc("admin_create_site_invitation", {
       p_email: email,
       p_sitio_id: siteId,
-      p_rol: "admin",
+      p_rol: "supervisor",
     }));
     if (!invite?.clave) throw new Error("No se recibio una key de invitacion.");
     if (els.adminInviteKey) els.adminInviteKey.value = invite.clave;
     if (els.adminInviteStatus) {
-      els.adminInviteStatus.textContent = "Invitacion segura creada. Expira en 72 horas.";
+      els.adminInviteStatus.textContent = "Invitacion de supervisor creada. Expira en 72 horas.";
       els.adminInviteStatus.dataset.tone = "success";
     }
     addAdminLog("site_invite_created", `${email} / ${siteId}`);
@@ -4805,7 +4852,7 @@ async function prepareAdminInviteKey() {
 async function copyAdminInviteKey() {
   const key = els.adminInviteKey?.value.trim();
   if (!key) {
-    showToast("Primero prepara una key de admin.");
+    showToast("Primero prepara una clave de supervisor.");
     return;
   }
   try {
@@ -5629,12 +5676,14 @@ async function continueAsOperationalGuest() {
 async function loadOrganizationOptions() {
   if (!els.authOrgSelect) return;
   const selected = localStorage.getItem("registro_asistencia_org_slug") || "";
+  state.registrationAffiliations = [];
 
   const showFallback = () => {
-    els.authOrgSelect.innerHTML = `<option value="">Sin sitios registrados</option>`;
+    els.authOrgSelect.innerHTML = `<option value="">Directorio no disponible</option>`;
     if (els.authOrgSelectFallbackWrap) {
       els.authOrgSelectFallbackWrap.classList.remove("is-hidden");
     }
+    updateRegistrationSiteOptions();
   };
 
   if (!CLOUD_ENABLED) {
@@ -5642,36 +5691,102 @@ async function loadOrganizationOptions() {
     return;
   }
 
-  els.authOrgSelect.innerHTML = `<option value="">Cargando sitios\u2026</option>`;
+  els.authOrgSelect.innerHTML = `<option value="">Cargando organizaciones\u2026</option>`;
+  if (els.authSiteSelect) {
+    els.authSiteSelect.innerHTML = `<option value="">Primero selecciona una organización</option>`;
+    els.authSiteSelect.disabled = true;
+  }
 
   try {
-    const rows = await supabaseRequest("/rest/v1/rpc/get_public_organization_options", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({}),
-    });
+    let rows;
+    try {
+      rows = await supabaseRequest("/rest/v1/rpc/get_public_affiliation_options", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      });
+    } catch (error) {
+      const legacyRows = await supabaseRequest("/rest/v1/rpc/get_public_organization_options", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      });
+      rows = (Array.isArray(legacyRows) ? legacyRows : []).map((org) => ({
+        organization_id: "",
+        organization_slug: org.slug,
+        organization_name: org.nombre,
+        organization_type: org.tipo,
+        site_id: `legacy-${org.slug}`,
+        site_name: "Sitio principal",
+      }));
+    }
 
-    const orgs = Array.isArray(rows) ? rows.filter(Boolean) : [];
+    const affiliations = Array.isArray(rows) ? rows.filter((row) => row?.organization_slug) : [];
 
-    if (!orgs.length) {
+    if (!affiliations.length) {
       showFallback();
       return;
     }
 
-    const options = orgs.map((org) => {
-      const slug = String(org.slug || "").trim();
-      const label = `${org.nombre || "Organizacion"} (${org.tipo || "sitio"})`;
-      return `<option value="${escapeHtml(slug)}" ${slug === selected ? "selected" : ""}>${escapeHtml(label)}</option>`;
+    state.registrationAffiliations = affiliations;
+    const organizations = Array.from(new Map(affiliations.map((row) => [row.organization_slug, row])).values());
+    const options = organizations.map((org) => {
+      const slug = String(org.organization_slug || "").trim();
+      return `<option value="${escapeHtml(slug)}" ${slug === selected ? "selected" : ""}>${escapeHtml(org.organization_name || "Organización")}</option>`;
     });
 
-    els.authOrgSelect.innerHTML = `<option value="">Selecciona tu sitio afiliado</option>${options.join("")}`;
+    els.authOrgSelect.innerHTML = `<option value="">Selecciona una organización</option>${options.join("")}`;
     if (els.authOrgSelectFallbackWrap) {
       els.authOrgSelectFallbackWrap.classList.add("is-hidden");
     }
+    updateRegistrationSiteOptions({ preserveSelection: true });
   } catch (error) {
-    console.warn("No se pudo cargar la lista publica de sitios.", error);
+    console.warn("No se pudo cargar el directorio público de afiliación.", error);
     showFallback();
   }
+}
+
+function updateRegistrationSiteOptions({ preserveSelection = false } = {}) {
+  if (!els.authSiteSelect) return;
+
+  const organizationSlug = els.authOrgSelect?.value.trim() || "";
+  const previousSite = preserveSelection ? localStorage.getItem("registro_asistencia_site_id") || "" : "";
+  const sites = state.registrationAffiliations.filter((row) => (
+    row.organization_slug === organizationSlug && row.site_id && row.site_name
+  ));
+
+  if (!organizationSlug) {
+    els.authSiteSelect.innerHTML = `<option value="">Primero selecciona una organización</option>`;
+    els.authSiteSelect.disabled = true;
+    els.labelSiteSelect?.classList.add("is-hidden");
+    return;
+  }
+
+  els.labelSiteSelect?.classList.remove("is-hidden");
+
+  if (!sites.length) {
+    els.authSiteSelect.innerHTML = `<option value="">Esta organización aún no tiene sitios activos</option>`;
+    els.authSiteSelect.disabled = true;
+    return;
+  }
+
+  const options = sites.map((site) => {
+    const siteId = String(site.site_id || "");
+    const selectedSite = siteId === previousSite ? "selected" : "";
+    const metadataId = siteId.startsWith("legacy-") ? "" : siteId;
+    return `<option value="${escapeHtml(siteId)}" data-site-id="${escapeHtml(metadataId)}" data-site-name="${escapeHtml(site.site_name)}" ${selectedSite}>${escapeHtml(site.site_name)}</option>`;
+  });
+  els.authSiteSelect.innerHTML = `<option value="">Selecciona un sitio</option>${options.join("")}`;
+  els.authSiteSelect.disabled = false;
+}
+
+function selectedRegistrationSite() {
+  const option = els.authSiteSelect?.selectedOptions?.[0];
+  return {
+    value: els.authSiteSelect?.value || "",
+    id: option?.dataset.siteId || "",
+    name: option?.dataset.siteName || "",
+  };
 }
 
 
@@ -5710,6 +5825,7 @@ function updateAuthUI() {
     els.labelMatricula.classList.add("is-hidden");
     els.labelPhone?.classList.add("is-hidden");
     els.labelOrgSelect?.classList.add("is-hidden");
+    els.labelSiteSelect?.classList.add("is-hidden");
     els.labelOrgKey?.classList.add("is-hidden");
     els.authOrgKeyWrap?.classList.add("is-hidden");
     els.authName.required = false;
@@ -5730,6 +5846,7 @@ function updateAuthUI() {
     els.labelMatricula.classList.remove("is-hidden");
     els.labelPhone?.classList.remove("is-hidden");
     els.labelOrgSelect?.classList.remove("is-hidden");
+    els.labelSiteSelect?.classList.add("is-hidden");
     els.authOrgKeyWrap?.classList.remove("is-hidden");
     els.labelOrgKey?.classList.add("is-hidden"); // empieza colapsado
     els.authName.required = true;
@@ -5812,6 +5929,7 @@ async function handleAuthSubmit(event) {
       const nombre = els.authName.value.trim();
       const matricula = els.authMatricula.value.trim();
       const phone = els.authPhone?.value.trim() || "";
+      const registrationSite = selectedRegistrationSite();
 
       if (!nombre || !matricula) {
         showToast("Nombre e identificador son requeridos para el registro.");
@@ -5826,10 +5944,18 @@ async function handleAuthSubmit(event) {
         els.authSubmitBtn.textContent = originalText;
         return;
       }
+      if (!orgSlug || !registrationSite.value) {
+        showToast("Selecciona primero tu organización y después tu sitio.");
+        (!orgSlug ? els.authOrgSelect : els.authSiteSelect)?.focus();
+        els.authSubmitBtn.disabled = false;
+        els.authSubmitBtn.textContent = originalText;
+        return;
+      }
 
       const orgKey = els.authOrgKey?.value.trim() || "";
       if (orgKey) localStorage.setItem("registro_asistencia_org_key", orgKey);
-      const data = await crearCuenta(email, password, nombre, matricula, orgKey, orgSlug, phone);
+      localStorage.setItem("registro_asistencia_site_id", registrationSite.value);
+      const data = await crearCuenta(email, password, nombre, matricula, orgKey, orgSlug, phone, registrationSite.id, registrationSite.name);
 
       if (localStorage.getItem("registro_asistencia_token")) {
         showToast("¡Cuenta creada! Bienvenido.");
@@ -6030,13 +6156,23 @@ function bindAdminPanelControls() {
       assignOrganizationAdmin();
       return;
     }
-    const peopleToggle = event.target.closest("[data-admin-people-toggle]");
-    if (peopleToggle) {
-      const overflow = els.adminOrganizationPeople?.querySelector("[data-admin-people-overflow]");
-      const expanded = peopleToggle.getAttribute("aria-expanded") === "true";
-      overflow?.classList.toggle("is-hidden", expanded);
-      peopleToggle.setAttribute("aria-expanded", String(!expanded));
-      peopleToggle.textContent = expanded ? `Ver ${overflow?.children.length || 0} mas` : "Ocultar usuarios";
+    const userViewButton = event.target.closest("[data-admin-user-view]");
+    if (userViewButton) {
+      state.adminUserDirectoryView = userViewButton.dataset.adminUserView === "assigned" ? "assigned" : "unassigned";
+      renderAdminUsersSection(getVisibleRecords());
+      return;
+    }
+    const editUserScopeButton = event.target.closest("[data-edit-user-scope]");
+    if (editUserScopeButton) {
+      const userId = editUserScopeButton.dataset.editUserScope || "";
+      if (els.userScopeUser) els.userScopeUser.value = userId;
+      populateUserScopeAssignment();
+      els.userScopeAssignmentCard?.scrollIntoView({ behavior: "smooth", block: "start" });
+      return;
+    }
+    const deactivateUserButton = event.target.closest("[data-deactivate-user]");
+    if (deactivateUserButton) {
+      deactivateManagedUser(deactivateUserButton.dataset.deactivateUser || "");
       return;
     }
     const sitePeopleToggle = event.target.closest("[data-site-people-toggle]");
@@ -6227,6 +6363,10 @@ async function init() {
       handleAuthSubmit(event);
     });
   }
+  els.authOrgSelect?.addEventListener("change", () => {
+    localStorage.removeItem("registro_asistencia_site_id");
+    updateRegistrationSiteOptions();
+  });
   if (els.profileForm) {
     console.log("Vinculando event listener para el submit de #profileForm");
     els.profileForm.addEventListener("submit", handleUpdateProfile);
@@ -6326,6 +6466,7 @@ async function init() {
   // 3. Manejadores estándar de la app
   if (els.startEntryCamera) els.startEntryCamera.addEventListener("click", () => startCamera("entry"));
   if (els.takeEntryPhoto) els.takeEntryPhoto.addEventListener("click", () => takePhoto("entry"));
+  if (els.retakeEntryPhoto) els.retakeEntryPhoto.addEventListener("click", () => retakeAttendancePhoto("entry"));
   if (els.entryForm) els.entryForm.addEventListener("submit", handleEntrySubmit);
 
   if (els.exitMatricula) {
@@ -6349,6 +6490,7 @@ async function init() {
     });
   }
   if (els.takeExitPhoto) els.takeExitPhoto.addEventListener("click", () => takePhoto("exit"));
+  if (els.retakeExitPhoto) els.retakeExitPhoto.addEventListener("click", () => retakeAttendancePhoto("exit"));
   if (els.exitForm) els.exitForm.addEventListener("submit", handleExitSubmit);
 
   if (els.unlockAdmin) els.unlockAdmin.addEventListener("click", requestAdminAccess);

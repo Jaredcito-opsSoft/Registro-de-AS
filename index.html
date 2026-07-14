@@ -16,7 +16,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="stylesheet"
     href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" />
-  <link rel="stylesheet" href="styles.css?v=2.40-mobile-record-filters" />
+  <link rel="stylesheet" href="styles.css?v=2.42-registration-org-site" />
 </head>
 
 <body>
@@ -64,17 +64,25 @@
           <span class="field-hint optional-badge">Opcional · Para inicio rápido futuro</span>
         </label>
 
-        <!-- Solo en registro: sitio afiliado -->
+        <!-- Solo en registro: afiliacion por organizacion y sitio -->
         <label id="label-org-select" class="is-hidden">
-          Sitio afiliado
-          <select id="authOrgSelect">
-            <option value="">Cargando sitios…</option>
+          Organización
+          <select id="authOrgSelect" required>
+            <option value="">Cargando organizaciones…</option>
           </select>
           <span id="authOrgSelectFallbackWrap" class="org-fallback-wrap is-hidden">
             <input id="authOrgSelectFallback" type="text" autocomplete="off"
               placeholder="Escribe el nombre de tu organización" />
-            <span class="field-hint">No se encontraron sitios registrados. Escríbelo manualmente.</span>
+            <span class="field-hint">No se pudo cargar el directorio. Escríbela manualmente.</span>
           </span>
+        </label>
+
+        <label id="label-site-select" class="is-hidden">
+          Sitio
+          <select id="authSiteSelect" required disabled>
+            <option value="">Primero selecciona una organización</option>
+          </select>
+          <span class="field-hint">Elige la sede donde registrarás tu asistencia.</span>
         </label>
 
         <!-- Solo en registro: clave colapsable -->
@@ -409,6 +417,7 @@
               <div class="camera-actions">
                 <button id="startEntryCamera" class="secondary camera-retry is-hidden" type="button">Activar cámara</button>
                 <button id="takeEntryPhoto" class="primary" type="button" disabled>Tomar foto</button>
+                <button id="retakeEntryPhoto" class="secondary is-hidden" type="button">Tomar otra foto</button>
               </div>
             </div>
 
@@ -465,6 +474,7 @@
               <div class="camera-actions">
                 <button id="startExitCamera" class="secondary camera-retry is-hidden" type="button">Activar cámara</button>
                 <button id="takeExitPhoto" class="primary" type="button" disabled>Tomar foto</button>
+                <button id="retakeExitPhoto" class="secondary is-hidden" type="button">Tomar otra foto</button>
               </div>
             </div>
 
@@ -994,8 +1004,8 @@
             <div class="site-admin-header admin-users-header">
               <div>
                 <p class="section-kicker">Directorio operativo</p>
-                <h3 id="adminUsersTitle">Usuarios por sitio</h3>
-                  <p id="adminUsersSummary">Selecciona una organizacion para revisar sus personas, sitios y roles sin mezclar directorios.</p>
+                <h3 id="adminUsersTitle">Usuarios y supervisores</h3>
+                  <p id="adminUsersSummary">Selecciona una organizacion y revisa quien necesita sitio o ya tiene uno asignado.</p>
               </div>
               <span id="adminUsersScopeBadge" class="badge default">Vista por rol</span>
             </div>
@@ -1014,15 +1024,22 @@
                   </div>
                   <span id="adminUsersNoSiteCount" class="ops-rate">0 sin sitio</span>
                 </div>
-                <div id="adminOrganizationPeople" class="admin-organization-people" aria-live="polite"></div>
+                <div class="admin-users-view-tabs" role="group" aria-label="Estado de asignacion">
+                  <button class="admin-users-view-tab is-active" type="button" data-admin-user-view="unassigned" aria-pressed="true">
+                    Sin sitio <span id="adminUsersUnassignedTabCount">0</span>
+                  </button>
+                  <button class="admin-users-view-tab" type="button" data-admin-user-view="assigned" aria-pressed="false">
+                    Asignados <span id="adminUsersAssignedTabCount">0</span>
+                  </button>
+                </div>
                 <div id="adminUsersBySite" class="admin-users-by-site" aria-live="polite"></div>
               </section>
 
-              <aside id="userScopeAssignmentCard" class="admin-assignment-card is-hidden" aria-label="Vincular usuario a sitio">
+              <aside id="userScopeAssignmentCard" class="admin-assignment-card is-hidden" aria-label="Asignar supervisor a sitio">
                 <div>
-                  <p class="section-kicker">Alcance operativo</p>
-                  <h3>Vincular usuario a sitio</h3>
-                  <p id="userScopeHelp">Selecciona un usuario y un sitio para guardar su alcance operativo.</p>
+                  <p id="userScopeKicker" class="section-kicker">Supervision operativa</p>
+                  <h3 id="userScopeTitle">Asignar supervisor a sitio</h3>
+                  <p id="userScopeHelp">Selecciona una persona y el sitio que supervisara.</p>
                 </div>
                 <label>
                   Organizacion
@@ -1031,7 +1048,7 @@
                   </select>
                 </label>
                 <label>
-                  Usuario de la organizacion
+                  Persona
                   <select id="userScopeUser">
                     <option value="">Selecciona primero una organizacion</option>
                   </select>
@@ -1042,7 +1059,7 @@
                     <option value="">Selecciona primero un usuario</option>
                   </select>
                 </label>
-                <label id="userScopeRoleWrap">
+                <label id="userScopeRoleWrap" class="is-hidden">
                   Rol operativo
                   <select id="userScopeRole">
                     <option value="usuario">Usuario</option>
@@ -1050,20 +1067,20 @@
                   </select>
                 </label>
                 <div class="site-actions">
-                  <button id="assignUserScopeButton" class="primary" type="button" disabled>Guardar asignacion</button>
+                  <button id="assignUserScopeButton" class="primary" type="button" disabled>Asignar supervisor</button>
                 </div>
-                <p id="userScopeStatus" class="site-test-result" data-tone="warning">Carga el directorio para vincular usuarios.</p>
+                <p id="userScopeStatus" class="site-test-result" data-tone="warning">Carga el directorio para asignar supervisores.</p>
               </aside>
 
-              <aside id="adminInviteCard" class="admin-assignment-card superadmin-only is-hidden" aria-label="Asignar admin a sitio">
+              <aside id="adminInviteCard" class="admin-assignment-card superadmin-only is-hidden" aria-label="Invitar supervisor a sitio">
                 <div>
-                  <p class="section-kicker">Key de administracion</p>
-                  <h3>Asignar admin a sitio</h3>
-                  <p>Genera una invitacion de un solo uso para el correo indicado y el sitio seleccionado.</p>
+                  <p class="section-kicker">Nuevo supervisor</p>
+                  <h3>Invitar supervisor a sitio</h3>
+                  <p>Genera una invitacion de un solo uso para un supervisor que aun no aparece en el directorio.</p>
                 </div>
                 <label>
-                  Correo del admin
-                  <input id="adminInviteEmail" type="email" autocomplete="email" placeholder="admin@empresa.com" />
+                  Correo del supervisor
+                  <input id="adminInviteEmail" type="email" autocomplete="email" placeholder="supervisor@empresa.com" />
                 </label>
                 <label>
                   Sitio
@@ -1072,14 +1089,14 @@
                   </select>
                 </label>
                 <label>
-                  Admin invite key
+                  Clave de invitacion
                   <span class="sensitive-input-wrap"><input id="adminInviteKey" type="password" autocomplete="off" readonly placeholder="Genera una key MVP" /><button class="password-visibility-toggle" type="button" data-password-toggle="adminInviteKey" aria-label="Mostrar key de invitación" aria-pressed="false" title="Mostrar key"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6Z" /><circle cx="12" cy="12" r="2.5" /><path class="visibility-slash" d="M4 4 20 20" /></svg></button></span>
                 </label>
                 <div class="site-actions">
                   <button id="prepareAdminInvite" class="primary" type="button">Preparar key</button>
                   <button id="copyAdminInviteKey" class="ghost" type="button">Copiar</button>
                 </div>
-                <p id="adminInviteStatus" class="site-test-result" data-tone="warning">La key expira en 72 horas y se entrega una sola vez.</p>
+                <p id="adminInviteStatus" class="site-test-result" data-tone="warning">La clave expira en 72 horas y se entrega una sola vez.</p>
               </aside>
 
               <aside id="organizationAdminCard" class="admin-assignment-card superadmin-only is-hidden" aria-label="Asignar admin de organizacion">
@@ -1303,7 +1320,7 @@
   <script src="supabase-config.js?v=f0-mobile-shell"></script>
   <script src="auth.js?v=2.1-name-validation"></script>
   <script src="notification-rules.js?v=1.0-attendance-reminders"></script>
-  <script src="app.js?v=2.39-photo-gps-flow"></script>
+  <script src="app.js?v=2.42-registration-org-site"></script>
 </body>
 
 </html>

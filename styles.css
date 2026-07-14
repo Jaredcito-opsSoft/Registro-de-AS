@@ -1271,6 +1271,10 @@ video,
   gap: 10px;
 }
 
+.camera-actions > button {
+  flex: 1 1 180px;
+}
+
 .camera-actions > .primary:only-child {
   width: 100%;
 }
@@ -5611,6 +5615,46 @@ tbody tr:hover {
   gap: 12px;
 }
 
+.admin-users-view-tabs {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 4px;
+  padding: 4px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--soft);
+}
+
+.admin-users-view-tab {
+  min-width: 0;
+  min-height: 42px;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  box-shadow: none;
+}
+
+.admin-users-view-tab.is-active {
+  background: var(--card);
+  color: var(--ink);
+  box-shadow: 0 1px 4px rgba(31, 29, 47, 0.08);
+}
+
+.admin-users-view-tab span {
+  display: inline-grid;
+  place-items: center;
+  min-width: 24px;
+  min-height: 24px;
+  margin-left: 4px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: rgba(91, 83, 143, 0.1);
+  color: var(--brand);
+  font-size: 0.75rem;
+}
+
 .admin-user-site-card {
   display: grid;
   gap: 10px;
@@ -5712,6 +5756,25 @@ tbody tr:hover {
   font-weight: 700;
 }
 
+.admin-user-row .admin-user-identity {
+  flex: 1 1 180px;
+}
+
+.admin-user-row-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+  flex: 0 1 auto;
+}
+
+.admin-user-row-actions .compact {
+  min-height: 36px;
+  padding: 7px 10px;
+  white-space: nowrap;
+  font-size: 0.76rem;
+}
+
 .admin-assignment-card {
   display: grid;
   gap: 12px;
@@ -5752,6 +5815,35 @@ tbody tr:hover {
   .admin-user-site-card li {
     flex-direction: column;
     align-items: flex-start;
+  }
+
+  .admin-users-view-tabs {
+    position: sticky;
+    top: 8px;
+    z-index: 3;
+  }
+
+  .admin-user-row .admin-user-identity,
+  .admin-user-row-actions {
+    width: 100%;
+  }
+
+  .admin-user-row .admin-user-identity {
+    flex: 0 0 auto;
+  }
+
+  .admin-user-row-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .admin-user-row-actions .badge {
+    grid-column: 1 / -1;
+    justify-self: start;
+  }
+
+  .admin-user-row-actions .compact {
+    width: 100%;
   }
 
   .ops-followup-grid,
@@ -5943,6 +6035,19 @@ tbody tr:hover {
 
 .org-fallback-wrap input {
   width: 100%;
+}
+
+#authOrgSelect,
+#authSiteSelect {
+  min-height: 50px;
+  font-size: 1rem;
+}
+
+#authSiteSelect:disabled {
+  color: var(--muted);
+  background: rgba(0, 0, 0, 0.035);
+  cursor: not-allowed;
+  opacity: 1;
 }
 
 /* ─── Email Nudge Panel ─── */
