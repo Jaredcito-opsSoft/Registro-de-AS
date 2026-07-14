@@ -3,7 +3,7 @@
 
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <meta name="description"
     content="Sistema mobile-first de asistencia multiempresa con evidencia fotografica, ubicacion y reportes controlados." />
   <meta name="theme-color" content="#ef4ea0" />
@@ -16,7 +16,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="stylesheet"
     href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" />
-  <link rel="stylesheet" href="styles.css?v=2.37-admin-directory-sync" />
+  <link rel="stylesheet" href="styles.css?v=2.38-ios-viewport-active-state" />
 </head>
 
 <body>
@@ -944,7 +944,10 @@
               <label>Tipo<select id="orgCreateType"><option value="empresa">Empresa</option><option value="escuela">Escuela</option><option value="negocio_local">Negocio</option><option value="centro_trabajo">Centro de trabajo</option><option value="otro">Otro</option></select></label>
               <input id="orgCreateSlug" type="hidden" />
               <label>Clave de acceso <small id="orgKeyHint">Obligatoria al crear</small><span class="sensitive-input-wrap"><input id="orgCreateKey" type="password" autocomplete="new-password" placeholder="Minimo 8 caracteres" /><button class="password-visibility-toggle" type="button" data-password-toggle="orgCreateKey" aria-label="Mostrar clave de acceso" aria-pressed="false" title="Mostrar clave"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6Z" /><circle cx="12" cy="12" r="2.5" /><path class="visibility-slash" d="M4 4 20 20" /></svg></button></span></label>
-              <label class="inline-check"><input id="orgActive" type="checkbox" checked /> Organizacion activa</label>
+              <label class="inline-check active-state-toggle" for="orgActive">
+                <span>Organizacion activa</span>
+                <input id="orgActive" type="checkbox" role="switch" checked />
+              </label>
               <div class="site-actions"><button id="saveOrganizationButton" class="primary" type="submit">Guardar organizacion</button></div>
               <p id="organizationFormStatus" class="site-test-result" data-tone="warning">Los cambios se registran en auditoria.</p>
             </form>
@@ -980,7 +983,7 @@
                 <label>Nombre del identificador<input id="siteIdentifierLabel" value="Identificador" placeholder="Ej. Matricula" /></label>
               </fieldset>
               <label>Llave del sitio <small>Dejala vacia para conservarla</small><span class="sensitive-input-wrap"><input id="siteKey" type="password" autocomplete="new-password" placeholder="Minimo 8 caracteres" /><button class="password-visibility-toggle" type="button" data-password-toggle="siteKey" aria-label="Mostrar llave del sitio" aria-pressed="false" title="Mostrar llave"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6Z" /><circle cx="12" cy="12" r="2.5" /><path class="visibility-slash" d="M4 4 20 20" /></svg></button></span></label>
-              <label class="inline-check site-active-toggle" for="siteActive">
+              <label class="inline-check active-state-toggle" for="siteActive">
                 <span>Sitio activo</span>
                 <input id="siteActive" type="checkbox" role="switch" checked />
               </label>
