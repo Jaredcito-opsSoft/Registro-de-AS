@@ -1,5 +1,5 @@
 const CACHE_PREFIX = "asistencia-qr-static-";
-const CACHE_VERSION = "asistencia-qr-static-2.50-avatar-cloud-sync";
+const CACHE_VERSION = "asistencia-qr-static-2.51-avatar-signed-url";
 const STATIC_ASSETS = [
   "/",
   "/index.html",

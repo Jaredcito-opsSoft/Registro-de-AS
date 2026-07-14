@@ -14,7 +14,7 @@ const CLOUD_ENABLED = Boolean(SUPABASE.url && SUPABASE.publishableKey && SUPABAS
 const PHOTO_BUCKET = SUPABASE.bucket || "attendance-photos";
 const PROFILE_AVATAR_BUCKET = "profile-avatars";
 const GEO_PRECISION_MAX_METERS = 200;
-const LOCAL_ASSET_VERSION = "2.50-avatar-cloud-sync";
+const LOCAL_ASSET_VERSION = "2.51-avatar-signed-url";
 const ATTENDANCE_STREAK_RPC_ENABLED = SUPABASE.enableAttendanceStreakRpc === true;
 const NOTIFICATION_PREFERENCE_PREFIX = "registro_asistencia_notifications_v1";
 const NOTIFICATION_SENT_PREFIX = "registro_asistencia_notification_sent_v1";
@@ -1018,6 +1018,16 @@ function profileAvatarPath() {
   return authUserId ? `${authUserId}/avatar.jpg` : "";
 }
 
+function resolveStorageSignedUrl(value) {
+  const signedUrl = String(value || "").trim();
+  if (!signedUrl) return "";
+  if (/^https?:\/\//i.test(signedUrl)) return signedUrl;
+  const path = signedUrl.startsWith("/storage/v1/")
+    ? signedUrl
+    : `/storage/v1/${signedUrl.replace(/^\/+/, "")}`;
+  return `${SUPABASE.url}${path}`;
+}
+
 async function getRemoteAvatarUrl() {
   if (!CLOUD_ENABLED || !state.currentUser?.id || !localStorage.getItem("registro_asistencia_token")) return "";
   try {
@@ -1033,8 +1043,7 @@ async function getRemoteAvatarUrl() {
     if (!response.ok) return "";
     const data = await response.json();
     const signedUrl = data.signedURL || data.signedUrl || data.url || "";
-    // Storage firma la URL completa; agregar parametros despues invalida la firma.
-    return signedUrl.startsWith("http") ? signedUrl : `${SUPABASE.url}${signedUrl}`;
+    return resolveStorageSignedUrl(signedUrl);
   } catch {
     return "";
   }
