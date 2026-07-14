@@ -306,6 +306,7 @@ function populateElements() {
   els.adminUsersBySite = $("#adminUsersBySite");
   els.userScopeAssignmentCard = $("#userScopeAssignmentCard");
   els.userScopeHelp = $("#userScopeHelp");
+  els.userScopeOrganization = $("#userScopeOrganization");
   els.userScopeUser = $("#userScopeUser");
   els.userScopeSite = $("#userScopeSite");
   els.userScopeRole = $("#userScopeRole");
@@ -2610,10 +2611,10 @@ function renderRolePanelCopy(activeTarget = "records") {
 }
 
 const ADMIN_SECTION_COPY = {
-  summary: "Resumen del dia, alertas y distribucion por sitio.",
+  summary: "Prioriza pendientes de hoy y abre el seguimiento solo cuando haya alertas.",
   organizations: "Administra organizaciones, ubicaciones, horarios y politicas.",
-  users: "Consulta personas por sitio, pendientes sin sitio y asignacion admin.",
-  attendances: "Filtra registros, revisa evidencia y exporta si tienes permiso.",
+  users: "Elige una organizacion para consultar personas por sitio y ajustar su alcance.",
+  attendances: "Consulta primero fecha, sitio y estado; usa filtros adicionales solo cuando los necesites.",
   audit: "Historial de acciones administrativas visibles para tu rol.",
 };
 
@@ -4179,6 +4180,25 @@ function getAssignableUsers() {
   });
 }
 
+function getAssignableOrganizations() {
+  const actor = state.currentAppUser || {};
+  const canManageOrg = hasPermission("manage_organization");
+  const organizations = state.organizationHubs.filter((organization) => {
+    if (!organization?.id || organization.activo === false) return false;
+    return canManageOrg || String(organization.id) === String(actor.organizacion_id || "");
+  });
+  return organizations.sort((a, b) => String(a.nombre || "").localeCompare(String(b.nombre || "")));
+}
+
+function getSelectedUserScopeOrganizationId() {
+  return els.userScopeOrganization?.value || "";
+}
+
+function getUserScopeOrganizationName(organizationId) {
+  return getAssignableOrganizations().find((organization) => String(organization.id) === String(organizationId))?.nombre
+    || "la organizacion seleccionada";
+}
+
 function getAssignableSitesForUser(user) {
   if (!user?.organizacion_id) return [];
   const actor = state.currentAppUser || {};
@@ -4211,16 +4231,36 @@ function populateUserScopeAssignment() {
   card.classList.toggle("is-hidden", !allowed);
   if (!allowed) return;
 
-  const users = getAssignableUsers();
+  const organizations = getAssignableOrganizations();
+  const previousOrganizationId = els.userScopeOrganization?.value || "";
+  const actorOrganizationId = String(state.currentAppUser?.organizacion_id || "");
+  const selectedOrganizationId = organizations.some((organization) => String(organization.id) === previousOrganizationId)
+    ? previousOrganizationId
+    : (organizations.some((organization) => String(organization.id) === actorOrganizationId)
+      ? actorOrganizationId
+      : String(organizations[0]?.id || ""));
+  const users = getAssignableUsers().filter((user) => String(user.organizacion_id || "") === selectedOrganizationId);
   const previousUserId = els.userScopeUser?.value || "";
   const previousSiteId = els.userScopeSite?.value || "";
   const selectedUser = users.find((user) => user.id === previousUserId) || null;
   const canManageRoles = hasPermission("manage_organization");
 
+  if (els.userScopeOrganization) {
+    els.userScopeOrganization.innerHTML = `<option value="">Selecciona una organizacion</option>`;
+    organizations.forEach((organization) => {
+      const option = document.createElement("option");
+      option.value = organization.id;
+      option.textContent = organization.nombre || "Organizacion sin nombre";
+      els.userScopeOrganization.appendChild(option);
+    });
+    els.userScopeOrganization.value = selectedOrganizationId;
+    els.userScopeOrganization.disabled = !hasPermission("manage_organization") || organizations.length <= 1;
+  }
+
   if (els.userScopeHelp) {
     els.userScopeHelp.textContent = canManageRoles
-      ? "Superadmin puede vincular usuarios de la misma organizacion y definir su rol operativo."
-      : "Administrador de sitio: solo vincula usuarios regulares dentro de su alcance.";
+      ? "Elige una organizacion para encontrar solo sus usuarios; despues define sitio y rol operativo."
+      : "Solo puedes vincular usuarios regulares dentro de la organizacion de tu sitio.";
   }
   if (els.userScopeRoleWrap) els.userScopeRoleWrap.classList.toggle("is-hidden", !canManageRoles);
   if (els.userScopeRole) {
@@ -4230,11 +4270,11 @@ function populateUserScopeAssignment() {
   }
 
   if (els.userScopeUser) {
-    els.userScopeUser.innerHTML = `<option value="">Selecciona un usuario</option>`;
+    els.userScopeUser.innerHTML = `<option value="">${selectedOrganizationId ? "Selecciona un usuario" : "Selecciona primero una organizacion"}</option>`;
     users.forEach((user) => {
       const option = document.createElement("option");
       option.value = user.id;
-      option.textContent = `${user.nombre || user.email || user.matricula || "Usuario"} - ${user.organizacion_nombre || "Organizacion"}`;
+      option.textContent = `${user.nombre || user.email || user.matricula || "Usuario"}${user.sitio_nombre ? ` - ${user.sitio_nombre}` : " - Sin sitio"}`;
       els.userScopeUser.appendChild(option);
     });
     els.userScopeUser.value = selectedUser?.id || "";
@@ -4249,7 +4289,7 @@ function populateUserScopeAssignment() {
       option.textContent = `${site.nombre || "Sitio sin nombre"} - ${getManagedSiteOrganizationName(site)}`;
       els.userScopeSite.appendChild(option);
     });
-    els.userScopeSite.disabled = !selectedUser || !sites.length;
+    els.userScopeSite.disabled = !selectedOrganizationId || !selectedUser || !sites.length;
     els.userScopeSite.value = sites.some((site) => site.id === previousSiteId)
       ? previousSiteId
       : (sites.some((site) => site.id === selectedUser?.sitio_id) ? selectedUser.sitio_id : "");
@@ -4259,8 +4299,10 @@ function populateUserScopeAssignment() {
     els.assignUserScopeButton.disabled = !selectedUser || !els.userScopeSite?.value;
   }
 
-  if (!users.length) {
-    setUserScopeStatus("No hay usuarios elegibles en tu alcance para vincular.", "warning");
+  if (!selectedOrganizationId) {
+    setUserScopeStatus("Selecciona una organizacion para consultar y vincular usuarios.", "warning");
+  } else if (!users.length) {
+    setUserScopeStatus("No hay usuarios elegibles en esta organizacion para vincular.", "warning");
   } else if (selectedUser && !sites.length) {
     setUserScopeStatus("No hay sitios activos compatibles con la organizacion de este usuario.", "danger");
   } else {
@@ -4306,7 +4348,10 @@ async function assignUserScope() {
 
 function renderAdminUsersSection(records = getVisibleRecords()) {
   if (!els.adminUsersBySite) return;
-  const rows = getAdminUserRows();
+  populateUserScopeAssignment();
+  const selectedOrganizationId = getSelectedUserScopeOrganizationId();
+  const selectedOrganizationName = getUserScopeOrganizationName(selectedOrganizationId);
+  const rows = getAdminUserRows().filter((user) => String(user.organizacion_id || "") === selectedOrganizationId);
   const bySite = new Map();
   const withoutSite = [];
 
@@ -4319,23 +4364,22 @@ function renderAdminUsersSection(records = getVisibleRecords()) {
 
   const totalUsers = rows.length;
   if (els.adminUsersCount) {
-    els.adminUsersCount.textContent = `${totalUsers} ${totalUsers === 1 ? "usuario visible" : "usuarios visibles"}`;
+    els.adminUsersCount.textContent = `${totalUsers} ${totalUsers === 1 ? "usuario" : "usuarios"} en ${selectedOrganizationName}`;
   }
   if (els.adminUsersNoSiteCount) {
     els.adminUsersNoSiteCount.textContent = `${withoutSite.length} sin sitio`;
   }
   if (els.adminUsersScopeBadge) {
     els.adminUsersScopeBadge.className = `badge ${hasPermission("view_all_records") ? "admin" : "default"}`;
-    els.adminUsersScopeBadge.textContent = hasPermission("view_all_records") ? "Alcance global" : "Alcance de sitio";
+    els.adminUsersScopeBadge.textContent = hasPermission("view_all_records") ? "Por organizacion" : "Alcance de sitio";
   }
   if (els.adminUsersSummary) {
     els.adminUsersSummary.textContent = hasPermission("view_all_records")
-      ? "Superadmin puede revisar usuarios globales, sitios asignados y pendientes de vinculacion."
-      : "Administrador de sitio: solo usuarios vinculados a tu organizacion o sitio.";
+      ? `Mostrando usuarios de ${selectedOrganizationName}, agrupados por sitio. Cambia la organizacion para gestionar otro directorio.`
+      : `Mostrando usuarios de ${selectedOrganizationName} dentro de tu alcance operativo.`;
   }
 
   populateAdminInviteSites();
-  populateUserScopeAssignment();
 
   if (!totalUsers) {
     els.adminUsersBySite.innerHTML = `
@@ -4400,16 +4444,15 @@ async function prepareAdminInviteKey() {
   }
   if (els.prepareAdminInvite) els.prepareAdminInvite.disabled = true;
   try {
-    const invite = getRpcFirstRow(await callAdminRpc("admin_create_site_invite", {
-      p_sitio_id: siteId,
+    const invite = getRpcFirstRow(await callAdminRpc("admin_create_site_invitation", {
       p_email: email,
+      p_sitio_id: siteId,
       p_rol: "admin",
-      p_expires_hours: 72,
     }));
-    if (!invite?.invite_key) throw new Error("No se recibio una key de invitacion.");
-    if (els.adminInviteKey) els.adminInviteKey.value = invite.invite_key;
+    if (!invite?.clave) throw new Error("No se recibio una key de invitacion.");
+    if (els.adminInviteKey) els.adminInviteKey.value = invite.clave;
     if (els.adminInviteStatus) {
-      els.adminInviteStatus.textContent = `Invitacion segura creada. Expira: ${displayTime(invite.expires_at)}.`;
+      els.adminInviteStatus.textContent = "Invitacion segura creada. Expira en 72 horas.";
       els.adminInviteStatus.dataset.tone = "success";
     }
     addAdminLog("site_invite_created", `${email} / ${siteId}`);
@@ -5918,6 +5961,10 @@ async function init() {
   if (els.prepareAdminInvite) els.prepareAdminInvite.addEventListener("click", prepareAdminInviteKey);
   if (els.copyAdminInviteKey) els.copyAdminInviteKey.addEventListener("click", copyAdminInviteKey);
   if (els.userScopeUser) els.userScopeUser.addEventListener("change", populateUserScopeAssignment);
+  if (els.userScopeOrganization) els.userScopeOrganization.addEventListener("change", () => {
+    populateUserScopeAssignment();
+    renderAdminUsersSection(getVisibleRecords());
+  });
   if (els.userScopeSite) els.userScopeSite.addEventListener("change", populateUserScopeAssignment);
   if (els.assignUserScopeButton) els.assignUserScopeButton.addEventListener("click", assignUserScope);
   document.querySelectorAll("[data-admin-section-target]").forEach((button) => {

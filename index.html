@@ -709,20 +709,20 @@
               <div>
                 <p class="section-kicker">Dashboard operativo</p>
                 <h3 id="opsDashboardTitle">Corte de asistencia</h3>
-                <p id="dashboardScopeLabel">Mostrando registros permitidos por tu rol.</p>
+                <p id="dashboardScopeLabel">Empieza por las jornadas pendientes y atiende solo las alertas que requieran seguimiento.</p>
               </div>
               <span id="dashboardCompletionRate" class="ops-rate">0% completo</span>
             </div>
             <div class="ops-metrics" aria-label="Indicadores de asistencia">
               <article class="ops-metric is-primary">
-                <small>Total visible</small>
+                <small>En tu alcance</small>
                 <strong id="dashboardVisibleTotal">0</strong>
-                <span>Registros filtrados</span>
+                <span>Registros disponibles</span>
               </article>
               <article class="ops-metric">
-                <small>Hoy</small>
+                <small>Jornada de hoy</small>
                 <strong id="dashboardToday">0</strong>
-                <span>Asistencias del dia</span>
+                <span>Entradas registradas</span>
               </article>
               <article class="ops-metric">
                 <small>Completos</small>
@@ -735,26 +735,31 @@
                 <span>Sin salida registrada</span>
               </article>
               <article class="ops-metric">
-                <small>Retrasos / Tarde</small>
-                <strong id="dashboardLate" style="color: var(--warning-ink, #d97706);">0</strong>
-                <span>Entradas fuera de horario</span>
-              </article>
-              <article class="ops-metric">
-                <small>Sin salida</small>
-                <strong id="dashboardNoExit" style="color: var(--danger-ink, #ef4444);">0</strong>
-                <span>Turno vencido sin cerrar</span>
-              </article>
-              <article class="ops-metric">
                 <small>Revision</small>
                 <strong id="dashboardReview">0</strong>
                 <span>Riesgo o estado alerta</span>
               </article>
-              <article class="ops-metric">
-                <small>GPS / facial</small>
-                <strong id="dashboardIssues">0</strong>
-                <span>Validaciones por revisar</span>
-              </article>
             </div>
+            <details class="ops-followup">
+              <summary>Ver seguimiento operativo</summary>
+              <div class="ops-followup-grid">
+                <article class="ops-metric">
+                  <small>Entradas tardias</small>
+                  <strong id="dashboardLate" style="color: var(--warning-ink, #d97706);">0</strong>
+                  <span>Fuera de horario</span>
+                </article>
+                <article class="ops-metric">
+                  <small>Sin salida</small>
+                  <strong id="dashboardNoExit" style="color: var(--danger-ink, #ef4444);">0</strong>
+                  <span>Turno vencido</span>
+                </article>
+                <article class="ops-metric">
+                  <small>GPS / facial</small>
+                  <strong id="dashboardIssues">0</strong>
+                  <span>Validaciones por revisar</span>
+                </article>
+              </div>
+            </details>
             <div id="dashboardAlerts" class="ops-alerts" aria-live="polite">
               <span>Sin alertas operativas con los filtros actuales.</span>
             </div>
@@ -781,7 +786,11 @@
 
           <div class="table-wrap admin-control is-hidden admin-section is-hidden" data-admin-section="attendances">
             <div class="ops-dashboard-head admin-records-head">
-              <h3>Asistencias registradas</h3>
+              <div>
+                <p class="section-kicker">Consulta diaria</p>
+                <h3>Asistencias registradas</h3>
+                <p>Filtra primero por fecha, sitio o estado. La evidencia y el detalle se consultan desde cada registro.</p>
+              </div>
             </div>
 
             <form class="ops-filters admin-filters" aria-label="Filtros de administracion">
@@ -800,30 +809,35 @@
                 </select>
               </label>
               <label>
-                Riesgo
-                <select id="adminFilterRisk">
-                  <option value="all">Todos</option>
-                  <option value="normal">Normal</option>
-                  <option value="revision">Revision</option>
-                  <option value="sospechoso">Sospechoso</option>
-                </select>
-              </label>
-              <label>
                 Sitio
                 <select id="adminFilterSite">
                   <option value="all">Todos los sitios</option>
                 </select>
               </label>
-              <label>
-                Usuario
-                <select id="adminFilterUser">
-                  <option value="all">Todos los usuarios</option>
-                </select>
-              </label>
-              <label class="ops-search-field">
-                Buscar
-                <input id="adminFilterSearch" type="search" autocomplete="off" placeholder="Nombre o identificador" />
-              </label>
+              <details class="admin-filter-more">
+                <summary>Mas filtros</summary>
+                <div>
+                  <label>
+                    Riesgo
+                    <select id="adminFilterRisk">
+                      <option value="all">Todos</option>
+                      <option value="normal">Normal</option>
+                      <option value="revision">Revision</option>
+                      <option value="sospechoso">Sospechoso</option>
+                    </select>
+                  </label>
+                  <label>
+                    Usuario
+                    <select id="adminFilterUser">
+                      <option value="all">Todos los usuarios</option>
+                    </select>
+                  </label>
+                  <label class="ops-search-field">
+                    Buscar
+                    <input id="adminFilterSearch" type="search" autocomplete="off" placeholder="Nombre o identificador" />
+                  </label>
+                </div>
+              </details>
               <button id="adminClearDashboardFilters" class="ghost filter-clear" type="button">Limpiar filtros</button>
             </form>
 
@@ -973,7 +987,7 @@
               <div>
                 <p class="section-kicker">Directorio operativo</p>
                 <h3 id="adminUsersTitle">Usuarios por sitio</h3>
-                <p id="adminUsersSummary">Superadmin ve el universo completo. Admin de sitio solo debe ver su alcance.</p>
+                  <p id="adminUsersSummary">Selecciona una organizacion para revisar sus personas, sitios y roles sin mezclar directorios.</p>
               </div>
               <span id="adminUsersScopeBadge" class="badge default">Vista por rol</span>
             </div>
@@ -982,7 +996,7 @@
               <section class="admin-users-main" aria-label="Usuarios agrupados">
                 <div class="admin-users-toolbar">
                   <div>
-                    <strong>Distribucion por sitio</strong>
+                    <strong>Usuarios de la organizacion</strong>
                     <span id="adminUsersCount">0 usuarios visibles</span>
                   </div>
                   <span id="adminUsersNoSiteCount" class="ops-rate">0 sin sitio</span>
@@ -997,9 +1011,15 @@
                   <p id="userScopeHelp">Selecciona un usuario y un sitio para guardar su alcance operativo.</p>
                 </div>
                 <label>
-                  Usuario
+                  Organizacion
+                  <select id="userScopeOrganization">
+                    <option value="">Selecciona una organizacion</option>
+                  </select>
+                </label>
+                <label>
+                  Usuario de la organizacion
                   <select id="userScopeUser">
-                    <option value="">Selecciona un usuario</option>
+                    <option value="">Selecciona primero una organizacion</option>
                   </select>
                 </label>
                 <label>

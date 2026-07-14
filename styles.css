@@ -4189,6 +4189,27 @@ tbody tr:hover {
   gap: 10px;
 }
 
+.ops-followup {
+  display: grid;
+  gap: 10px;
+  padding-top: 2px;
+}
+
+.ops-followup summary,
+.admin-filter-more summary {
+  cursor: pointer;
+  color: var(--ink);
+  font-size: 0.84rem;
+  font-weight: 900;
+}
+
+.ops-followup-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  padding-top: 10px;
+}
+
 .ops-metric {
   min-height: 96px;
   display: flex;
@@ -4260,6 +4281,25 @@ tbody tr:hover {
   color: var(--ink);
   font-size: 1.15rem;
   font-weight: 800;
+}
+
+.admin-records-head p:last-child {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 0.86rem;
+  font-weight: 650;
+}
+
+.admin-filter-more {
+  grid-column: span 2;
+  align-self: end;
+}
+
+.admin-filter-more > div {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  padding-top: 10px;
 }
 
 .filter-clear {
@@ -5033,6 +5073,8 @@ tbody tr:hover {
   .organization-hub-header .primary,
   .organization-sites-heading .primary {
     width: 100%;
+    justify-content: center;
+    min-height: 46px;
   }
 
   .organization-site-row {
@@ -5302,6 +5344,10 @@ tbody tr:hover {
   font-weight: 700;
 }
 
+.admin-users-toolbar > div {
+  min-width: 0;
+}
+
 .admin-users-by-site {
   display: grid;
   gap: 12px;
@@ -5422,6 +5468,15 @@ tbody tr:hover {
   .admin-user-site-card li {
     flex-direction: column;
     align-items: flex-start;
+  }
+
+  .ops-followup-grid,
+  .admin-filter-more > div {
+    grid-template-columns: 1fr;
+  }
+
+  .admin-filter-more {
+    grid-column: auto;
   }
 }
 
