@@ -1,4 +1,5 @@
-const CACHE_VERSION = "asistencia-qr-static-v22-name-liveness-daily";
+const CACHE_PREFIX = "asistencia-qr-static-";
+const CACHE_VERSION = "asistencia-qr-static-v23-safe-shell";
 const STATIC_ASSETS = [
   "/",
   "/index.html",
@@ -12,25 +13,46 @@ const STATIC_ASSETS = [
   "/icons/icon-maskable-512.png"
 ];
 
+const SENSITIVE_PATH_PATTERN = /\/(?:rest|auth|storage|functions)\/v1(?:\/|$)/i;
+
+function isStaticAsset(url) {
+  return STATIC_ASSETS.includes(url.pathname);
+}
+
+function isSensitiveRequest(request, url) {
+  return (
+    SENSITIVE_PATH_PATTERN.test(url.pathname) ||
+    request.headers.has("authorization") ||
+    request.headers.has("x-client-info") ||
+    request.headers.get("cache-control")?.includes("no-store")
+  );
+}
+
+function isSafeStaticResponse(response) {
+  if (!response || !response.ok || response.type !== "basic") return false;
+
+  const cacheControl = response.headers.get("cache-control") || "";
+  return !/no-store|private/i.test(cacheControl) && !response.headers.has("set-cookie");
+}
+
 self.addEventListener("install", (event) => {
   event.waitUntil(
-    caches.open(CACHE_VERSION).then((cache) => cache.addAll(STATIC_ASSETS))
+    caches.open(CACHE_VERSION)
+      .then((cache) => cache.addAll(STATIC_ASSETS))
+      .then(() => self.skipWaiting())
   );
-  self.skipWaiting();
 });
 
 self.addEventListener("activate", (event) => {
   event.waitUntil(
     caches.keys().then((keys) => Promise.all(
-      keys.filter((key) => key !== CACHE_VERSION).map((key) => caches.delete(key))
+      keys
+        .filter((key) => key.startsWith(CACHE_PREFIX) && key !== CACHE_VERSION)
+        .map((key) => caches.delete(key))
     ))
   );
   self.clients.claim();
 });
-
-function isStaticAsset(url) {
-  return STATIC_ASSETS.includes(url.pathname);
-}
 
 self.addEventListener("fetch", (event) => {
   const { request } = event;
@@ -38,6 +60,7 @@ self.addEventListener("fetch", (event) => {
 
   const url = new URL(request.url);
   if (url.origin !== self.location.origin) return;
+  if (isSensitiveRequest(request, url)) return;
 
   if (request.mode === "navigate") {
     event.respondWith(
@@ -46,13 +69,18 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  if (!isStaticAsset(url)) return;
+  // Only the versioned app shell can be cached. Data, auth and evidence remain network-only.
+  if (!isStaticAsset(url) || url.search) return;
 
-  event.respondWith(
-    caches.match(request).then((cached) => cached || fetch(request).then((response) => {
-      const copy = response.clone();
-      caches.open(CACHE_VERSION).then((cache) => cache.put(request, copy));
-      return response;
-    }))
-  );
+  event.respondWith((async () => {
+    const cached = await caches.match(request);
+    if (cached) return cached;
+
+    const response = await fetch(request);
+    if (isSafeStaticResponse(response)) {
+      const cache = await caches.open(CACHE_VERSION);
+      await cache.put(request, response.clone());
+    }
+    return response;
+  })());
 });
