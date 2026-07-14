@@ -3508,8 +3508,7 @@ async function handleEntrySubmit(event) {
       showGuidedPanel("entry");
       showToast(record.riesgo === "normal" || record.riesgo === "entrada_registrada" ? "Entrada registrada correctamente." : "Entrada registrada, requiere revision administrativa.");
     } catch (error) {
-      const duplicate = /duplicate|unique|ya existe/i.test(String(error?.message || error));
-      showToast(duplicate ? "Hoy ya existe una entrada para esta cuenta." : "No se pudo guardar la entrada global. Intenta de nuevo.");
+      showToast(getAttendanceSaveErrorMessage(error, "entry"));
     }
   } finally {
     state.attendanceSubmitting.entry = false;
@@ -3556,14 +3555,42 @@ async function handleExitSubmit(event) {
       showGuidedPanel("exit");
       showToast(updated.riesgo === "normal" ? "Salida registrada y validada." : "Salida registrada, pero requiere revision administrativa.");
     } catch (error) {
-      const duplicate = /salida.*ya fue registrada|duplicate|unique/i.test(String(error?.message || error));
-      showToast(duplicate ? "La salida de hoy ya fue registrada." : "No se pudo guardar la salida segura. Intenta de nuevo.");
+      showToast(getAttendanceSaveErrorMessage(error, "exit"));
     }
   } finally {
     state.attendanceSubmitting.exit = false;
     if (submitButton) submitButton.disabled = false;
   }
 }
+
+function getAttendanceSaveErrorMessage(error, flow) {
+  const message = String(error?.message || error || "").toLowerCase();
+  if (/entrada_activa_existente|duplicate|unique|ya existe/.test(message)) {
+    return "Hoy ya existe una entrada activa para esta cuenta.";
+  }
+  if (/salida_ya_registrada|salida.*ya fue registrada/.test(message)) {
+    return "La salida de hoy ya fue registrada.";
+  }
+  if (/entrada_fuera_de_horario/.test(message)) {
+    return "La entrada solo puede registrarse dentro del horario configurado para tu sitio.";
+  }
+  if (/salida_fuera_de_horario/.test(message)) {
+    return "La salida solo puede registrarse dentro del horario configurado para tu sitio.";
+  }
+  if (/horario_entrada_no_configurado|horario_salida_no_configurado/.test(message)) {
+    return "Tu sitio no tiene un horario configurado. Contacta al administrador.";
+  }
+  if (/usuario_sin_sitio_asignado|sitio_activo_no_encontrado|sitio_de_entrada_no_encontrado/.test(message)) {
+    return "Tu cuenta no tiene un sitio operativo asignado. Contacta al administrador.";
+  }
+  if (/entrada_activa_no_encontrada/.test(message)) {
+    return "No existe una entrada activa para registrar la salida.";
+  }
+  return flow === "entry"
+    ? "No se pudo guardar la entrada global. Intenta de nuevo."
+    : "No se pudo guardar la salida segura. Intenta de nuevo.";
+}
+
 function statusLabel(value) {
   const labels = {
     entrada_registrada: "Entrada registrada",
