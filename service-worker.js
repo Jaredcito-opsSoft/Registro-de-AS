@@ -1,5 +1,5 @@
 const CACHE_PREFIX = "asistencia-qr-static-";
-const CACHE_VERSION = "asistencia-qr-static-2.39-photo-gps-flow";
+const CACHE_VERSION = "asistencia-qr-static-2.40-mobile-record-filters";
 const STATIC_ASSETS = [
   "/",
   "/index.html",
