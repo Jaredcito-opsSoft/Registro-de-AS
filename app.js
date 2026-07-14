@@ -2356,6 +2356,20 @@ function openSiteEditor(siteId = null) {
   els.siteFormTitle.textContent = isSupervisorSession() ? "Administrar mi sitio" : (site ? "Editar sitio" : `Nuevo sitio en ${org.nombre}`);
   const restrictedSiteFields = [els.siteKey?.closest("label"), els.siteActive?.closest("label"), els.generateSiteKey, els.copySiteKey];
   restrictedSiteFields.forEach((element) => element?.classList.toggle("is-hidden", isSupervisorSession()));
+  const supervisorLockedFields = [
+    els.siteLat,
+    els.siteLng,
+    els.siteRadius,
+    els.siteGpsPolicy,
+    els.siteEvidencePolicy,
+    els.useAdminLocation,
+    els.testAdminLocation,
+  ];
+  supervisorLockedFields.forEach((element) => {
+    if (!element) return;
+    element.disabled = isSupervisorSession();
+    element.setAttribute("aria-describedby", isSupervisorSession() ? "siteStatusSummary" : "");
+  });
   els.siteForm.hidden = false;
   els.siteForm.scrollIntoView({ behavior: "smooth", block: "start" });
   window.setTimeout(() => els.siteName.focus(), 250);

@@ -47,7 +47,7 @@ declare
   v_new_role text;
   v_scope_type text;
 begin
-  if auth.uid() is null then raise exception 'sesion_requerida'; end if;
+  perform public.assert_active_app_session();
 
   select ua.* into v_actor
   from public.usuarios_app as ua
@@ -82,20 +82,13 @@ begin
        or (v_actor.sitio_id is not null and v_actor.sitio_id <> v_site.id) then
       raise exception 'sitio_fuera_de_alcance';
     end if;
-    if public.normalize_app_role(v_target.rol) <> 'usuario' then
-      raise exception 'admin_solo_puede_gestionar_usuarios_regulares';
-    end if;
   end if;
 
   v_requested_role := lower(nullif(trim(coalesce(p_rol, '')), ''));
   if v_requested_role is not null and v_requested_role not in ('usuario', 'supervisor') then
     raise exception 'rol_operativo_invalido';
   end if;
-  if v_actor_role = 'admin' and coalesce(v_requested_role, 'usuario') <> 'usuario' then
-    raise exception 'admin_no_puede_cambiar_roles';
-  end if;
-
-  v_new_role := case when v_actor_role = 'admin' then 'usuario' else coalesce(v_requested_role, 'usuario') end;
+  v_new_role := coalesce(v_requested_role, 'usuario');
   v_scope_type := case when v_new_role = 'supervisor' then 'sitio' else 'propio' end;
 
   update public.usuarios_app as ua
@@ -144,7 +137,7 @@ declare
   v_target public.usuarios_app%rowtype;
   v_organization public.organizaciones%rowtype;
 begin
-  if auth.uid() is null then raise exception 'sesion_requerida'; end if;
+  perform public.assert_active_app_session();
 
   select ua.* into v_actor
   from public.usuarios_app as ua

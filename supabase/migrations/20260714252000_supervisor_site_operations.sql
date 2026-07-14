@@ -49,7 +49,7 @@ declare
   v_actor public.usuarios_app%rowtype;
   v_row public.asistencias%rowtype;
 begin
-  if auth.uid() is null then raise exception 'sesion_requerida'; end if;
+  perform public.assert_active_app_session();
 
   select ua.* into v_actor
   from public.usuarios_app as ua
@@ -99,13 +99,14 @@ set search_path = public, auth, pg_temp
 as $$
 declare
   v_actor public.usuarios_app%rowtype;
+  v_site public.sitios%rowtype;
   v_site_id uuid;
   v_entry_start time := p_hora_entrada_inicio::time;
   v_entry_end time := p_hora_entrada_fin::time;
   v_exit_start time := p_hora_salida_inicio::time;
   v_exit_end time := p_hora_salida_fin::time;
 begin
-  if auth.uid() is null then raise exception 'sesion_requerida'; end if;
+  perform public.assert_active_app_session();
 
   select ua.* into v_actor
   from public.usuarios_app as ua
@@ -116,28 +117,28 @@ begin
     raise exception 'permiso_supervisor_de_sitio_requerido';
   end if;
 
+  select s.* into v_site
+  from public.sitios as s
+  where s.id = v_actor.sitio_id
+    and s.organizacion_id = v_actor.organizacion_id
+    and coalesce(s.activo, true)
+  limit 1;
+  if not found then raise exception 'sitio_asignado_no_encontrado'; end if;
+
   if nullif(trim(coalesce(p_nombre, '')), '') is null then raise exception 'nombre_requerido'; end if;
-  if p_latitud is null or p_latitud not between -90 and 90 then raise exception 'latitud_invalida'; end if;
-  if p_longitud is null or p_longitud not between -180 and 180 then raise exception 'longitud_invalida'; end if;
-  if p_radio_metros not between 20 and 1000 then raise exception 'radio_invalido'; end if;
   if v_entry_start >= v_entry_end or v_exit_start >= v_exit_end then raise exception 'horario_invalido'; end if;
   if not exists (select 1 from pg_timezone_names where name = p_zona_horaria) then raise exception 'zona_horaria_invalida'; end if;
-  if p_gps_policy not in ('obligatorio', 'opcional', 'informativo', 'revision', 'bloqueo') then raise exception 'gps_policy_invalida'; end if;
-  if p_evidence_policy not in ('rostro', 'documento', 'rostro_documento', 'foto_simple') then raise exception 'evidence_policy_invalida'; end if;
+  -- Los parametros de GPS, radio y evidencia se conservan en la firma por
+  -- compatibilidad de cliente, pero nunca se escriben para un supervisor.
 
   update public.sitios as s
   set nombre = trim(p_nombre),
       direccion = nullif(trim(coalesce(p_direccion, '')), ''),
-      latitud = p_latitud,
-      longitud = p_longitud,
-      radio_metros = p_radio_metros,
       hora_entrada_inicio = v_entry_start,
       hora_entrada_fin = v_entry_end,
       hora_salida_inicio = v_exit_start,
       hora_salida_fin = v_exit_end,
       zona_horaria = p_zona_horaria,
-      gps_policy = p_gps_policy,
-      evidence_policy = p_evidence_policy,
       updated_at = now()
   where s.id = v_actor.sitio_id
     and s.organizacion_id = v_actor.organizacion_id
