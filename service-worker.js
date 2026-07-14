@@ -1,5 +1,5 @@
 const CACHE_PREFIX = "asistencia-qr-static-";
-const CACHE_VERSION = "asistencia-qr-static-2.46-secure-user-deletion";
+const CACHE_VERSION = "asistencia-qr-static-2.47-owner-controls";
 const STATIC_ASSETS = [
   "/",
   "/index.html",

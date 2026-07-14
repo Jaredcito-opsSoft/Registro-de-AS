@@ -13,7 +13,7 @@ const SUPABASE = window.SUPABASE_CONFIG || {};
 const CLOUD_ENABLED = Boolean(SUPABASE.url && SUPABASE.publishableKey && SUPABASE.bucket);
 const PHOTO_BUCKET = SUPABASE.bucket || "attendance-photos";
 const GEO_PRECISION_MAX_METERS = 200;
-const LOCAL_ASSET_VERSION = "2.46-secure-user-deletion";
+const LOCAL_ASSET_VERSION = "2.47-owner-controls";
 const ATTENDANCE_STREAK_RPC_ENABLED = SUPABASE.enableAttendanceStreakRpc === true;
 const NOTIFICATION_PREFERENCE_PREFIX = "registro_asistencia_notifications_v1";
 const NOTIFICATION_SENT_PREFIX = "registro_asistencia_notification_sent_v1";
@@ -1690,6 +1690,15 @@ function getKnownSuperadminMatricula(email = state.currentUser?.email) {
 }
 
 function isKnownSuperadminEmail(email = state.currentUser?.email) {
+  return KNOWN_SUPERADMIN_EMAILS.has(String(email || "").trim().toLowerCase());
+}
+
+// Solo controla la visibilidad del panel. Las RPC validan owner en servidor.
+function isKnownOwnerSession() {
+  return isKnownSuperadminEmail(state.currentUser?.email);
+}
+
+function isKnownOwnerEmail(email) {
   return KNOWN_SUPERADMIN_EMAILS.has(String(email || "").trim().toLowerCase());
 }
 
@@ -4770,15 +4779,19 @@ function adminUserListItem(user) {
   const normalizedRole = normalizeAppRole(user.rol);
   const canEditScope = canManageUserAssignments() && !["admin", "superadmin"].includes(normalizedRole);
   const actorRole = normalizeAppRole(state.currentAppUser?.rol || state.currentRole);
+  const targetIsSuperadmin = normalizedRole === "superadmin";
+  const targetIsProtectedOwner = isKnownOwnerEmail(user.email);
   const canDeactivate = ["admin", "superadmin"].includes(actorRole)
-    && normalizedRole !== "superadmin"
+    && (!targetIsSuperadmin || isKnownOwnerSession())
+    && !targetIsProtectedOwner
     && String(user.id || "") !== String(state.currentAppUser?.id || "")
     && (actorRole === "superadmin" || (
       ["usuario", "supervisor"].includes(normalizedRole)
       && String(user.organizacion_id || "") === String(state.currentAppUser?.organizacion_id || "")
     ));
   const canPurge = actorRole === "superadmin"
-    && normalizedRole !== "superadmin"
+    && (!targetIsSuperadmin || isKnownOwnerSession())
+    && !targetIsProtectedOwner
     && String(user.id || "") !== String(state.currentAppUser?.id || "");
   const scopeLabel = adminUserHasSite(user) ? "Cambiar sitio" : "Asignar sitio";
   return `
