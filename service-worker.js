@@ -1,5 +1,5 @@
 const CACHE_PREFIX = "asistencia-qr-static-";
-const CACHE_VERSION = "asistencia-qr-static-2.44-login-attendance-session";
+const CACHE_VERSION = "asistencia-qr-static-2.45-signup-site-roles";
 const STATIC_ASSETS = [
   "/",
   "/index.html",

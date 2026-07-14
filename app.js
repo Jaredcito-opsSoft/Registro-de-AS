@@ -13,7 +13,7 @@ const SUPABASE = window.SUPABASE_CONFIG || {};
 const CLOUD_ENABLED = Boolean(SUPABASE.url && SUPABASE.publishableKey && SUPABASE.bucket);
 const PHOTO_BUCKET = SUPABASE.bucket || "attendance-photos";
 const GEO_PRECISION_MAX_METERS = 200;
-const LOCAL_ASSET_VERSION = "2.44-login-attendance-session";
+const LOCAL_ASSET_VERSION = "2.45-signup-site-roles";
 const ATTENDANCE_STREAK_RPC_ENABLED = SUPABASE.enableAttendanceStreakRpc === true;
 const NOTIFICATION_PREFERENCE_PREFIX = "registro_asistencia_notifications_v1";
 const NOTIFICATION_SENT_PREFIX = "registro_asistencia_notification_sent_v1";
@@ -1704,10 +1704,12 @@ async function loadCurrentAppUser({ silent = false } = {}) {
   const matricula = isKnownSuperadminEmail(authEmail)
     ? getKnownSuperadminMatricula(authEmail)
     : (metadata.matricula || "");
-  const affiliationKey = metadata.organization_key || metadata.org_key || localStorage.getItem("registro_asistencia_org_key") || "";
+  const affiliationKey = metadata.invitation_key || metadata.organization_key || metadata.org_key || localStorage.getItem("registro_asistencia_org_key") || "";
   try {
     if (String(affiliationKey).trim().toUpperCase().startsWith("SITE-INV-")) {
       await callAdminRpc("redeem_site_invite", { p_invite_key: affiliationKey });
+    } else if (String(affiliationKey).trim().toUpperCase().startsWith("AS-INV-")) {
+      await callAdminRpc("accept_site_admin_invitation", { p_clave: affiliationKey });
     }
     const result = await callAdminRpc("get_current_app_user", {
       p_nombre: metadata.nombre || metadata.full_name || state.currentUser.email || "Usuario",
@@ -4577,7 +4579,7 @@ function populateUserScopeAssignment() {
   const previousUserId = els.userScopeUser?.value || "";
   const previousSiteId = els.userScopeSite?.value || "";
   const selectedUser = users.find((user) => user.id === previousUserId) || null;
-  const canManageRoles = hasPermission("manage_organization");
+  const canManageRoles = isRoleAdminSession() && hasPermission("manage_site");
 
   populateOrganizationSelect(
     els.adminUsersOrganizationFilter,
@@ -4659,7 +4661,7 @@ async function assignUserScope() {
 
   const userId = els.userScopeUser?.value || "";
   const siteId = els.userScopeSite?.value || "";
-  const role = hasPermission("manage_organization") ? "supervisor" : "usuario";
+  const role = isRoleAdminSession() && hasPermission("manage_site") ? "supervisor" : "usuario";
   if (!userId || !siteId) {
     setUserScopeStatus("Selecciona un usuario y un sitio activo.", "danger");
     return;
@@ -4767,9 +4769,14 @@ function adminUserListItem(user) {
   const statusClass = user.activo === false ? "danger" : "success";
   const normalizedRole = normalizeAppRole(user.rol);
   const canEditScope = canManageUserAssignments() && !["admin", "superadmin"].includes(normalizedRole);
-  const canDelete = hasPermission("manage_organization")
+  const actorRole = normalizeAppRole(state.currentAppUser?.rol || state.currentRole);
+  const canDelete = ["admin", "superadmin"].includes(actorRole)
     && normalizedRole !== "superadmin"
-    && String(user.id || "") !== String(state.currentAppUser?.id || "");
+    && String(user.id || "") !== String(state.currentAppUser?.id || "")
+    && (actorRole === "superadmin" || (
+      ["usuario", "supervisor"].includes(normalizedRole)
+      && String(user.organizacion_id || "") === String(state.currentAppUser?.organizacion_id || "")
+    ));
   const scopeLabel = adminUserHasSite(user) ? "Cambiar sitio" : "Asignar sitio";
   return `
     <li class="admin-user-row">
@@ -4787,8 +4794,8 @@ function adminUserListItem(user) {
 }
 
 async function deactivateManagedUser(userId) {
-  if (!hasPermission("manage_organization")) {
-    showToast("Solo superadmin puede eliminar usuarios.");
+  if (!canManageUserAssignments()) {
+    showToast("Solo administradores autorizados pueden eliminar usuarios.");
     return;
   }
   const user = state.managedUsers.find((item) => String(item.id || "") === String(userId || ""));
@@ -4885,8 +4892,8 @@ function renderAdminUsersSection(records = getVisibleRecords()) {
 }
 
 async function prepareAdminInviteKey() {
-  if (!hasPermission("manage_organization")) {
-    showToast("Solo superadmin puede preparar invitaciones de supervisor.");
+  if (!canManageUserAssignments()) {
+    showToast("No tienes permisos para preparar invitaciones de supervisor.");
     return;
   }
   const email = els.adminInviteEmail?.value.trim() || "";
@@ -4900,13 +4907,14 @@ async function prepareAdminInviteKey() {
   }
   if (els.prepareAdminInvite) els.prepareAdminInvite.disabled = true;
   try {
-    const invite = getRpcFirstRow(await callAdminRpc("admin_create_site_invitation", {
-      p_email: email,
+    const invite = getRpcFirstRow(await callAdminRpc("admin_create_site_invite", {
       p_sitio_id: siteId,
+      p_email: email,
       p_rol: "supervisor",
+      p_expires_hours: 72,
     }));
-    if (!invite?.clave) throw new Error("No se recibio una key de invitacion.");
-    if (els.adminInviteKey) els.adminInviteKey.value = invite.clave;
+    if (!invite?.invite_key) throw new Error("No se recibio una key de invitacion.");
+    if (els.adminInviteKey) els.adminInviteKey.value = invite.invite_key;
     if (els.adminInviteStatus) {
       els.adminInviteStatus.textContent = "Invitacion de supervisor creada. Expira en 72 horas.";
       els.adminInviteStatus.dataset.tone = "success";

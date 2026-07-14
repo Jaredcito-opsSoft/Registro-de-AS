@@ -88,20 +88,20 @@
         <!-- Solo en registro: clave colapsable -->
         <div id="label-org-key-wrap" class="auth-org-key-wrap is-hidden">
           <button id="authOrgKeyToggle" class="auth-org-key-toggle" type="button" aria-expanded="false">
-            <span>¿Tienes clave de organización?</span>
+            <span>¿Tienes una clave de invitación?</span>
             <svg class="chevron" viewBox="0 0 24 24" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
               <polyline points="6 9 12 15 18 9" />
             </svg>
           </button>
           <label id="label-org-key" class="is-hidden">
-            Clave de organización
+            Clave de invitación
             <span class="sensitive-input-wrap">
-              <input id="authOrgKey" type="password" autocomplete="off" placeholder="Ej. DEMO-AS-2026" />
-              <button class="password-visibility-toggle" type="button" data-password-toggle="authOrgKey" aria-label="Mostrar clave de organización" aria-pressed="false" title="Mostrar clave">
+              <input id="authOrgKey" type="password" autocomplete="off" placeholder="Ej. SITE-INV-..." />
+              <button class="password-visibility-toggle" type="button" data-password-toggle="authOrgKey" aria-label="Mostrar clave de invitación" aria-pressed="false" title="Mostrar clave">
                 <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6Z" /><circle cx="12" cy="12" r="2.5" /><path class="visibility-slash" d="M4 4 20 20" /></svg>
               </button>
             </span>
-            <span class="field-hint">Entregada por el administrador de tu empresa o institución.</span>
+            <span class="field-hint">Solo para una invitación personal de administrador o supervisor. Tu rol se valida en servidor.</span>
           </label>
         </div>
 
@@ -1324,9 +1324,9 @@
 
   <script src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
   <script src="supabase-config.js?v=f0-mobile-shell"></script>
-  <script src="auth.js?v=2.44-login-attendance-session"></script>
+  <script src="auth.js?v=2.45-signup-site-roles"></script>
   <script src="notification-rules.js?v=1.0-attendance-reminders"></script>
-  <script src="app.js?v=2.44-login-attendance-session"></script>
+  <script src="app.js?v=2.45-signup-site-roles"></script>
 </body>
 
 </html>

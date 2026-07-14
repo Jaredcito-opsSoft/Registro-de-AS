@@ -109,12 +109,12 @@ async function refrescarSesion() {
   }
 }
 
-async function crearCuenta(email, password, nombre, matricula, organizationKey = "", organizationSlug = "", phone = "", siteId = "", siteName = "") {
+async function crearCuenta(email, password, nombre, matricula, invitationKey = "", organizationSlug = "", phone = "", siteId = "", siteName = "") {
   assertSupabaseAuthConfig();
   const cleanEmail = String(email || "").trim().toLowerCase();
   const cleanNombre = String(nombre || "").trim();
   const cleanMatricula = String(matricula || "").trim();
-  const cleanOrganizationKey = String(organizationKey || organizationSlug || "").trim();
+  const cleanInvitationKey = String(invitationKey || "").trim();
   const cleanPhone = String(phone || "").trim();
   const cleanSiteId = String(siteId || "").trim();
   const cleanSiteName = String(siteName || "").trim();
@@ -133,7 +133,9 @@ async function crearCuenta(email, password, nombre, matricula, organizationKey =
           nombre: cleanNombre,
           matricula: cleanMatricula,
           rol: "usuario",
-          organization_key: cleanOrganizationKey,
+          invitation_key: cleanInvitationKey,
+          // Compatibilidad con invitaciones emitidas antes de este ajuste.
+          organization_key: cleanInvitationKey,
           organization_slug: String(organizationSlug || "").trim(),
           ...(cleanSiteId ? { site_id: cleanSiteId } : {}),
           ...(cleanSiteName ? { site_name: cleanSiteName } : {}),
