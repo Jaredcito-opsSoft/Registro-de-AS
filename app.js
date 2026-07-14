@@ -13,7 +13,7 @@ const SUPABASE = window.SUPABASE_CONFIG || {};
 const CLOUD_ENABLED = Boolean(SUPABASE.url && SUPABASE.publishableKey && SUPABASE.bucket);
 const PHOTO_BUCKET = SUPABASE.bucket || "attendance-photos";
 const GEO_PRECISION_MAX_METERS = 200;
-const LOCAL_ASSET_VERSION = "2.45-signup-site-roles";
+const LOCAL_ASSET_VERSION = "2.46-secure-user-deletion";
 const ATTENDANCE_STREAK_RPC_ENABLED = SUPABASE.enableAttendanceStreakRpc === true;
 const NOTIFICATION_PREFERENCE_PREFIX = "registro_asistencia_notifications_v1";
 const NOTIFICATION_SENT_PREFIX = "registro_asistencia_notification_sent_v1";
@@ -4770,13 +4770,16 @@ function adminUserListItem(user) {
   const normalizedRole = normalizeAppRole(user.rol);
   const canEditScope = canManageUserAssignments() && !["admin", "superadmin"].includes(normalizedRole);
   const actorRole = normalizeAppRole(state.currentAppUser?.rol || state.currentRole);
-  const canDelete = ["admin", "superadmin"].includes(actorRole)
+  const canDeactivate = ["admin", "superadmin"].includes(actorRole)
     && normalizedRole !== "superadmin"
     && String(user.id || "") !== String(state.currentAppUser?.id || "")
     && (actorRole === "superadmin" || (
       ["usuario", "supervisor"].includes(normalizedRole)
       && String(user.organizacion_id || "") === String(state.currentAppUser?.organizacion_id || "")
     ));
+  const canPurge = actorRole === "superadmin"
+    && normalizedRole !== "superadmin"
+    && String(user.id || "") !== String(state.currentAppUser?.id || "");
   const scopeLabel = adminUserHasSite(user) ? "Cambiar sitio" : "Asignar sitio";
   return `
     <li class="admin-user-row">
@@ -4787,7 +4790,8 @@ function adminUserListItem(user) {
       <div class="admin-user-row-actions">
         <span class="badge ${statusClass}">${user.activo === false ? "Inactivo" : escapeHtml(role.label)}</span>
         ${canEditScope ? `<button class="ghost compact" type="button" data-edit-user-scope="${escapeHtml(user.id || "")}">${scopeLabel}</button>` : ""}
-        ${canDelete ? `<button class="danger compact" type="button" data-deactivate-user="${escapeHtml(user.id || "")}">Eliminar</button>` : ""}
+        ${canDeactivate ? `<button class="ghost compact" type="button" data-deactivate-user="${escapeHtml(user.id || "")}">Volver inactivo</button>` : ""}
+        ${canPurge ? `<button class="danger compact" type="button" data-purge-user="${escapeHtml(user.id || "")}">Borrar definitivo</button>` : ""}
       </div>
     </li>
   `;
@@ -4795,22 +4799,51 @@ function adminUserListItem(user) {
 
 async function deactivateManagedUser(userId) {
   if (!canManageUserAssignments()) {
-    showToast("Solo administradores autorizados pueden eliminar usuarios.");
+    showToast("Solo administradores autorizados pueden inactivar usuarios.");
     return;
   }
   const user = state.managedUsers.find((item) => String(item.id || "") === String(userId || ""));
   if (!user) return;
   const label = user.nombre || user.email || user.matricula || "este usuario";
-  if (!confirm(`Eliminar a ${label}? Su historial de asistencia se conservara.`)) return;
+  if (!confirm(`Volver inactivo a ${label}? Se conservara su historial y podra reactivarse desde administracion.`)) return;
 
   try {
     await callAdminRpc("superadmin_deactivate_user", { p_usuario_id: user.id });
     addAdminLog("user.deactivated", user.id);
-    showToast("Usuario eliminado del directorio activo.");
+    showToast("Usuario marcado como inactivo.");
     await loadAdminDirectories({ silent: true });
     renderAdminUsersSection(getVisibleRecords());
   } catch (error) {
     showToast(`No se pudo eliminar: ${parseSupabaseError(error).slice(0, 140)}`);
+  }
+}
+
+async function purgeManagedUser(userId) {
+  if (normalizeAppRole(state.currentAppUser?.rol || state.currentRole) !== "superadmin") {
+    showToast("Solo superadmin puede borrar definitivamente usuarios.");
+    return;
+  }
+  const user = state.managedUsers.find((item) => String(item.id || "") === String(userId || ""));
+  if (!user) return;
+  const label = user.nombre || user.email || user.matricula || "este usuario";
+  if (!confirm(`Borrar definitivamente a ${label}? Se eliminara su cuenta, asistencias, evidencia y actividad asociada. Esta accion no se puede deshacer.`)) return;
+  const confirmation = prompt('Escribe ELIMINAR para confirmar la purga definitiva.');
+  if (String(confirmation || "").trim().toUpperCase() !== "ELIMINAR") {
+    showToast("Purga cancelada: no se confirmo la palabra requerida.");
+    return;
+  }
+
+  try {
+    const result = getRpcFirstRow(await callAdminRpc("superadmin_purge_user", {
+      p_usuario_id: user.id,
+      p_confirmacion: "ELIMINAR",
+    }));
+    addAdminLog("user.purged", user.id);
+    showToast(`Usuario borrado definitivamente. Asistencias eliminadas: ${Number(result?.asistencias_eliminadas || 0)}.`);
+    await loadAdminDirectories({ silent: true });
+    renderAdminUsersSection(getVisibleRecords());
+  } catch (error) {
+    showToast(`No se pudo borrar definitivamente: ${parseSupabaseError(error).slice(0, 140)}`);
   }
 }
 
@@ -6312,6 +6345,11 @@ function bindAdminPanelControls() {
     const deactivateUserButton = event.target.closest("[data-deactivate-user]");
     if (deactivateUserButton) {
       deactivateManagedUser(deactivateUserButton.dataset.deactivateUser || "");
+      return;
+    }
+    const purgeUserButton = event.target.closest("[data-purge-user]");
+    if (purgeUserButton) {
+      purgeManagedUser(purgeUserButton.dataset.purgeUser || "");
       return;
     }
     const sitePeopleToggle = event.target.closest("[data-site-people-toggle]");
