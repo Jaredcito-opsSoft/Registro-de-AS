@@ -13,7 +13,7 @@ const SUPABASE = window.SUPABASE_CONFIG || {};
 const CLOUD_ENABLED = Boolean(SUPABASE.url && SUPABASE.publishableKey && SUPABASE.bucket);
 const PHOTO_BUCKET = SUPABASE.bucket || "attendance-photos";
 const GEO_PRECISION_MAX_METERS = 200;
-const LOCAL_ASSET_VERSION = "2.21-name-liveness-daily";
+const LOCAL_ASSET_VERSION = "2.37-admin-directory-sync";
 const ATTENDANCE_STREAK_RPC_ENABLED = SUPABASE.enableAttendanceStreakRpc === true;
 const NOTIFICATION_PREFERENCE_PREFIX = "registro_asistencia_notifications_v1";
 const NOTIFICATION_SENT_PREFIX = "registro_asistencia_notification_sent_v1";
@@ -1802,6 +1802,8 @@ function renderManagedSites(rows = []) {
   state.managedSites = state.organizationHubs.flatMap((org) => org.sitios || []);
   populateAdminInviteSites();
   populateUserScopeAssignment();
+  populateDashboardFilterSelects();
+  renderSiteUsersOverview();
   if (!els.siteDirectory) return;
   if (!rows.length) {
     els.siteDirectory.innerHTML = `<div class="organization-empty"><strong>Sin sitios</strong><span>Agrega la primera ubicacion operativa.</span></div>`;
@@ -1829,6 +1831,8 @@ function renderManagedSites(rows = []) {
 function renderManagedUsers(rows = []) {
   state.managedUsers = Array.isArray(rows) ? rows : [];
   populateUserScopeAssignment();
+  populateDashboardFilterSelects();
+  renderSiteUsersOverview();
   renderAdminUsersSection(getVisibleRecords());
   if (!els.userDirectory) return;
   if (!isRoleAdminSession() && !isDemoAdminUnlocked()) {
@@ -4117,12 +4121,8 @@ function recordMatchesDashboardFilters(record) {
   if (!statusFilterMatches(record, filters.status)) return false;
   if (!riskFilterMatches(record, filters.risk)) return false;
 
-  // Filtro por Sitio
-  if (filters.site && filters.site !== "all") {
-    const recordSite = recordSiteName(record).toLowerCase();
-    const targetSite = String(filters.site).trim().toLowerCase();
-    if (recordSite !== targetSite) return false;
-  }
+  // Los sitios se filtran por UUID para no confundirlos con organizaciones heredadas.
+  if (!recordMatchesSiteFilter(record, filters.site)) return false;
 
   // Filtro por Usuario (Vista por usuario)
   if (filters.user && filters.user !== "all") {
@@ -4249,70 +4249,88 @@ function renderOperationsDashboard(records = getFilteredRecords()) {
   if (els.dashboardCompletionRate) els.dashboardCompletionRate.textContent = `${completionRate}% completo`;
   if (els.dashboardScopeLabel) els.dashboardScopeLabel.textContent = dashboardScopeText();
   renderDashboardAlerts(records);
-  renderSiteUsersOverview(getVisibleRecords());
+  renderSiteUsersOverview();
   renderAdminUsersSection(getVisibleRecords());
 }
 
-function recordSiteName(record) {
-  return (record.sitioNombre || record.sitioEntradaNombre || "").trim() || "Sin sitio";
+function recordSiteIds(record) {
+  return [record.sitioId, record.sitioEntradaId, record.sitioSalidaId]
+    .map((value) => String(value || "").trim())
+    .filter(Boolean);
 }
 
-function renderSiteUsersOverview(records = getVisibleRecords()) {
+function recordSiteName(record) {
+  const managedSite = state.managedSites.find((site) => recordSiteIds(record).includes(String(site.id || "")));
+  if (managedSite?.nombre) return managedSite.nombre;
+
+  const storedName = String(record.sitioNombre || record.sitioEntradaNombre || "").trim();
+  const isOrganizationName = state.organizationHubs.some((organization) => (
+    String(organization.nombre || "").trim().toLowerCase() === storedName.toLowerCase()
+  ));
+  if (isOrganizationName) return "Sitio no identificado";
+  return storedName || "Sin sitio";
+}
+
+function recordMatchesSiteFilter(record, selectedSite) {
+  if (!selectedSite || selectedSite === "all") return true;
+  const knownSiteIds = new Set(state.managedSites.map((site) => String(site.id || "")).filter(Boolean));
+  const ids = recordSiteIds(record);
+  if (selectedSite === "unassigned") return !ids.some((id) => knownSiteIds.has(id));
+  return ids.includes(String(selectedSite));
+}
+
+function renderSiteUsersOverview() {
   if (!els.siteUsersList || !els.siteUsersTotal) return;
-  const bySite = new Map();
+  const organizations = state.organizationHubs
+    .map((organization) => {
+      const users = state.managedUsers.filter((user) => (
+        user.activo !== false
+        && String(user.organizacion_id || "") === String(organization.id || "")
+      ));
+      const sites = (organization.sitios || []).filter((site) => site.activo !== false);
+      return {
+        ...organization,
+        users,
+        sites,
+        userCount: state.managedUsers.length ? users.length : Number(organization.usuarios_total || 0),
+      };
+    })
+    .filter((organization) => organization.userCount > 0)
+    .sort((a, b) => b.userCount - a.userCount || String(a.nombre || "").localeCompare(String(b.nombre || "")));
 
-  records.forEach((record) => {
-    const site = recordSiteName(record);
-    if (!bySite.has(site)) {
-      bySite.set(site, {
-        users: new Map(),
-        records: 0,
-        completed: 0,
-        pending: 0,
-      });
-    }
-    const bucket = bySite.get(site);
-    bucket.records += 1;
-    if (isCompleteRecord(record)) bucket.completed += 1;
-    if (isPendingExitRecord(record)) bucket.pending += 1;
-    if (record.matricula) {
-      bucket.users.set(normalizeMatricula(record.matricula), record.nombre || record.matricula);
-    }
-  });
+  const totalUsers = organizations.reduce((total, organization) => total + organization.userCount, 0);
+  els.siteUsersTotal.textContent = `${totalUsers} ${totalUsers === 1 ? "usuario activo" : "usuarios activos"}`;
 
-  const totalUsers = new Set();
-  bySite.forEach((bucket) => {
-    bucket.users.forEach((_, matricula) => totalUsers.add(matricula));
-  });
-  els.siteUsersTotal.textContent = `${totalUsers.size} ${totalUsers.size === 1 ? "usuario" : "usuarios"}`;
-
-  if (!bySite.size) {
+  if (!organizations.length) {
     els.siteUsersList.innerHTML = `
       <article class="site-users-card">
-        <strong>Sin registros todavía</strong>
-        <span>Cuando existan asistencias, aquí aparecerán usuarios agrupados por sitio.</span>
+        <strong>Sin usuarios activos</strong>
+        <span>El directorio no reporta usuarios vinculados a una organizacion.</span>
       </article>
     `;
     return;
   }
 
-  const selectedSite = els.adminFilterSite?.value || "all";
-  els.siteUsersList.innerHTML = Array.from(bySite.entries())
-    .sort((a, b) => a[0].localeCompare(b[0]))
-    .map(([site, bucket]) => {
-      const isSelected = selectedSite === site;
-      const sampleUsers = Array.from(bucket.users.values()).slice(0, 3).join(", ");
+  els.siteUsersList.innerHTML = organizations
+    .map((organization) => {
+      const assignedUsers = organization.users.filter((user) => user.sitio_id).length;
+      const unassignedUsers = Math.max(0, organization.userCount - assignedUsers);
+      const siteSummary = organization.sites.map((site) => {
+        const count = organization.users.filter((user) => String(user.sitio_id || "") === String(site.id || "")).length;
+        return `${site.nombre || "Sitio"}: ${count}`;
+      }).join(" / ");
+      const isSelected = String(state.selectedOrganizationId || "") === String(organization.id || "");
       return `
         <article class="site-users-card ${isSelected ? "is-selected" : ""}">
           <div>
-            <strong>${escapeHtml(site)}</strong>
-            <span>${bucket.users.size} ${bucket.users.size === 1 ? "usuario" : "usuarios"} · ${bucket.records} ${bucket.records === 1 ? "registro" : "registros"}</span>
+            <strong>${escapeHtml(organization.nombre || "Organizacion")}</strong>
+            <span>${organization.userCount} ${organization.userCount === 1 ? "usuario" : "usuarios"} en la organizacion</span>
           </div>
           <div class="site-users-card-meta">
-            <span>${bucket.completed} completos</span>
-            <span>${bucket.pending} pendientes</span>
+            <span>${organization.sites.length} ${organization.sites.length === 1 ? "sitio" : "sitios"}</span>
+            <span>${unassignedUsers} sin sitio</span>
           </div>
-          <p>${escapeHtml(sampleUsers || "Sin usuarios identificados")}</p>
+          <p>${escapeHtml(siteSummary || "Sin sitios activos configurados")}</p>
         </article>
       `;
     }).join("");
@@ -4556,7 +4574,7 @@ function populateUserScopeAssignment() {
     setUserScopeStatus("No hay usuarios elegibles en esta organizacion para vincular.", "warning");
   } else if (selectedUser && !sites.length) {
     setUserScopeStatus("No hay sitios activos compatibles con la organizacion de este usuario.", "danger");
-  } else {
+  } else if (els.userScopeStatus?.dataset.tone !== "success") {
     setUserScopeStatus("La asignacion se guarda por RPC y queda registrada en auditoria.", "warning");
   }
 }
@@ -4577,6 +4595,7 @@ async function assignUserScope() {
 
   let successMessage = "";
   if (els.assignUserScopeButton) els.assignUserScopeButton.disabled = true;
+  setUserScopeStatus("Guardando asignacion...", "warning");
   try {
     const result = getRpcFirstRow(await callAdminRpc("admin_assign_user_scope", {
       p_usuario_id: userId,
@@ -4880,22 +4899,32 @@ function syncDashboardFiltersFromUi() {
 
 function populateDashboardFilterSelects() {
   const allVisible = getVisibleRecords();
-  const uniqueSites = new Set();
-  
-  allVisible.forEach(record => {
-    uniqueSites.add(recordSiteName(record));
-  });
+  const siteOptions = state.managedSites
+    .filter((site) => site.id && site.activo !== false)
+    .map((site) => ({
+      value: String(site.id),
+      label: `${site.nombre || "Sitio"} - ${getManagedSiteOrganizationName(site)}`,
+    }))
+    .sort((a, b) => a.label.localeCompare(b.label));
+  const knownSiteIds = new Set(siteOptions.map((site) => site.value));
+  const hasUnassignedRecords = allVisible.some((record) => !recordSiteIds(record).some((id) => knownSiteIds.has(id)));
 
   const updateSiteSelect = (selectEl, prevValue) => {
     if (!selectEl) return;
     selectEl.innerHTML = '<option value="all">Todos los sitios</option>';
-    Array.from(uniqueSites).sort().forEach(site => {
+    siteOptions.forEach((site) => {
       const option = document.createElement("option");
-      option.value = site;
-      option.textContent = site;
+      option.value = site.value;
+      option.textContent = site.label;
       selectEl.appendChild(option);
     });
-    if (Array.from(uniqueSites).includes(prevValue)) {
+    if (hasUnassignedRecords) {
+      const option = document.createElement("option");
+      option.value = "unassigned";
+      option.textContent = "Sin sitio identificado (historico)";
+      selectEl.appendChild(option);
+    }
+    if (siteOptions.some((site) => site.value === prevValue) || (hasUnassignedRecords && prevValue === "unassigned")) {
       selectEl.value = prevValue;
     } else {
       selectEl.value = "all";
@@ -4906,8 +4935,7 @@ function populateDashboardFilterSelects() {
     if (!selectEl) return;
     const uniqueUsers = new Map();
     allVisible.forEach(record => {
-      const siteName = recordSiteName(record);
-      const siteMatches = selectedSite === "all" || siteName === selectedSite;
+      const siteMatches = recordMatchesSiteFilter(record, selectedSite);
       if (siteMatches && record.matricula && record.nombre) {
         uniqueUsers.set(normalizeMatricula(record.matricula), record.nombre.trim());
       }
@@ -6075,12 +6103,14 @@ function bindAdminPanelControls() {
     const target = event.target;
     if (target === els.adminUsersOrganizationFilter || target === els.userScopeOrganization) {
       setSelectedUserScopeOrganization(target.value);
+      setUserScopeStatus("Selecciona un usuario y su sitio de destino.", "warning");
       populateUserScopeAssignment();
       populateOrganizationAdminAssignment();
       renderAdminUsersSection(getVisibleRecords());
       return;
     }
     if (target === els.userScopeUser || target === els.userScopeSite) {
+      setUserScopeStatus("Selecciona un usuario y su sitio de destino.", "warning");
       populateUserScopeAssignment();
       return;
     }
@@ -6093,8 +6123,6 @@ function bindAdminPanelControls() {
 function bindUserScopeAssignmentControls() {
   if (document.documentElement.dataset.userScopeControlsBound === "true") return;
   document.documentElement.dataset.userScopeControlsBound = "true";
-  els.userScopeUser?.addEventListener("change", populateUserScopeAssignment);
-  els.userScopeSite?.addEventListener("change", populateUserScopeAssignment);
   els.assignUserScopeButton?.addEventListener("click", assignUserScope);
 }
 

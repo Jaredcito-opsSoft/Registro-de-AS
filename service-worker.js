@@ -1,5 +1,5 @@
 const CACHE_PREFIX = "asistencia-qr-static-";
-const CACHE_VERSION = "asistencia-qr-static-v24-reminders-mobile-org";
+const CACHE_VERSION = "asistencia-qr-static-2.37-admin-directory-sync";
 const STATIC_ASSETS = [
   "/",
   "/index.html",

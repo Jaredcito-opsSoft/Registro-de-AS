@@ -16,7 +16,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="stylesheet"
     href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" />
-  <link rel="stylesheet" href="styles.css?v=2.32-mobile-organization-layout" />
+  <link rel="stylesheet" href="styles.css?v=2.37-admin-directory-sync" />
 </head>
 
 <body>
@@ -780,9 +780,9 @@
           <section class="site-users-overview admin-control is-hidden" aria-labelledby="siteUsersTitle">
             <div class="ops-dashboard-head">
               <div>
-                <p class="section-kicker">Usuarios por sitio</p>
-                <h3 id="siteUsersTitle">Distribución operativa</h3>
-                <p>El filtro de usuario se ajusta al sitio seleccionado para revisar solo personas de esa ubicación.</p>
+                <p class="section-kicker">Directorio multiempresa</p>
+                <h3 id="siteUsersTitle">Usuarios por organizacion</h3>
+                <p>Conteo actual del directorio, separado de las asistencias historicas y desglosado por sitios reales.</p>
               </div>
               <span id="siteUsersTotal" class="ops-rate">0 usuarios</span>
             </div>
@@ -800,7 +800,7 @@
               <div>
                 <p class="section-kicker">Consulta diaria</p>
                 <h3>Asistencias registradas</h3>
-                <p>Filtra primero por fecha, sitio o estado. La evidencia y el detalle se consultan desde cada registro.</p>
+                <p>Filtra por fecha, sitio operativo o estado. Cada sitio aparece junto a su organizacion.</p>
               </div>
             </div>
 
@@ -1309,7 +1309,7 @@
   <script src="supabase-config.js?v=f0-mobile-shell"></script>
   <script src="auth.js?v=2.1-name-validation"></script>
   <script src="notification-rules.js?v=1.0-attendance-reminders"></script>
-  <script src="app.js?v=2.36-attendance-reminders"></script>
+  <script src="app.js?v=2.37-admin-directory-sync"></script>
 </body>
 
 </html>
