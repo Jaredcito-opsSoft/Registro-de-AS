@@ -13,12 +13,14 @@ const SUPABASE = window.SUPABASE_CONFIG || {};
 const CLOUD_ENABLED = Boolean(SUPABASE.url && SUPABASE.publishableKey && SUPABASE.bucket);
 const PHOTO_BUCKET = SUPABASE.bucket || "attendance-photos";
 const GEO_PRECISION_MAX_METERS = 200;
-const LOCAL_ASSET_VERSION = "2.39-photo-gps-flow";
+const LOCAL_ASSET_VERSION = "2.44-login-attendance-session";
 const ATTENDANCE_STREAK_RPC_ENABLED = SUPABASE.enableAttendanceStreakRpc === true;
 const NOTIFICATION_PREFERENCE_PREFIX = "registro_asistencia_notifications_v1";
 const NOTIFICATION_SENT_PREFIX = "registro_asistencia_notification_sent_v1";
 const NOTIFICATION_MAX_ATTEMPTS = 2;
 const NOTIFICATION_REPEAT_MINUTES = 30;
+const APP_SESSION_STORAGE_KEY = "registro_asistencia_app_session_id";
+const APP_SESSION_HEARTBEAT_MS = 45000;
 const KNOWN_SUPERADMIN_EMAILS = new Set([
   "alexisdavid1177@gmail.com",
   "jaredcontacto.mx@gmail.com",
@@ -142,6 +144,7 @@ const state = {
     date: "",
     status: "all",
     risk: "all",
+    organization: "all",
     site: "all",
     user: "all",
     query: "",
@@ -288,6 +291,7 @@ function populateElements() {
   els.adminFilterDate = $("#adminFilterDate");
   els.adminFilterStatus = $("#adminFilterStatus");
   els.adminFilterRisk = $("#adminFilterRisk");
+  els.adminAttendanceOrganizationFilter = $("#adminAttendanceOrganizationFilter");
   els.adminFilterSite = $("#adminFilterSite");
   els.adminFilterUser = $("#adminFilterUser");
   els.adminFilterSearch = $("#adminFilterSearch");
@@ -1366,9 +1370,11 @@ function getExitUrl(token) {
 
 function cloudHeaders(extra = {}) {
   const token = localStorage.getItem("registro_asistencia_token");
+  const appSessionId = localStorage.getItem(APP_SESSION_STORAGE_KEY);
   return {
     apikey: SUPABASE.publishableKey,
     Authorization: token ? `Bearer ${token}` : `Bearer ${SUPABASE.publishableKey}`,
+    ...(appSessionId ? { "x-app-session-id": appSessionId } : {}),
     ...extra,
   };
 }
@@ -2707,14 +2713,80 @@ async function updateExitRecord(record, { fotoSalida, descriptorSalida, location
   return rowToRecord(row);
 }
 async function callAdminRpc(functionName, payload) {
-  return supabaseRequest(`/rest/v1/rpc/${functionName}`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(payload),
+  try {
+    return await supabaseRequest(`/rest/v1/rpc/${functionName}`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(payload),
+    });
+  } catch (error) {
+    if (isOperationalSessionError(error) && functionName !== "activate_app_session" && functionName !== "deactivate_app_session") {
+      handleOperationalSessionInvalidation();
+    }
+    throw error;
+  }
+}
+
+function createAppSessionId() {
+  if (globalThis.crypto?.randomUUID) return globalThis.crypto.randomUUID();
+  return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (char) => {
+    const random = Math.floor(Math.random() * 16);
+    return (char === "x" ? random : ((random & 0x3) | 0x8)).toString(16);
   });
 }
+
+function prepareOperationalSession({ rotate = false } = {}) {
+  let sessionId = localStorage.getItem(APP_SESSION_STORAGE_KEY);
+  if (rotate || !sessionId) {
+    sessionId = createAppSessionId();
+    localStorage.setItem(APP_SESSION_STORAGE_KEY, sessionId);
+  }
+  return sessionId;
+}
+
+function isOperationalSessionError(error) {
+  const message = String(error?.message || error || "").toLowerCase();
+  return message.includes("sesion_reemplazada_en_otro_dispositivo") || message.includes("sesion_operativa_requerida");
+}
+
+function handleOperationalSessionInvalidation() {
+  if (!localStorage.getItem("registro_asistencia_token")) return;
+  clearSession();
+  localStorage.removeItem(APP_SESSION_STORAGE_KEY);
+  state.currentUser = null;
+  state.currentAppUser = null;
+  stopCamera("entry");
+  stopCamera("exit");
+  showLoginView();
+  showToast("Tu sesión se cerró porque la cuenta se abrió en otro dispositivo. Inicia sesión nuevamente.");
+}
+
+async function activateOperationalSession() {
+  if (!CLOUD_ENABLED || !localStorage.getItem("registro_asistencia_token")) return false;
+  const sessionId = prepareOperationalSession();
+  await callAdminRpc("activate_app_session", {
+    p_session_id: sessionId,
+    p_device_label: navigator.userAgent.slice(0, 160),
+  });
+  return true;
+}
+
+async function releaseOperationalSession() {
+  if (!CLOUD_ENABLED || !localStorage.getItem("registro_asistencia_token")) return false;
+  const sessionId = localStorage.getItem(APP_SESSION_STORAGE_KEY);
+  if (!sessionId) return false;
+  try {
+    await callAdminRpc("deactivate_app_session", { p_session_id: sessionId });
+  } catch {
+    // Local logout must proceed even if the network is unavailable.
+  }
+  localStorage.removeItem(APP_SESSION_STORAGE_KEY);
+  return true;
+}
+
+window.releaseOperationalSession = releaseOperationalSession;
 
 function updateHeaderStatus() {
   const now = new Date();
@@ -4112,6 +4184,7 @@ function recordMatchesDashboardFilters(record) {
   if (filters.date && record.fecha !== filters.date) return false;
   if (!statusFilterMatches(record, filters.status)) return false;
   if (!riskFilterMatches(record, filters.risk)) return false;
+  if (filters.organization && filters.organization !== "all" && record.organizacionId !== filters.organization) return false;
 
   // Los sitios se filtran por UUID para no confundirlos con organizaciones heredadas.
   if (!recordMatchesSiteFilter(record, filters.site)) return false;
@@ -4894,6 +4967,7 @@ function syncDashboardFiltersFromUi() {
   state.recordFilters.date = els.filterDate?.value || "";
   state.recordFilters.status = els.filterStatus?.value || "all";
   state.recordFilters.risk = els.filterRisk?.value || "all";
+  state.recordFilters.organization = els.adminAttendanceOrganizationFilter?.value || "all";
   state.recordFilters.site = els.filterSite?.value || "all";
   state.recordFilters.user = els.filterUser?.value || "all";
   state.recordFilters.query = els.filterSearch?.value || "";
@@ -4901,8 +4975,34 @@ function syncDashboardFiltersFromUi() {
 
 function populateDashboardFilterSelects() {
   const allVisible = getVisibleRecords();
+  const organizationOptions = state.organizationHubs
+    .filter((organization) => organization.id)
+    .map((organization) => ({ value: String(organization.id), label: organization.nombre || "Organización" }))
+    .sort((a, b) => a.label.localeCompare(b.label));
+  const canChooseOrganization = normalizeAppRole(state.currentRole) === "superadmin";
+  const defaultOrganizationId = state.currentAppUser?.organizacion_id || state.currentAppUser?.organizacionId || "";
+  let selectedOrganizationId = els.adminAttendanceOrganizationFilter?.value || state.recordFilters.organization || "all";
+  if (!canChooseOrganization) selectedOrganizationId = defaultOrganizationId || organizationOptions[0]?.value || "all";
+
+  if (els.adminAttendanceOrganizationFilter) {
+    els.adminAttendanceOrganizationFilter.innerHTML = "";
+    if (canChooseOrganization) {
+      els.adminAttendanceOrganizationFilter.appendChild(new Option("Todas las organizaciones", "all"));
+    }
+    organizationOptions.forEach((organization) => {
+      els.adminAttendanceOrganizationFilter.appendChild(new Option(organization.label, organization.value));
+    });
+    const allowedOrganizationIds = new Set(organizationOptions.map((organization) => organization.value));
+    els.adminAttendanceOrganizationFilter.value = allowedOrganizationIds.has(selectedOrganizationId) || (canChooseOrganization && selectedOrganizationId === "all")
+      ? selectedOrganizationId
+      : (canChooseOrganization ? "all" : defaultOrganizationId || organizationOptions[0]?.value || "all");
+    els.adminAttendanceOrganizationFilter.disabled = !canChooseOrganization;
+    selectedOrganizationId = els.adminAttendanceOrganizationFilter.value;
+  }
+
   const siteOptions = state.managedSites
     .filter((site) => site.id && site.activo !== false)
+    .filter((site) => selectedOrganizationId === "all" || site.organizacion_id === selectedOrganizationId)
     .map((site) => ({
       value: String(site.id),
       label: `${site.nombre || "Sitio"} - ${getManagedSiteOrganizationName(site)}`,
@@ -4937,8 +5037,9 @@ function populateDashboardFilterSelects() {
     if (!selectEl) return;
     const uniqueUsers = new Map();
     allVisible.forEach(record => {
+      const organizationMatches = selectedOrganizationId === "all" || record.organizacionId === selectedOrganizationId;
       const siteMatches = recordMatchesSiteFilter(record, selectedSite);
-      if (siteMatches && record.matricula && record.nombre) {
+      if (organizationMatches && siteMatches && record.matricula && record.nombre) {
         uniqueUsers.set(normalizeMatricula(record.matricula), record.nombre.trim());
       }
     });
@@ -4974,7 +5075,10 @@ function populateDashboardFilterSelects() {
 }
 
 function resetDashboardFilters() {
-  state.recordFilters = { date: "", status: "all", risk: "all", site: "all", user: "all", query: "" };
+  const defaultOrganizationId = normalizeAppRole(state.currentRole) === "superadmin"
+    ? "all"
+    : (state.currentAppUser?.organizacion_id || state.currentAppUser?.organizacionId || "all");
+  state.recordFilters = { date: "", status: "all", risk: "all", organization: defaultOrganizationId, site: "all", user: "all", query: "" };
   if (els.filterDate) els.filterDate.value = "";
   if (els.filterStatus) els.filterStatus.value = "all";
   if (els.filterRisk) els.filterRisk.value = "all";
@@ -4985,6 +5089,7 @@ function resetDashboardFilters() {
   if (els.adminFilterDate) els.adminFilterDate.value = "";
   if (els.adminFilterStatus) els.adminFilterStatus.value = "all";
   if (els.adminFilterRisk) els.adminFilterRisk.value = "all";
+  if (els.adminAttendanceOrganizationFilter) els.adminAttendanceOrganizationFilter.value = defaultOrganizationId;
   if (els.adminFilterSite) els.adminFilterSite.value = "all";
   if (els.adminFilterUser) els.adminFilterUser.value = "all";
   if (els.adminFilterSearch) els.adminFilterSearch.value = "";
@@ -5929,6 +6034,7 @@ async function handleAuthSubmit(event) {
   try {
     if (authMode === "login") {
       const data = await iniciarSesion(email, password);
+      prepareOperationalSession({ rotate: true });
       showToast("¡Sesión iniciada!");
 
       const user = await verificarSesion();
@@ -5941,6 +6047,8 @@ async function handleAuthSubmit(event) {
           }
         }
         showAppShell(user);
+        await loadCurrentAppUser({ silent: true });
+        await activateOperationalSession();
         await finishInitialization({ requestPermissions: true });
       } else {
         throw new Error("No se pudo obtener el usuario después del inicio de sesión.");
@@ -5978,11 +6086,14 @@ async function handleAuthSubmit(event) {
       const data = await crearCuenta(email, password, nombre, matricula, orgKey, orgSlug, phone, registrationSite.id, registrationSite.name);
 
       if (localStorage.getItem("registro_asistencia_token")) {
+        prepareOperationalSession({ rotate: true });
         showToast("¡Cuenta creada! Bienvenido.");
         const user = await verificarSesion();
         if (user) {
           if (isPhone) showEmailNudgePanel(true);
           showAppShell(user);
+          await loadCurrentAppUser({ silent: true });
+          await activateOperationalSession();
           await finishInitialization({ requestPermissions: true });
         }
       } else {
@@ -6600,6 +6711,18 @@ async function init() {
     }
   });
 
+  if (els.adminAttendanceOrganizationFilter) {
+    els.adminAttendanceOrganizationFilter.addEventListener("change", () => {
+      state.recordFilters.organization = els.adminAttendanceOrganizationFilter.value || "all";
+      if (els.filterSite) els.filterSite.value = "all";
+      if (els.adminFilterSite) els.adminFilterSite.value = "all";
+      if (els.filterUser) els.filterUser.value = "all";
+      if (els.adminFilterUser) els.adminFilterUser.value = "all";
+      populateDashboardFilterSelects();
+      renderRecords();
+    });
+  }
+
   if (els.clearDashboardFilters) els.clearDashboardFilters.addEventListener("click", resetDashboardFilters);
   if (els.adminClearDashboardFilters) els.adminClearDashboardFilters.addEventListener("click", resetDashboardFilters);
 
@@ -6615,6 +6738,12 @@ async function init() {
   setInterval(() => {
     if (state.currentUser) refreshRecords({ silent: true });
   }, 30000);
+
+  setInterval(() => {
+    if (!state.currentUser?.isGuest && state.currentUser && CLOUD_ENABLED) {
+      callAdminRpc("verify_active_app_session", {}).catch(() => {});
+    }
+  }, APP_SESSION_HEARTBEAT_MS);
 
   setInterval(() => {
     if (state.currentUser) evaluateAttendanceReminders();

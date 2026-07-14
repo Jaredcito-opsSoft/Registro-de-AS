@@ -61,6 +61,7 @@ function clearSession() {
   localStorage.removeItem("registro_asistencia_token");
   localStorage.removeItem("registro_asistencia_refresh_token");
   localStorage.removeItem("registro_asistencia_session_ts");
+  localStorage.removeItem("registro_asistencia_app_session_id");
 }
 
 /** Verifica si pasaron mas de SESSION_TTL_MS desde la ultima actividad */
@@ -196,6 +197,9 @@ async function iniciarSesion(email, password) {
 
 async function cerrarSesion() {
   const token = localStorage.getItem("registro_asistencia_token");
+  if (typeof window.releaseOperationalSession === "function") {
+    await window.releaseOperationalSession();
+  }
   clearSession();
 
   if (window.SUPABASE_CONFIG && window.SUPABASE_CONFIG.url && token) {
