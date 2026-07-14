@@ -996,11 +996,17 @@
               <section class="admin-users-main" aria-label="Usuarios agrupados">
                 <div class="admin-users-toolbar">
                   <div>
-                    <strong>Usuarios de la organizacion</strong>
+                    <label class="admin-users-organization-filter" for="adminUsersOrganizationFilter">
+                      <span>Organizacion</span>
+                      <select id="adminUsersOrganizationFilter">
+                        <option value="">Selecciona una organizacion</option>
+                      </select>
+                    </label>
                     <span id="adminUsersCount">0 usuarios visibles</span>
                   </div>
                   <span id="adminUsersNoSiteCount" class="ops-rate">0 sin sitio</span>
                 </div>
+                <div id="adminOrganizationPeople" class="admin-organization-people" aria-live="polite"></div>
                 <div id="adminUsersBySite" class="admin-users-by-site" aria-live="polite"></div>
               </section>
 
@@ -1033,7 +1039,6 @@
                   <select id="userScopeRole">
                     <option value="usuario">Usuario</option>
                     <option value="supervisor">Supervisor</option>
-                    <option value="admin">Administrador</option>
                   </select>
                 </label>
                 <div class="site-actions">
@@ -1067,6 +1072,34 @@
                   <button id="copyAdminInviteKey" class="ghost" type="button">Copiar</button>
                 </div>
                 <p id="adminInviteStatus" class="site-test-result" data-tone="warning">La key expira en 72 horas y se entrega una sola vez.</p>
+              </aside>
+
+              <aside id="organizationAdminCard" class="admin-assignment-card superadmin-only is-hidden" aria-label="Asignar admin de organizacion">
+                <div>
+                  <p class="section-kicker">Administracion de organizacion</p>
+                  <h3>Asignar admin de organizacion</h3>
+                  <p>El admin controla usuarios, sitios, asistencias y auditoria de una sola organizacion.</p>
+                </div>
+                <label>
+                  Organizacion
+                  <select id="organizationAdminOrganization">
+                    <option value="">Selecciona una organizacion</option>
+                  </select>
+                </label>
+                <label>
+                  Usuario de la organizacion
+                  <select id="organizationAdminUser">
+                    <option value="">Selecciona primero una organizacion</option>
+                  </select>
+                </label>
+                <label>
+                  Rol
+                  <input value="Administrador de organizacion" type="text" readonly />
+                </label>
+                <div class="site-actions">
+                  <button id="assignOrganizationAdminButton" class="primary" type="button" disabled>Otorgar administracion</button>
+                </div>
+                <p id="organizationAdminStatus" class="site-test-result" data-tone="warning">Selecciona una organizacion y un usuario para asignarle el alcance administrativo.</p>
               </aside>
             </div>
           </section>

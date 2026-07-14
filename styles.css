@@ -5305,10 +5305,15 @@ tbody tr:hover {
     grid-area: admin-invite;
   }
 
+  #organizationAdminCard {
+    grid-area: organization-admin;
+  }
+
   .admin-users-grid:has(#userScopeAssignmentCard:not(.is-hidden)) {
     grid-template-areas:
       "users-main user-scope"
-      "users-main admin-invite";
+      "users-main admin-invite"
+      "users-main organization-admin";
   }
 }
 
@@ -5346,6 +5351,76 @@ tbody tr:hover {
 
 .admin-users-toolbar > div {
   min-width: 0;
+}
+
+.admin-users-organization-filter {
+  display: grid;
+  gap: 4px;
+  color: var(--muted);
+  font-size: 0.74rem;
+  font-weight: 800;
+}
+
+.admin-users-organization-filter select {
+  min-width: min(100%, 260px);
+  padding: 8px 30px 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--card);
+  color: var(--ink);
+  font: inherit;
+  font-size: 0.84rem;
+}
+
+.admin-organization-people {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.62);
+}
+
+.admin-people-heading,
+.admin-people-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.admin-people-heading strong,
+.admin-people-list strong {
+  color: var(--ink);
+  font-size: 0.82rem;
+  font-weight: 850;
+}
+
+.admin-people-heading span,
+.admin-people-list span {
+  color: var(--muted);
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+.admin-people-list {
+  display: grid;
+  gap: 5px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.admin-people-list li {
+  padding: 7px 9px;
+  border-radius: 9px;
+  background: var(--card);
+}
+
+.admin-organization-people .compact {
+  justify-self: start;
+  padding: 7px 10px;
+  font-size: 0.78rem;
 }
 
 .admin-users-by-site {
