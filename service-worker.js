@@ -1,10 +1,11 @@
 const CACHE_PREFIX = "asistencia-qr-static-";
-const CACHE_VERSION = "asistencia-qr-static-v23-safe-shell";
+const CACHE_VERSION = "asistencia-qr-static-v24-reminders-mobile-org";
 const STATIC_ASSETS = [
   "/",
   "/index.html",
   "/styles.css",
   "/app.js",
+  "/notification-rules.js",
   "/auth.js",
   "/supabase-config.js",
   "/manifest.webmanifest",
@@ -83,4 +84,19 @@ self.addEventListener("fetch", (event) => {
     }
     return response;
   })());
+});
+
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+  const targetUrl = new URL(event.notification.data?.url || "/?attendance=auto", self.location.origin).href;
+  event.waitUntil(
+    self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((clients) => {
+      const existing = clients.find((client) => new URL(client.url).origin === self.location.origin);
+      if (existing) {
+        existing.navigate(targetUrl);
+        return existing.focus();
+      }
+      return self.clients.openWindow(targetUrl);
+    })
+  );
 });

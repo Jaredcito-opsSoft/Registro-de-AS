@@ -16,7 +16,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="stylesheet"
     href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" />
-  <link rel="stylesheet" href="styles.css?v=2.31-mobile-pwa-media" />
+  <link rel="stylesheet" href="styles.css?v=2.32-mobile-organization-layout" />
 </head>
 
 <body>
@@ -264,6 +264,17 @@
           <div class="permission-onboarding-actions">
             <button id="requestAttendancePermissions" class="primary" type="button">Revisar permisos</button>
           </div>
+        </section>
+
+        <section id="attendanceReminder" class="attendance-reminder is-hidden" role="status" aria-live="polite">
+          <span class="attendance-reminder-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9"/><path d="M10 21h4"/></svg>
+          </span>
+          <div class="attendance-reminder-copy">
+            <strong id="attendanceReminderTitle">Registro pendiente</strong>
+            <span id="attendanceReminderMessage">Revisa tu jornada de hoy.</span>
+          </div>
+          <button id="attendanceReminderAction" class="primary" type="button">Registrar</button>
         </section>
 
         <section class="dashboard-grid" data-view="home">
@@ -969,7 +980,10 @@
                 <label>Nombre del identificador<input id="siteIdentifierLabel" value="Identificador" placeholder="Ej. Matricula" /></label>
               </fieldset>
               <label>Llave del sitio <small>Dejala vacia para conservarla</small><span class="sensitive-input-wrap"><input id="siteKey" type="password" autocomplete="new-password" placeholder="Minimo 8 caracteres" /><button class="password-visibility-toggle" type="button" data-password-toggle="siteKey" aria-label="Mostrar llave del sitio" aria-pressed="false" title="Mostrar llave"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6Z" /><circle cx="12" cy="12" r="2.5" /><path class="visibility-slash" d="M4 4 20 20" /></svg></button></span></label>
-              <label class="inline-check"><input id="siteActive" type="checkbox" checked /> Sitio activo</label>
+              <label class="inline-check site-active-toggle" for="siteActive">
+                <span>Sitio activo</span>
+                <input id="siteActive" type="checkbox" role="switch" checked />
+              </label>
               <div class="site-actions">
                 <button id="generateSiteKey" class="ghost" type="button">Generar clave</button>
                 <button id="copySiteKey" class="ghost" type="button">Copiar</button>
@@ -1225,6 +1239,22 @@
                 </label>
                 <p class="profile-permission-help">En iPhone, los permisos del sistema se cambian desde Ajustes &gt; Safari.</p>
               </fieldset>
+              <fieldset class="profile-section profile-fieldset notification-settings">
+                <legend>Notificaciones de asistencia</legend>
+                <p class="profile-section-copy">Avisos segun tu sitio y jornada asignada.</p>
+                <label class="profile-permission-row" for="profileNotificationsEnabled">
+                  <span class="profile-row-icon" aria-hidden="true">AV</span>
+                  <span class="profile-row-content"><strong>Recordatorios</strong><small id="profileNotificationStatus">Desactivados</small></span>
+                  <input id="profileNotificationsEnabled" type="checkbox" role="switch" />
+                </label>
+                <dl class="notification-schedule-summary">
+                  <div><dt>Organizacion</dt><dd id="notificationOrganization">Sin asignar</dd></div>
+                  <div><dt>Sitio</dt><dd id="notificationSite">Sin asignar</dd></div>
+                  <div><dt>Entrada</dt><dd id="notificationEntrySchedule">--:--</dd></div>
+                  <div><dt>Salida</dt><dd id="notificationExitSchedule">--:--</dd></div>
+                </dl>
+                <p id="notificationScheduleNote" class="profile-permission-help">El horario se cargara desde tu sitio.</p>
+              </fieldset>
               <div class="form-actions profile-actions">
                 <button id="save-profile-btn" class="primary wide" type="submit">Guardar cambios</button>
                 <button id="btn-logout-profile" class="profile-logout-row mobile-logout-btn" type="button">Cerrar sesión</button>
@@ -1278,7 +1308,8 @@
   <script src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
   <script src="supabase-config.js?v=f0-mobile-shell"></script>
   <script src="auth.js?v=2.1-name-validation"></script>
-  <script src="app.js?v=2.34-name-liveness-daily"></script>
+  <script src="notification-rules.js?v=1.0-attendance-reminders"></script>
+  <script src="app.js?v=2.36-attendance-reminders"></script>
 </body>
 
 </html>

@@ -15,6 +15,10 @@ const PHOTO_BUCKET = SUPABASE.bucket || "attendance-photos";
 const GEO_PRECISION_MAX_METERS = 200;
 const LOCAL_ASSET_VERSION = "2.21-name-liveness-daily";
 const ATTENDANCE_STREAK_RPC_ENABLED = SUPABASE.enableAttendanceStreakRpc === true;
+const NOTIFICATION_PREFERENCE_PREFIX = "registro_asistencia_notifications_v1";
+const NOTIFICATION_SENT_PREFIX = "registro_asistencia_notification_sent_v1";
+const NOTIFICATION_MAX_ATTEMPTS = 2;
+const NOTIFICATION_REPEAT_MINUTES = 30;
 const KNOWN_SUPERADMIN_EMAILS = new Set([
   "alexisdavid1177@gmail.com",
   "jaredcontacto.mx@gmail.com",
@@ -129,6 +133,7 @@ const state = {
   currentPermissions: { ...ROLE_DEFINITIONS.usuario.permissions },
   activeAdminSection: "summary",
   attendanceStreak: null,
+  organizationContext: null,
   organizationHubs: [],
   selectedOrganizationId: null,
   managedSites: [],
@@ -146,6 +151,8 @@ const state = {
   permissionApprovals: { camera: false, location: false },
   permissionSelections: { camera: false, location: false },
   deferredInstallPrompt: null,
+  notificationsEnabled: false,
+  activeAttendanceReminder: null,
 };
 
 const $ = (selector) => document.querySelector(selector);
@@ -198,6 +205,17 @@ function populateElements() {
   els.profileLocationEnabled = $("#profileLocationEnabled");
   els.profileCameraPermissionStatus = $("#profileCameraPermissionStatus");
   els.profileLocationPermissionStatus = $("#profileLocationPermissionStatus");
+  els.attendanceReminder = $("#attendanceReminder");
+  els.attendanceReminderTitle = $("#attendanceReminderTitle");
+  els.attendanceReminderMessage = $("#attendanceReminderMessage");
+  els.attendanceReminderAction = $("#attendanceReminderAction");
+  els.profileNotificationsEnabled = $("#profileNotificationsEnabled");
+  els.profileNotificationStatus = $("#profileNotificationStatus");
+  els.notificationOrganization = $("#notificationOrganization");
+  els.notificationSite = $("#notificationSite");
+  els.notificationEntrySchedule = $("#notificationEntrySchedule");
+  els.notificationExitSchedule = $("#notificationExitSchedule");
+  els.notificationScheduleNote = $("#notificationScheduleNote");
   els.demoMode = $("#demoMode");
   els.toast = $("#toast");
   els.faceStatus = $("#faceStatus");
@@ -650,6 +668,201 @@ function isLocalDemoEnvironment() {
 
 function getOperationalTimezone() {
   return state.activeSite?.zona_horaria || DEFAULT_TIMEZONE;
+}
+
+function notificationUserId() {
+  return String(state.currentAppUser?.id || state.currentUser?.id || "guest");
+}
+
+function notificationPreferenceKey() {
+  return `${NOTIFICATION_PREFERENCE_PREFIX}:${notificationUserId()}`;
+}
+
+function loadNotificationPreference() {
+  try {
+    state.notificationsEnabled = JSON.parse(localStorage.getItem(notificationPreferenceKey()) || "false") === true;
+  } catch {
+    state.notificationsEnabled = false;
+  }
+  return state.notificationsEnabled;
+}
+
+function saveNotificationPreference() {
+  localStorage.setItem(notificationPreferenceKey(), JSON.stringify(state.notificationsEnabled));
+}
+
+function getNotificationPermissionLabel() {
+  if (!("Notification" in window)) return state.notificationsEnabled ? "Avisos dentro de la app" : "No disponible en este navegador";
+  if (!state.notificationsEnabled) return "Desactivados";
+  if (Notification.permission === "granted") return "Activos en app y sistema";
+  if (Notification.permission === "denied") return "Activos solo dentro de la app";
+  return "Activos; permiso del sistema pendiente";
+}
+
+function getEffectiveNotificationSchedule() {
+  const rules = window.AttendanceNotificationRules;
+  if (!rules) return { configured: false, reason: "rules-unavailable" };
+  return rules.resolveSchedule({
+    user: state.currentAppUser,
+    site: state.activeSite,
+    organization: state.organizationContext,
+    systemTimezone: DEFAULT_TIMEZONE,
+    deviceTimezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+  });
+}
+
+function renderNotificationSettings(schedule = getEffectiveNotificationSchedule()) {
+  if (els.profileNotificationsEnabled) els.profileNotificationsEnabled.checked = state.notificationsEnabled;
+  if (els.profileNotificationStatus) els.profileNotificationStatus.textContent = getNotificationPermissionLabel();
+  if (els.notificationOrganization) {
+    els.notificationOrganization.textContent = state.organizationContext?.organizacion_nombre
+      || state.organizationContext?.nombre
+      || "Sin asignar";
+  }
+  if (els.notificationSite) els.notificationSite.textContent = state.activeSite?.nombre || "Sin asignar";
+  if (els.notificationEntrySchedule) {
+    els.notificationEntrySchedule.textContent = schedule.configured ? `${schedule.entryStart} - ${schedule.entryEnd}` : "--:--";
+  }
+  if (els.notificationExitSchedule) {
+    els.notificationExitSchedule.textContent = schedule.configured ? `${schedule.exitStart} - ${schedule.exitEnd}` : "--:--";
+  }
+  if (els.notificationScheduleNote) {
+    els.notificationScheduleNote.textContent = !schedule.configured
+      ? "No hay un horario verificable para tu cuenta."
+      : !schedule.calendarConfigured
+        ? "Avisos pausados: el calendario laboral aun no esta configurado."
+        : `Horario del ${schedule.source === "individual" ? "turno individual" : schedule.source === "site" ? "sitio" : "organizacion"} en ${schedule.timezone}.`;
+  }
+}
+
+function hideAttendanceReminder() {
+  state.activeAttendanceReminder = null;
+  els.attendanceReminder?.classList.add("is-hidden");
+}
+
+function showAttendanceReminder(type, schedule) {
+  const isEntry = type === "entry";
+  state.activeAttendanceReminder = type;
+  if (els.attendanceReminderTitle) els.attendanceReminderTitle.textContent = isEntry ? "Entrada pendiente" : "Salida pendiente";
+  if (els.attendanceReminderMessage) {
+    els.attendanceReminderMessage.textContent = isEntry
+      ? `Tu ventana de entrada termino a las ${schedule.entryEnd}.`
+      : `Tu ventana de salida termino a las ${schedule.exitEnd}.`;
+  }
+  if (els.attendanceReminderAction) els.attendanceReminderAction.textContent = isEntry ? "Registrar entrada" : "Registrar salida";
+  els.attendanceReminder?.classList.remove("is-hidden");
+}
+
+function recordForOperationalDate(matricula, date) {
+  const normalized = normalizeMatricula(String(matricula || ""));
+  const currentAppUserId = String(state.currentAppUser?.id || "");
+  return state.records.find((record) => {
+    if (record.fecha !== date || normalizeMatricula(String(record.matricula || "")) !== normalized) return false;
+    return !currentAppUserId || !record.usuarioId || String(record.usuarioId) === currentAppUserId;
+  }) || null;
+}
+
+function notificationSentStorageKey(key) {
+  return `${NOTIFICATION_SENT_PREFIX}:${key}`;
+}
+
+function countSentNotificationAttempts(type, date) {
+  const rules = window.AttendanceNotificationRules;
+  if (!rules) return 0;
+  const organizationId = state.currentAppUser?.organizacion_id || state.organizationContext?.organizacion_id || "none";
+  let sent = 0;
+  for (let attempt = 1; attempt <= NOTIFICATION_MAX_ATTEMPTS; attempt += 1) {
+    const key = rules.dedupeKey({ userId: notificationUserId(), organizationId, date, type, attempt });
+    if (localStorage.getItem(notificationSentStorageKey(key))) sent += 1;
+  }
+  return sent;
+}
+
+function markNotificationSent(type, date, attempt) {
+  const rules = window.AttendanceNotificationRules;
+  if (!rules) return false;
+  const organizationId = state.currentAppUser?.organizacion_id || state.organizationContext?.organizacion_id || "none";
+  const key = rules.dedupeKey({ userId: notificationUserId(), organizationId, date, type, attempt });
+  const storageKey = notificationSentStorageKey(key);
+  if (localStorage.getItem(storageKey)) return false;
+  localStorage.setItem(storageKey, new Date().toISOString());
+  return true;
+}
+
+async function showSystemAttendanceNotification(type, schedule) {
+  if (!("Notification" in window) || Notification.permission !== "granted") return;
+  const isEntry = type === "entry";
+  const title = isEntry ? "Registra tu entrada" : "Registra tu salida";
+  const body = isEntry
+    ? `La ventana de entrada de ${state.activeSite?.nombre || "tu sitio"} ya termino.`
+    : `Tu entrada esta registrada; falta cerrar la jornada.`;
+  const options = {
+    body,
+    icon: "/icons/icon-192.png",
+    badge: "/icons/icon-192.png",
+    tag: `attendance-${type}-${notificationUserId()}`,
+    renotify: true,
+    data: { url: `/?attendance=${type}` },
+  };
+  try {
+    const registration = await navigator.serviceWorker?.ready;
+    if (registration?.showNotification) await registration.showNotification(title, options);
+    else new Notification(title, options);
+  } catch (error) {
+    console.warn("No se pudo mostrar la notificacion del sistema:", error);
+  }
+}
+
+async function evaluateAttendanceReminders(now = new Date()) {
+  const rules = window.AttendanceNotificationRules;
+  const schedule = getEffectiveNotificationSchedule();
+  renderNotificationSettings(schedule);
+  if (!rules || !state.currentUser || !state.notificationsEnabled || !schedule.configured || !schedule.calendarConfigured) {
+    hideAttendanceReminder();
+    return null;
+  }
+
+  const moment = rules.getShiftMoment(now, schedule);
+  const identity = getAttendanceIdentity();
+  const attendance = recordForOperationalDate(identity.matricula, moment.shiftDate);
+  const baseDecision = rules.decideReminder({ now, schedule, attendance, sentAttempts: {}, maxAttempts: NOTIFICATION_MAX_ATTEMPTS, repeatMinutes: NOTIFICATION_REPEAT_MINUTES });
+  if (!baseDecision.type) {
+    hideAttendanceReminder();
+    return baseDecision;
+  }
+
+  showAttendanceReminder(baseDecision.type, schedule);
+  const sentAttempts = {
+    entry: countSentNotificationAttempts("entry", moment.shiftDate),
+    exit: countSentNotificationAttempts("exit", moment.shiftDate),
+  };
+  const decision = rules.decideReminder({ now, schedule, attendance, sentAttempts, maxAttempts: NOTIFICATION_MAX_ATTEMPTS, repeatMinutes: NOTIFICATION_REPEAT_MINUTES });
+  if (decision.type && markNotificationSent(decision.type, decision.shiftDate, decision.attempt)) {
+    await showSystemAttendanceNotification(decision.type, schedule);
+  }
+  return decision;
+}
+
+async function setAttendanceNotificationsEnabled(enabled) {
+  state.notificationsEnabled = Boolean(enabled);
+  if (state.notificationsEnabled && "Notification" in window && Notification.permission === "default") {
+    try {
+      await Notification.requestPermission();
+    } catch (error) {
+      console.warn("El navegador no permitio solicitar notificaciones:", error);
+    }
+  }
+  saveNotificationPreference();
+  await evaluateAttendanceReminders();
+}
+
+function openPendingAttendanceRoute() {
+  const params = new URLSearchParams(window.location.search);
+  if (!params.has("attendance")) return;
+  params.delete("attendance");
+  const cleanQuery = params.toString();
+  history.replaceState({}, "", `${window.location.pathname}${cleanQuery ? `?${cleanQuery}` : ""}${window.location.hash}`);
+  openAttendanceView();
 }
 
 function nowParts(date = new Date()) {
@@ -1380,6 +1593,7 @@ function applyAppUserSession(appUser) {
     ...(effectiveAppUser?.permisos || {}),
   };
   state.isAdmin = isRoleAdminSession() || isDemoAdminUnlocked();
+  loadNotificationPreference();
   renderCurrentUserProfile();
 }
 
@@ -1417,6 +1631,7 @@ function renderCurrentUserProfile() {
   if (profileDisplayIdentifier) profileDisplayIdentifier.textContent = `Identificador: ${matricula}`;
   renderHomeWelcome(nombre);
   renderAttendanceStreak();
+  renderNotificationSettings();
 }
 
 function renderAttendanceStreak() {
@@ -1828,6 +2043,8 @@ async function loadAttendanceStreak({ silent = false } = {}) {
   }
 }
 function renderOrganizationContext(context) {
+  state.organizationContext = context || null;
+  renderNotificationSettings();
   if (els.organizationDetail) return;
   if (!els.orgNameLabel) return;
   const configured = Boolean(context && context.organizacion_id);
@@ -1845,6 +2062,7 @@ function renderOrganizationContext(context) {
 
 async function loadOrganizationContext({ silent = false } = {}) {
   if (!CLOUD_ENABLED) {
+    state.organizationContext = null;
     renderOrganizationContext(null);
     return null;
   }
@@ -1994,6 +2212,7 @@ function closeSiteEditor() {
 
 function renderActiveSite(site) {
   state.activeSite = site || null;
+  renderNotificationSettings();
   const configured = hasConfiguredSite(site);
   if (!els.siteStatusBadge) return;
 
@@ -2174,6 +2393,7 @@ async function handleSiteSubmit(event) {
 async function refreshRecords({ silent = false } = {}) {
   if (!CLOUD_ENABLED || !localStorage.getItem("registro_asistencia_token")) {
     renderRecords();
+    evaluateAttendanceReminders();
     return;
   }
 
@@ -2184,9 +2404,11 @@ async function refreshRecords({ silent = false } = {}) {
     persistLocalSnapshot();
     renderRecords();
     loadAttendanceStreak({ silent: true });
+    evaluateAttendanceReminders();
   } catch (error) {
     if (!silent) showToast("No se pudo cargar tu lista de registros permitidos. Revisa la conexion.");
     renderRecords();
+    evaluateAttendanceReminders();
   } finally {
     state.loadingRecords = false;
   }
@@ -5763,8 +5985,8 @@ async function finishInitialization({ requestPermissions = false } = {}) {
   await loadPersistentAvatar();
   await syncPermissionState();
   loadAttendanceStreak({ silent: true });
-  loadActiveSite({ silent: true });
-  loadOrganizationContext({ silent: true });
+  await loadActiveSite({ silent: true });
+  await loadOrganizationContext({ silent: true });
   loadOrganizations({ silent: true });
   loadAdminDirectories({ silent: true });
   renderRecords();
@@ -5784,6 +6006,8 @@ async function finishInitialization({ requestPermissions = false } = {}) {
   } else {
     showToast("Modo local: falta configurar Supabase.");
   }
+  await evaluateAttendanceReminders();
+  openPendingAttendanceRoute();
 }
 
 function bindAdminPanelControls() {
@@ -5947,6 +6171,16 @@ async function init() {
       state.permissionSelections.location = false;
       savePermissionPreferences();
       renderPermissionControls();
+    }
+  });
+  els.profileNotificationsEnabled?.addEventListener("change", async () => {
+    await setAttendanceNotificationsEnabled(els.profileNotificationsEnabled.checked);
+  });
+  els.attendanceReminderAction?.addEventListener("click", () => openAttendanceView());
+  window.addEventListener("storage", (event) => {
+    if (event.key?.startsWith(NOTIFICATION_SENT_PREFIX) || event.key === notificationPreferenceKey()) {
+      loadNotificationPreference();
+      evaluateAttendanceReminders();
     }
   });
 
@@ -6198,6 +6432,10 @@ async function init() {
   setInterval(() => {
     if (state.currentUser) refreshRecords({ silent: true });
   }, 30000);
+
+  setInterval(() => {
+    if (state.currentUser) evaluateAttendanceReminders();
+  }, 60000);
 
   setupPwaInstall();
   setupConnectionStatus();
