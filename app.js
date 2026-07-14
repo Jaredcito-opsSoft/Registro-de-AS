@@ -5011,10 +5011,8 @@ function adminUserListItem(user) {
     ));
   const canDeactivate = canManageLifecycle && user.activo !== false;
   const canReactivate = canManageLifecycle && user.activo === false;
-  const canPurge = actorRole === "superadmin"
-    && (!targetIsSuperadmin || isKnownOwnerSession())
-    && !targetIsProtectedOwner
-    && String(user.id || "") !== String(state.currentAppUser?.id || "");
+  const canPurge = canManageLifecycle
+    && (actorRole === "superadmin" || ["usuario", "supervisor"].includes(normalizedRole));
   const scopeLabel = adminUserHasSite(user) ? "Cambiar sitio" : "Asignar sitio";
   return `
     <li class="admin-user-row">
@@ -5055,8 +5053,8 @@ async function deactivateManagedUser(userId) {
 }
 
 async function purgeManagedUser(userId) {
-  if (normalizeAppRole(state.currentAppUser?.rol || state.currentRole) !== "superadmin") {
-    showToast("Solo superadmin puede borrar definitivamente usuarios.");
+  if (!canManageUserAssignments()) {
+    showToast("Solo administradores autorizados pueden borrar usuarios.");
     return;
   }
   const user = state.managedUsers.find((item) => String(item.id || "") === String(userId || ""));
