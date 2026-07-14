@@ -1469,11 +1469,15 @@ async function loadCurrentAppUser({ silent = false } = {}) {
   const matricula = isKnownSuperadminEmail(authEmail)
     ? getKnownSuperadminMatricula(authEmail)
     : (metadata.matricula || "");
+  const affiliationKey = metadata.organization_key || metadata.org_key || localStorage.getItem("registro_asistencia_org_key") || "";
   try {
+    if (String(affiliationKey).trim().toUpperCase().startsWith("SITE-INV-")) {
+      await callAdminRpc("redeem_site_invite", { p_invite_key: affiliationKey });
+    }
     const result = await callAdminRpc("get_current_app_user", {
       p_nombre: metadata.nombre || metadata.full_name || state.currentUser.email || "Usuario",
       p_matricula: matricula,
-      p_org_key: metadata.organization_key || metadata.org_key || localStorage.getItem("registro_asistencia_org_key") || "",
+      p_org_key: affiliationKey,
     });
     const appUser = getRpcFirstRow(result);
     applyAppUserSession(appUser);
@@ -4132,6 +4136,7 @@ function getAdminSiteOptions() {
   state.managedSites.forEach((site) => {
     const label = site.nombre || site.sitio_nombre || "Sitio sin nombre";
     sites.set(label, {
+      id: site.id || "",
       label,
       org: site.organizacion_nombre || "Organizacion",
       keyReady: Boolean(site.tiene_clave || site.clave_sitio || site.site_key),
@@ -4140,7 +4145,7 @@ function getAdminSiteOptions() {
   getVisibleRecords().forEach((record) => {
     const label = recordSiteName(record);
     if (!sites.has(label)) {
-      sites.set(label, { label, org: record.organizacionNombre || "Organizacion", keyReady: false });
+      sites.set(label, { id: "", label, org: record.organizacionNombre || "Organizacion", keyReady: false });
     }
   });
   return Array.from(sites.values()).sort((a, b) => a.label.localeCompare(b.label));
@@ -4152,12 +4157,13 @@ function populateAdminInviteSites() {
   const options = getAdminSiteOptions();
   els.adminInviteSite.innerHTML = `<option value="">Selecciona un sitio</option>`;
   options.forEach((site) => {
+    if (!site.id) return;
     const option = document.createElement("option");
-    option.value = site.label;
+    option.value = site.id;
     option.textContent = `${site.label} / ${site.org}`;
     els.adminInviteSite.appendChild(option);
   });
-  els.adminInviteSite.value = options.some((site) => site.label === previous) ? previous : "";
+  els.adminInviteSite.value = options.some((site) => site.id === previous) ? previous : "";
 }
 
 function canManageUserAssignments() {
@@ -4378,27 +4384,43 @@ function renderAdminUsersSection(records = getVisibleRecords()) {
     }).join("");
 }
 
-function prepareAdminInviteKey() {
+async function prepareAdminInviteKey() {
   if (!hasPermission("manage_organization")) {
     showToast("Solo superadmin puede preparar keys de administracion.");
     return;
   }
   const email = els.adminInviteEmail?.value.trim() || "";
-  const site = els.adminInviteSite?.value || els.siteName?.value || "sitio";
-  if (!email || !site) {
+  const siteId = els.adminInviteSite?.value || "";
+  if (!email || !siteId) {
     if (els.adminInviteStatus) {
       els.adminInviteStatus.textContent = "Captura correo y sitio antes de preparar la key.";
       els.adminInviteStatus.dataset.tone = "danger";
     }
     return;
   }
-  const key = buildAccessKey("ADMIN", site);
-  if (els.adminInviteKey) els.adminInviteKey.value = key;
-  if (els.adminInviteStatus) {
-    els.adminInviteStatus.textContent = `Key preparada para ${email}. Pendiente de RPC segura en Supabase.`;
-    els.adminInviteStatus.dataset.tone = "warning";
+  if (els.prepareAdminInvite) els.prepareAdminInvite.disabled = true;
+  try {
+    const invite = getRpcFirstRow(await callAdminRpc("admin_create_site_invite", {
+      p_sitio_id: siteId,
+      p_email: email,
+      p_rol: "admin",
+      p_expires_hours: 72,
+    }));
+    if (!invite?.invite_key) throw new Error("No se recibio una key de invitacion.");
+    if (els.adminInviteKey) els.adminInviteKey.value = invite.invite_key;
+    if (els.adminInviteStatus) {
+      els.adminInviteStatus.textContent = `Invitacion segura creada. Expira: ${displayTime(invite.expires_at)}.`;
+      els.adminInviteStatus.dataset.tone = "success";
+    }
+    addAdminLog("site_invite_created", `${email} / ${siteId}`);
+  } catch (error) {
+    if (els.adminInviteStatus) {
+      els.adminInviteStatus.textContent = `No se pudo crear: ${parseSupabaseError(error).slice(0, 140)}`;
+      els.adminInviteStatus.dataset.tone = "danger";
+    }
+  } finally {
+    if (els.prepareAdminInvite) els.prepareAdminInvite.disabled = false;
   }
-  addAdminLog("admin_invite_key_preparada", `${email} / ${site}`);
 }
 
 async function copyAdminInviteKey() {
