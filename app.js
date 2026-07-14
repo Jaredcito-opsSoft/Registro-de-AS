@@ -1033,11 +1033,8 @@ async function getRemoteAvatarUrl() {
     if (!response.ok) return "";
     const data = await response.json();
     const signedUrl = data.signedURL || data.signedUrl || data.url || "";
-    const url = signedUrl.startsWith("http") ? signedUrl : `${SUPABASE.url}${signedUrl}`;
-    const revision = String(avatar?.avatar_updated_at || "").trim();
-    // Un avatar se conserva en la nube por cuenta. La revisión evita que otro
-    // dispositivo reciba una imagen anterior desde la caché al volver a iniciar sesión.
-    return revision ? `${url}${url.includes("?") ? "&" : "?"}v=${encodeURIComponent(revision)}` : url;
+    // Storage firma la URL completa; agregar parametros despues invalida la firma.
+    return signedUrl.startsWith("http") ? signedUrl : `${SUPABASE.url}${signedUrl}`;
   } catch {
     return "";
   }
