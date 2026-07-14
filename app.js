@@ -5675,7 +5675,7 @@ async function continueAsOperationalGuest() {
 }
 async function loadOrganizationOptions() {
   if (!els.authOrgSelect) return;
-  const selected = localStorage.getItem("registro_asistencia_org_slug") || "";
+  const selected = "";
   state.registrationAffiliations = [];
 
   const showFallback = () => {
@@ -5723,6 +5723,8 @@ async function loadOrganizationOptions() {
 
     const affiliations = Array.isArray(rows) ? rows.filter((row) => row?.organization_slug) : [];
 
+    if (authMode !== "register") return;
+
     if (!affiliations.length) {
       showFallback();
       return;
@@ -5741,6 +5743,7 @@ async function loadOrganizationOptions() {
     }
     updateRegistrationSiteOptions({ preserveSelection: true });
   } catch (error) {
+    if (authMode !== "register") return;
     console.warn("No se pudo cargar el directorio público de afiliación.", error);
     showFallback();
   }
@@ -5748,6 +5751,12 @@ async function loadOrganizationOptions() {
 
 function updateRegistrationSiteOptions({ preserveSelection = false } = {}) {
   if (!els.authSiteSelect) return;
+
+  if (authMode !== "register") {
+    els.labelSiteSelect?.classList.add("is-hidden");
+    els.authSiteSelect.disabled = true;
+    return;
+  }
 
   const organizationSlug = els.authOrgSelect?.value.trim() || "";
   const previousSite = preserveSelection ? localStorage.getItem("registro_asistencia_site_id") || "" : "";
@@ -5832,6 +5841,15 @@ function updateAuthUI() {
     els.authMatricula.required = false;
     if (els.authOrgKey) els.authOrgKey.required = false;
     if (els.authPhone) els.authPhone.required = false;
+    if (els.authOrgSelect) {
+      els.authOrgSelect.required = false;
+      els.authOrgSelect.value = "";
+    }
+    if (els.authSiteSelect) {
+      els.authSiteSelect.required = false;
+      els.authSiteSelect.disabled = true;
+      els.authSiteSelect.innerHTML = `<option value="">Primero selecciona una organización</option>`;
+    }
     els.loginTitle.textContent = "Iniciar Sesión";
     els.loginSubtitle.textContent = "Ingresa rápido con tu correo o número de teléfono.";
     els.authSubmitBtn.textContent = "Ingresar";
@@ -5853,6 +5871,8 @@ function updateAuthUI() {
     els.authMatricula.required = true;
     if (els.authOrgKey) els.authOrgKey.required = false;
     if (els.authPhone) els.authPhone.required = false;
+    if (els.authOrgSelect) els.authOrgSelect.required = true;
+    if (els.authSiteSelect) els.authSiteSelect.required = true;
     els.loginTitle.textContent = "Registrarse";
     els.loginSubtitle.textContent = "Crea tu cuenta para registrar asistencia.";
     els.authSubmitBtn.textContent = "Crear Cuenta";
