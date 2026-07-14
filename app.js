@@ -2832,7 +2832,7 @@ function renderRolePanelCopy(activeTarget = "records") {
   }
   if (els.dashboardScopeLabel) {
     els.dashboardScopeLabel.textContent = hasPermission("view_all_records")
-      ? "Mostrando todas las organizaciones permitidas para superadmin."
+      ? "Resumen global: las cifras agregan todas las organizaciones. El directorio de Usuarios muestra solo la organizacion elegida."
       : hasPermission("view_site_records")
         ? "Mostrando registros del sitio u organizacion asignada."
         : "Mostrando solo tus registros personales.";
@@ -4734,12 +4734,14 @@ function renderAdminUsersSection(records = getVisibleRecords()) {
 
   els.adminUsersBySite.innerHTML = Array.from(bySite.entries())
     .sort((a, b) => (a[0] === "Sin sitio" ? 1 : b[0] === "Sin sitio" ? -1 : a[0].localeCompare(b[0])))
-    .map(([site, users]) => {
+    .map(([site, users], siteIndex) => {
+      const isUnassigned = site === "Sin sitio";
+      const visibleLimit = isUnassigned ? 4 : 8;
       const uniqueRecords = records.filter((record) => {
         const recordUser = normalizeMatricula(String(record.matricula || ""));
         return users.some((user) => normalizeMatricula(String(user.matricula || "")) === recordUser);
       }).length;
-      const people = users.slice(0, 8).map((user) => {
+      const people = users.slice(0, visibleLimit).map((user) => {
         const role = getRoleDefinition(user.rol || "usuario");
         const statusClass = user.activo === false ? "danger" : "success";
         return `
@@ -4752,18 +4754,37 @@ function renderAdminUsersSection(records = getVisibleRecords()) {
           </li>
         `;
       }).join("");
-      const overflow = users.length > 8 ? `<p class="muted-note">+${users.length - 8} usuarios adicionales en este sitio.</p>` : "";
+      const overflowPeople = users.slice(visibleLimit).map((user) => {
+        const role = getRoleDefinition(user.rol || "usuario");
+        const statusClass = user.activo === false ? "danger" : "success";
+        return `
+          <li>
+            <div>
+              <strong>${escapeHtml(user.nombre || user.email || user.matricula || "Usuario")}</strong>
+              <span>${escapeHtml(user.email || user.matricula || "Sin identificador")}</span>
+            </div>
+            <span class="badge ${statusClass}">${user.activo === false ? "Inactivo" : escapeHtml(role.label)}</span>
+          </li>
+        `;
+      }).join("");
+      const overflowId = `site-users-overflow-${siteIndex}`;
+      const overflow = overflowPeople
+        ? `<ul id="${overflowId}" class="is-hidden" data-site-users-overflow>${overflowPeople}</ul><button class="ghost compact" type="button" data-site-people-toggle aria-controls="${overflowId}" aria-expanded="false">Ver ${users.length - visibleLimit} mas</button>`
+        : "";
+      const assignAction = isUnassigned
+        ? `<button class="primary compact" type="button" data-assign-unassigned-users>Asignar usuarios</button>`
+        : "";
       return `
-        <article class="admin-user-site-card ${site === "Sin sitio" ? "needs-attention" : ""}">
+        <article class="admin-user-site-card ${isUnassigned ? "needs-attention unassigned-users-card" : ""}">
           <header>
             <div>
               <strong>${escapeHtml(site)}</strong>
               <span>${users.length} ${users.length === 1 ? "usuario" : "usuarios"} / ${uniqueRecords} registros</span>
             </div>
-            <span class="badge ${site === "Sin sitio" ? "warning" : "success"}">${site === "Sin sitio" ? "Requiere sitio" : "Vinculado"}</span>
+            <span class="badge ${isUnassigned ? "warning" : "success"}">${isUnassigned ? "Requiere sitio" : "Vinculado"}</span>
           </header>
           <ul>${people}</ul>
-          ${overflow}
+          <div class="admin-user-site-actions">${assignAction}${overflow}</div>
         </article>
       `;
     }).join("");
@@ -6021,11 +6042,6 @@ function bindAdminPanelControls() {
       showAdminSection(sectionButton.dataset.adminSectionTarget);
       return;
     }
-    if (event.target.closest("#assignUserScopeButton")) {
-      event.preventDefault();
-      assignUserScope();
-      return;
-    }
     if (event.target.closest("#assignOrganizationAdminButton")) {
       event.preventDefault();
       assignOrganizationAdmin();
@@ -6038,6 +6054,20 @@ function bindAdminPanelControls() {
       overflow?.classList.toggle("is-hidden", expanded);
       peopleToggle.setAttribute("aria-expanded", String(!expanded));
       peopleToggle.textContent = expanded ? `Ver ${overflow?.children.length || 0} mas` : "Ocultar usuarios";
+      return;
+    }
+    const sitePeopleToggle = event.target.closest("[data-site-people-toggle]");
+    if (sitePeopleToggle) {
+      const overflow = document.getElementById(sitePeopleToggle.getAttribute("aria-controls") || "");
+      const expanded = sitePeopleToggle.getAttribute("aria-expanded") === "true";
+      overflow?.classList.toggle("is-hidden", expanded);
+      sitePeopleToggle.setAttribute("aria-expanded", String(!expanded));
+      sitePeopleToggle.textContent = expanded ? `Ver ${overflow?.children.length || 0} mas` : "Ocultar usuarios";
+      return;
+    }
+    if (event.target.closest("[data-assign-unassigned-users]")) {
+      els.userScopeAssignmentCard?.scrollIntoView({ behavior: "smooth", block: "start" });
+      els.userScopeUser?.focus({ preventScroll: true });
     }
   });
 
@@ -6058,6 +6088,14 @@ function bindAdminPanelControls() {
       populateOrganizationAdminAssignment();
     }
   });
+}
+
+function bindUserScopeAssignmentControls() {
+  if (document.documentElement.dataset.userScopeControlsBound === "true") return;
+  document.documentElement.dataset.userScopeControlsBound = "true";
+  els.userScopeUser?.addEventListener("change", populateUserScopeAssignment);
+  els.userScopeSite?.addEventListener("change", populateUserScopeAssignment);
+  els.assignUserScopeButton?.addEventListener("click", assignUserScope);
 }
 
 async function init() {
@@ -6464,5 +6502,6 @@ document.addEventListener("DOMContentLoaded", () => {
   console.log("DOMContentLoaded disparado. Inicializando elementos...");
   populateElements();
   bindAdminPanelControls();
+  bindUserScopeAssignmentControls();
   init();
 });

@@ -5615,6 +5615,32 @@ tbody tr:hover {
   background: var(--warning-bg);
 }
 
+.admin-user-site-card.unassigned-users-card {
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: 14px;
+}
+
+.unassigned-users-card header {
+  align-items: center;
+}
+
+.unassigned-users-card li {
+  padding: 8px 10px;
+}
+
+.admin-user-site-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.admin-user-site-actions .compact {
+  padding: 7px 10px;
+  font-size: 0.78rem;
+}
+
 .admin-user-site-card.is-empty {
   color: var(--muted);
 }
