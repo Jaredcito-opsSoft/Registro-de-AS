@@ -145,6 +145,7 @@ const state = {
   selectedOrganizationId: null,
   managedSites: [],
   managedUsers: [],
+  attendanceControlFilters: { date: "", organization: "all", site: "all", status: "all", query: "" },
   recordFilters: {
     date: "",
     status: "all",
@@ -289,6 +290,23 @@ function populateElements() {
   els.dashboardAlerts = $("#dashboardAlerts");
   els.siteUsersTotal = $("#siteUsersTotal");
   els.siteUsersList = $("#siteUsersList");
+  els.attendanceControlTitle = $("#attendanceControlTitle");
+  els.attendanceControlScope = $("#attendanceControlScope");
+  els.attendanceControlDateLabel = $("#attendanceControlDateLabel");
+  els.attendanceExpectedCount = $("#attendanceExpectedCount");
+  els.attendanceMissingCount = $("#attendanceMissingCount");
+  els.attendanceEntryCount = $("#attendanceEntryCount");
+  els.attendanceCompleteCount = $("#attendanceCompleteCount");
+  els.attendanceReviewCount = $("#attendanceReviewCount");
+  els.attendanceControlDate = $("#attendanceControlDate");
+  els.attendanceControlOrganization = $("#attendanceControlOrganization");
+  els.attendanceControlSite = $("#attendanceControlSite");
+  els.attendanceControlStatus = $("#attendanceControlStatus");
+  els.attendanceControlSearch = $("#attendanceControlSearch");
+  els.attendanceControlReset = $("#attendanceControlReset");
+  els.attendanceControlEmpty = $("#attendanceControlEmpty");
+  els.attendanceControlCards = $("#attendanceControlCards");
+  els.attendanceControlTableBody = $("#attendanceControlTableBody");
   els.filterDate = $("#filterDate");
   els.filterStatus = $("#filterStatus");
   els.filterRisk = $("#filterRisk");
@@ -3076,7 +3094,7 @@ function showView(name) {
   }
   if (actualView === "records" || actualView === "admin" || actualView === "home") refreshRecords({ silent: true });
   if (targetName === "admin") {
-    showAdminSection(isSupervisorSession() ? "attendances" : "summary");
+    showAdminSection("summary");
     if (isRoleAdminSession()) loadAdminDirectories({ silent: true });
   }
   window.scrollTo({ top: 0, behavior: "smooth" });
@@ -4628,6 +4646,162 @@ function renderOperationsDashboard(records = getFilteredRecords()) {
   renderDashboardAlerts(records);
   renderSiteUsersOverview();
   renderAdminUsersSection(getVisibleRecords());
+  renderAttendanceControl();
+}
+
+function attendanceControlScope() {
+  if (normalizeAppRole(state.currentRole) === "superadmin") {
+    return { title: "Control global de asistencia", text: "Consulta organizaciones, sitios y personas dentro de tu alcance global.", organizationId: "", siteId: "", canChooseOrganization: true };
+  }
+  if (isSupervisorSession()) {
+    return { title: "Control de tu sitio", text: "Revisa las asistencias del sitio que supervisas.", organizationId: String(state.currentAppUser?.organizacion_id || ""), siteId: String(state.currentAppUser?.sitio_id || ""), canChooseOrganization: false };
+  }
+  return { title: "Control de asistencia", text: "Revisa las asistencias de tu organizacion y filtra por sitio cuando lo necesites.", organizationId: String(state.currentAppUser?.organizacion_id || ""), siteId: "", canChooseOrganization: false };
+}
+
+function normalizeAttendanceControlFilters() {
+  const scope = attendanceControlScope();
+  const filters = state.attendanceControlFilters;
+  if (!filters.date) filters.date = todayIso();
+  if (!scope.canChooseOrganization) filters.organization = scope.organizationId || "all";
+  if (scope.siteId) filters.site = scope.siteId;
+  return filters;
+}
+
+function populateAttendanceControlFilters() {
+  if (!els.attendanceControlOrganization || !els.attendanceControlSite) return;
+  const scope = attendanceControlScope();
+  const filters = normalizeAttendanceControlFilters();
+  const organizations = state.organizationHubs
+    .filter((organization) => organization?.id && (scope.canChooseOrganization || String(organization.id) === scope.organizationId));
+  const organizationIds = new Set(organizations.map((organization) => String(organization.id)));
+
+  els.attendanceControlOrganization.innerHTML = "";
+  if (scope.canChooseOrganization) els.attendanceControlOrganization.appendChild(new Option("Todas las organizaciones", "all"));
+  organizations.forEach((organization) => els.attendanceControlOrganization.appendChild(new Option(organization.nombre || "Organizacion", String(organization.id))));
+  const organizationValue = scope.canChooseOrganization && (filters.organization === "all" || organizationIds.has(filters.organization))
+    ? filters.organization
+    : (scope.organizationId || organizations[0]?.id || "all");
+  filters.organization = String(organizationValue);
+  els.attendanceControlOrganization.value = filters.organization;
+  els.attendanceControlOrganization.disabled = !scope.canChooseOrganization;
+
+  const sites = state.managedSites.filter((site) => {
+    if (!site?.id || site.activo === false) return false;
+    if (scope.siteId && String(site.id) !== scope.siteId) return false;
+    return filters.organization === "all" || String(site.organizacion_id || "") === String(filters.organization);
+  });
+  const siteIds = new Set(sites.map((site) => String(site.id)));
+  els.attendanceControlSite.innerHTML = "";
+  if (!scope.siteId) els.attendanceControlSite.appendChild(new Option("Todos los sitios", "all"));
+  sites.forEach((site) => els.attendanceControlSite.appendChild(new Option(site.nombre || "Sitio", String(site.id))));
+  filters.site = scope.siteId || (siteIds.has(filters.site) ? filters.site : "all");
+  els.attendanceControlSite.value = filters.site;
+  els.attendanceControlSite.disabled = Boolean(scope.siteId);
+}
+
+function getAttendanceControlUsers() {
+  const scope = attendanceControlScope();
+  const source = state.managedUsers.length ? state.managedUsers : usersFromVisibleRecords();
+  const users = new Map();
+  source.forEach((user) => {
+    if (!user || user.activo === false) return;
+    const organizationId = String(user.organizacion_id || user.organizacionId || "");
+    const siteId = String(user.sitio_id || user.sitioId || "");
+    if (scope.organizationId && organizationId && organizationId !== scope.organizationId) return;
+    if (scope.siteId && siteId && siteId !== scope.siteId) return;
+    const key = String(user.id || normalizeMatricula(user.matricula || user.email || ""));
+    if (key) users.set(key, user);
+  });
+  return Array.from(users.values());
+}
+
+function findAttendanceControlRecord(user, records, date) {
+  const userId = String(user.id || "");
+  const matricula = normalizeMatricula(user.matricula || "");
+  return records.find((record) => record.fecha === date && (
+    (userId && String(record.usuarioId || "") === userId)
+    || (matricula && normalizeMatricula(record.matricula || "") === matricula)
+  )) || null;
+}
+
+function attendanceControlStatus(record) {
+  if (!record) return "missing";
+  if (isReviewRecord(record) || hasLocationIssue(record) || hasIdentityIssue(record)) return "review";
+  if (isCompleteRecord(record)) return "complete";
+  if (isPendingExitRecord(record)) return "entry";
+  return "review";
+}
+
+function attendanceControlStatusMeta(status) {
+  return {
+    missing: ["Sin registro", "missing"],
+    entry: ["Entrada registrada", "entry"],
+    complete: ["Jornada completa", "complete"],
+    review: ["Requiere revision", "review"],
+  }[status] || ["Requiere revision", "review"];
+}
+
+function renderAttendanceControl() {
+  if (!els.attendanceControlCards || !els.attendanceControlTableBody) return;
+  const scope = attendanceControlScope();
+  const filters = normalizeAttendanceControlFilters();
+  populateAttendanceControlFilters();
+  if (els.attendanceControlDate) els.attendanceControlDate.value = filters.date;
+  if (els.attendanceControlStatus) els.attendanceControlStatus.value = filters.status;
+  if (els.attendanceControlSearch) els.attendanceControlSearch.value = filters.query;
+  if (els.attendanceControlTitle) els.attendanceControlTitle.textContent = scope.title;
+  if (els.attendanceControlScope) els.attendanceControlScope.textContent = scope.text;
+  if (els.attendanceControlDateLabel) els.attendanceControlDateLabel.textContent = filters.date === todayIso() ? "Hoy" : displayDate(filters.date);
+
+  const records = getVisibleRecords();
+  const query = normalizeMatricula(filters.query || "");
+  const rows = getAttendanceControlUsers().map((user) => {
+    const record = findAttendanceControlRecord(user, records, filters.date);
+    const status = attendanceControlStatus(record);
+    const siteId = String(user.sitio_id || user.sitioId || "");
+    const organizationId = String(user.organizacion_id || user.organizacionId || record?.organizacionId || "");
+    const site = user.sitio_nombre || state.managedSites.find((item) => String(item.id || "") === siteId)?.nombre || recordSiteName(record || {});
+    const organization = user.organizacion_nombre || state.organizationHubs.find((item) => String(item.id || "") === organizationId)?.nombre || record?.organizacionNombre || "Organizacion";
+    return {
+      user,
+      record,
+      status,
+      name: user.nombre || user.email || user.matricula || "Usuario",
+      identifier: user.matricula || "Sin identificador",
+      organizationId,
+      organization,
+      siteId,
+      site: site || "Sin sitio",
+    };
+  }).filter((row) => {
+    if (filters.organization !== "all" && row.organizationId !== String(filters.organization)) return false;
+    if (filters.site !== "all" && row.siteId !== String(filters.site)) return false;
+    if (filters.status !== "all" && row.status !== filters.status) return false;
+    if (!query) return true;
+    return normalizeMatricula(row.name).includes(query) || normalizeMatricula(row.identifier).includes(query) || normalizeMatricula(row.site).includes(query);
+  }).sort((a, b) => a.name.localeCompare(b.name, "es"));
+
+  const counts = rows.reduce((summary, row) => ({ ...summary, [row.status]: summary[row.status] + 1 }), { missing: 0, entry: 0, complete: 0, review: 0 });
+  if (els.attendanceExpectedCount) els.attendanceExpectedCount.textContent = rows.length;
+  if (els.attendanceMissingCount) els.attendanceMissingCount.textContent = counts.missing;
+  if (els.attendanceEntryCount) els.attendanceEntryCount.textContent = counts.entry;
+  if (els.attendanceCompleteCount) els.attendanceCompleteCount.textContent = counts.complete;
+  if (els.attendanceReviewCount) els.attendanceReviewCount.textContent = counts.review;
+
+  const emptyMessage = state.managedUsers.length || rows.length
+    ? "No hay personas que coincidan con los filtros actuales."
+    : "No hay directorio autorizado disponible para este alcance todavia.";
+  els.attendanceControlEmpty.textContent = emptyMessage;
+  els.attendanceControlEmpty.classList.toggle("is-hidden", rows.length > 0);
+  els.attendanceControlCards.innerHTML = rows.map((row) => {
+    const [label, tone] = attendanceControlStatusMeta(row.status);
+    return `<article class="attendance-control-card"><div><strong>${escapeHtml(row.name)}</strong><span>${escapeHtml(row.identifier)}</span></div><span class="attendance-control-status is-${tone}">${escapeHtml(label)}</span><dl><div><dt>Sitio</dt><dd>${escapeHtml(row.site)}</dd></div><div><dt>Entrada</dt><dd>${escapeHtml(row.record?.horaEntrada || "--:--")}</dd></div><div><dt>Salida</dt><dd>${escapeHtml(row.record?.horaSalida || "--:--")}</dd></div></dl></article>`;
+  }).join("");
+  els.attendanceControlTableBody.innerHTML = rows.map((row) => {
+    const [label, tone] = attendanceControlStatusMeta(row.status);
+    return `<tr><td><strong>${escapeHtml(row.name)}</strong><small>${escapeHtml(row.identifier)}</small></td><td>${escapeHtml(row.organization)}</td><td>${escapeHtml(row.site)}</td><td>${escapeHtml(row.record?.horaEntrada || "--:--")}</td><td>${escapeHtml(row.record?.horaSalida || "--:--")}</td><td><span class="attendance-control-status is-${tone}">${escapeHtml(label)}</span></td></tr>`;
+  }).join("");
 }
 
 function recordSiteIds(record) {
@@ -7186,6 +7360,31 @@ async function init() {
 
   if (els.clearDashboardFilters) els.clearDashboardFilters.addEventListener("click", resetDashboardFilters);
   if (els.adminClearDashboardFilters) els.adminClearDashboardFilters.addEventListener("click", resetDashboardFilters);
+
+  const attendanceControlInputs = [
+    els.attendanceControlDate,
+    els.attendanceControlOrganization,
+    els.attendanceControlSite,
+    els.attendanceControlStatus,
+    els.attendanceControlSearch,
+  ].filter(Boolean);
+  attendanceControlInputs.forEach((input) => {
+    input.addEventListener(input.tagName === "INPUT" ? "input" : "change", () => {
+      state.attendanceControlFilters.date = els.attendanceControlDate?.value || todayIso();
+      state.attendanceControlFilters.organization = els.attendanceControlOrganization?.value || "all";
+      state.attendanceControlFilters.site = els.attendanceControlSite?.value || "all";
+      state.attendanceControlFilters.status = els.attendanceControlStatus?.value || "all";
+      state.attendanceControlFilters.query = els.attendanceControlSearch?.value || "";
+      if (input === els.attendanceControlOrganization) state.attendanceControlFilters.site = "all";
+      renderAttendanceControl();
+    });
+  });
+  document.querySelector(".attendance-control-filters")?.addEventListener("submit", (event) => event.preventDefault());
+  if (els.attendanceControlReset) els.attendanceControlReset.addEventListener("click", () => {
+    const scope = attendanceControlScope();
+    state.attendanceControlFilters = { date: todayIso(), organization: scope.canChooseOrganization ? "all" : (scope.organizationId || "all"), site: scope.siteId || "all", status: "all", query: "" };
+    renderAttendanceControl();
+  });
 
   if (window.location.hash.startsWith("#salida")) {
     openAttendanceView();

@@ -152,7 +152,7 @@ async function runViewportSmoke(browser, label, profile) {
       await assertVisible(page, "#avatarCropModal:not(.is-hidden)", `${prefix}: avatar adjustment opens`);
       await assertVisible(page, "#avatarCropZoom", `${prefix}: avatar zoom control`);
       await page.locator("#avatarCropSave").click();
-      await page.waitForSelector("#avatarCropModal.is-hidden", { timeout: 8000 });
+      await page.waitForSelector("#avatarCropModal", { state: "hidden", timeout: 8000 });
       await assertVisible(page, "#profileAvatarImage", `${prefix}: avatar selected`);
       await page.evaluate(() => {
         const key = Object.keys(localStorage).find((item) => item.startsWith("asistencia_permission_preferences:"));
