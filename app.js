@@ -14,7 +14,7 @@ const CLOUD_ENABLED = Boolean(SUPABASE.url && SUPABASE.publishableKey && SUPABAS
 const PHOTO_BUCKET = SUPABASE.bucket || "attendance-photos";
 const PROFILE_AVATAR_BUCKET = "profile-avatars";
 const GEO_PRECISION_MAX_METERS = 200;
-const LOCAL_ASSET_VERSION = "2.52-admin-multisite-attendance";
+const LOCAL_ASSET_VERSION = "2.53-privileged-attendance-cycles";
 const ATTENDANCE_STREAK_RPC_ENABLED = SUPABASE.enableAttendanceStreakRpc === true;
 const NOTIFICATION_PREFERENCE_PREFIX = "registro_asistencia_notifications_v1";
 const NOTIFICATION_SENT_PREFIX = "registro_asistencia_notification_sent_v1";
@@ -407,6 +407,7 @@ function populateElements() {
   els.closeEvidence = $("#closeEvidence");
   els.entrySuccessPanel = $("#entrySuccessPanel");
   els.exitSuccessPanel = $("#exitSuccessPanel");
+  els.repeatAttendanceButton = $("#repeatAttendanceButton");
   els.loginView = $("#login-view");
   els.appShell = $(".app-shell");
   els.authForm = $("#authForm");
@@ -1719,6 +1720,7 @@ function applyAppUserSession(appUser) {
   };
   state.isAdmin = isRoleAdminSession() || isDemoAdminUnlocked();
   populateAttendanceSiteSelector();
+  syncPrivilegedAttendanceActions();
   loadNotificationPreference();
   renderCurrentUserProfile();
 }
@@ -3636,13 +3638,14 @@ function todayRecordByMatricula(matricula) {
   const normalizedMatricula = normalizeMatricula(String(matricula || ""));
   if (!normalizedMatricula) return null;
   const currentAppUserId = String(state.currentAppUser?.id || "");
-  return state.records.find(
+  const matches = state.records.filter(
     (record) => {
       if (record.fecha !== today || normalizeMatricula(String(record.matricula || "")) !== normalizedMatricula) return false;
       if (!currentAppUserId || !record.usuarioId) return true;
       return String(record.usuarioId) === currentAppUserId;
     }
   );
+  return matches.find((record) => record.horaEntrada && !record.horaSalida) || matches[0] || null;
 }
 
 function getAttendanceIdentity() {
@@ -3671,6 +3674,10 @@ function syncAttendanceIdentity() {
 
 function canSelectAttendanceSite() {
   return ["admin", "superadmin"].includes(state.currentRole);
+}
+
+function syncPrivilegedAttendanceActions() {
+  els.repeatAttendanceButton?.classList.toggle("is-hidden", !canSelectAttendanceSite());
 }
 
 function getAttendanceSiteOptions() {
@@ -3726,7 +3733,42 @@ function updateAttendanceShortcut() {
     ? "Tu siguiente registro es la entrada."
     : !record.horaSalida
       ? `Entrada registrada a las ${record.horaEntrada}. Sigue con tu salida.`
-      : "Tu jornada de hoy ya esta completa.";
+      : canSelectAttendanceSite()
+        ? "Jornada completa. Puedes iniciar otro registro."
+        : "Tu jornada de hoy ya esta completa.";
+}
+
+async function startPrivilegedAttendanceCycle() {
+  if (!canSelectAttendanceSite()) {
+    showToast("Esta accion requiere rol administrador.");
+    return;
+  }
+
+  const identity = syncAttendanceIdentity();
+  if (!identity.nombre || !identity.matricula) {
+    showToast("Completa tu nombre e identificador en Perfil para registrar asistencia.");
+    showView("profile");
+    return;
+  }
+
+  await refreshRecords({ silent: true });
+  const activeRecord = todayRecordByMatricula(identity.matricula);
+  if (activeRecord?.horaEntrada && !activeRecord.horaSalida) {
+    showToast("Primero registra la salida de la entrada activa.");
+    await openAttendanceView();
+    return;
+  }
+
+  if (!state.managedSites.length) await loadOrganizations({ silent: true });
+  populateAttendanceSiteSelector();
+  if (!getAttendanceSiteOptions().length) {
+    showToast("No hay sitios activos disponibles para registrar asistencia.");
+    return;
+  }
+
+  clearCapturedFace("entry");
+  showView("entry");
+  await ensureAttendanceCamera("entry");
 }
 
 async function openAttendanceView() {
@@ -3854,7 +3896,8 @@ async function handleEntrySubmit(event) {
   if (submitButton) submitButton.disabled = true;
   try {
     await refreshRecords({ silent: true });
-    if (todayRecordByMatricula(matricula)) {
+    const existingRecord = todayRecordByMatricula(matricula);
+    if (existingRecord && (!canSelectAttendanceSite() || !existingRecord.horaSalida)) {
       showToast("Hoy ya registraste tu entrada. Solo corresponde registrar la salida.");
       await openAttendanceView();
       return;
@@ -3936,7 +3979,7 @@ async function handleExitSubmit(event) {
 
 function getAttendanceSaveErrorMessage(error, flow) {
   const message = String(error?.message || error || "").toLowerCase();
-  if (/entrada_activa_existente|duplicate|unique|ya existe/.test(message)) {
+  if (/entrada_activa_existente|entrada_diaria_existente|duplicate|unique|ya existe/.test(message)) {
     return "Hoy ya existe una entrada activa para esta cuenta.";
   }
   if (/salida_ya_registrada|salida.*ya fue registrada/.test(message)) {
@@ -6882,6 +6925,7 @@ async function init() {
     await setAttendanceNotificationsEnabled(els.profileNotificationsEnabled.checked);
   });
   els.attendanceReminderAction?.addEventListener("click", () => openAttendanceView());
+  els.repeatAttendanceButton?.addEventListener("click", startPrivilegedAttendanceCycle);
   window.addEventListener("storage", (event) => {
     if (event.key?.startsWith(NOTIFICATION_SENT_PREFIX) || event.key === notificationPreferenceKey()) {
       loadNotificationPreference();
