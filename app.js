@@ -14,7 +14,7 @@ const CLOUD_ENABLED = Boolean(SUPABASE.url && SUPABASE.publishableKey && SUPABAS
 const PHOTO_BUCKET = SUPABASE.bucket || "attendance-photos";
 const PROFILE_AVATAR_BUCKET = "profile-avatars";
 const GEO_PRECISION_MAX_METERS = 200;
-const LOCAL_ASSET_VERSION = "2.54-role-site-scopes";
+const LOCAL_ASSET_VERSION = "2.55-auth-session-order";
 const ATTENDANCE_STREAK_RPC_ENABLED = SUPABASE.enableAttendanceStreakRpc === true;
 const NOTIFICATION_PREFERENCE_PREFIX = "registro_asistencia_notifications_v1";
 const NOTIFICATION_SENT_PREFIX = "registro_asistencia_notification_sent_v1";
@@ -6865,9 +6865,10 @@ async function handleAuthSubmit(event) {
             showEmailNudgePanel(true);
           }
         }
+        // Protected RPCs require the server-side app session to exist first.
+        await activateOperationalSession();
         showAppShell(user);
         await loadCurrentAppUser({ silent: true });
-        await activateOperationalSession();
         await finishInitialization({ requestPermissions: true });
       } else {
         throw new Error("No se pudo obtener el usuario después del inicio de sesión.");
@@ -6910,9 +6911,9 @@ async function handleAuthSubmit(event) {
         const user = await verificarSesion();
         if (user) {
           if (isPhone) showEmailNudgePanel(true);
+          await activateOperationalSession();
           showAppShell(user);
           await loadCurrentAppUser({ silent: true });
-          await activateOperationalSession();
           await finishInitialization({ requestPermissions: true });
         }
       } else {
@@ -7629,11 +7630,13 @@ async function init() {
 
   // 5. Verificar sesion activa
   console.log("Verificando sesión activa de Supabase...");
-  verificarSesion().then((user) => {
+  verificarSesion().then(async (user) => {
     if (user) {
       console.log("Sesión activa recuperada para:", user.email);
+      prepareOperationalSession();
+      await activateOperationalSession();
       showAppShell(user);
-      finishInitialization();
+      await finishInitialization();
     } else {
       console.log("Sin sesión activa, redirigiendo a vista de login.");
       showLoginView();
