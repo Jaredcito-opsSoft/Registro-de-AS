@@ -1,121 +1,98 @@
-# Sistema Web de Asistencia con Foto, QR y Validacion Facial Ligera
+# Asistencia QR
 
-Prototipo web para registrar entrada y salida con evidencia fotografica, QR de
-salida por horario, historial global y acciones administrativas protegidas.
+Web App/PWA multiempresa para registrar y supervisar asistencias con fotografia,
+ubicacion GPS, control por sitio y permisos por rol. El proyecto se encuentra en
+estado **MVP funcional en evolucion**: los flujos principales existen, pero las
+migraciones y los controles de seguridad deben validarse en un ambiente de
+desarrollo o staging antes de promover cambios a produccion.
 
-Esta version agrega una validacion facial ligera: compara la foto de entrada con
-la foto de salida de la misma matricula y fecha. No es biometria empresarial ni
-login avanzado; es una ayuda de auditoria para detectar salidas dudosas.
+## Funciones actuales
 
-## Como ejecutarlo
+- Inicio de sesion y registro con Supabase Auth.
+- Organizaciones y varios sitios por organizacion.
+- Roles `usuario`, `supervisor`, `admin` y `superadmin`.
+- Entrada y salida con foto, GPS, horario y hora de servidor.
+- Validacion de un solo rostro y comparacion facial como apoyo de revision.
+- Historial propio para usuarios y vista operativa segun alcance para personal autorizado.
+- Administracion de organizaciones, sitios, usuarios, roles y alcances.
+- Evidencia, auditoria, exportacion y control de asistencias.
+- Instalacion como PWA y cache exclusivo del App Shell.
+- Sesion operativa por dispositivo para reducir el uso simultaneo de una cuenta.
 
-Opcion recomendada:
+El QR se considera un medio de acceso o ruteo. No debe conceder permisos ni ser
+la autoridad final para validar identidad, asistencia o salida.
 
-1. Abre la carpeta en VS Code.
-2. Usa Live Server o ejecuta un servidor local.
-3. Abre la URL local en Chrome, Edge o Firefox.
-4. Permite el acceso a la camara.
+## Tecnologias
 
-Tambien puede desplegarse como sitio estatico en Vercel. En produccion, Vercel
-entrega HTTPS, requerido por los navegadores para activar camara.
+- HTML5, CSS y JavaScript sin framework de frontend.
+- Supabase Auth, PostgreSQL, RPC, RLS y Storage.
+- `face-api.js` y modelos locales en `models/`.
+- Service Worker y Web App Manifest para la PWA.
+- Vercel para el despliegue del sitio estatico.
+- Playwright y scripts Node.js para pruebas de humo.
 
-## Lista global con Supabase
+## Inicio local
 
-La app usa Supabase para compartir la lista entre dispositivos:
+El repositorio no depende de un proceso de compilacion. Debe servirse por HTTP;
+no se recomienda abrir `index.html` directamente.
 
-- Tabla: `public.asistencias`
-- Bucket: `attendance-photos`
-- Configuracion frontend: `supabase-config.js`
+1. Abre la carpeta del proyecto en VS Code.
+2. Inicia Live Server en el puerto `5174`, o usa un servidor estatico equivalente.
+3. Abre `http://127.0.0.1:5174/`.
+4. Autoriza camara y ubicacion cuando el navegador lo solicite.
 
-Las fotos se guardan con estructura:
+Camara, geolocalizacion, Service Worker y PWA requieren `localhost` o HTTPS.
 
-```text
-attendance-photos/YYYY-MM-DD/MATRICULA/entrada.jpg
-attendance-photos/YYYY-MM-DD/MATRICULA/salida.jpg
+## Archivos principales
+
+| Archivo o carpeta | Responsabilidad |
+| --- | --- |
+| `index.html` | Estructura de vistas, formularios y navegacion de la SPA. |
+| `styles.css` | Sistema visual y comportamiento responsive. |
+| `app.js` | Estado, vistas, asistencia, administracion, camara, GPS y llamadas RPC. |
+| `auth.js` | Sesion de Supabase Auth y operaciones de autenticacion. |
+| `supabase-config.js` | URL y publishable key del cliente. Nunca debe contener `service_role`. |
+| `service-worker.js` | Cache del App Shell y soporte PWA pasivo. |
+| `notification-rules.js` | Reglas de recordatorios de asistencia. |
+| `supabase/migrations/` | Migraciones incrementales de base de datos. |
+| `tools/` | Smoke tests, validaciones y utilidades de auditoria. |
+| `docs/` | Arquitectura, mantenimiento, pruebas y decisiones de Fase 0. |
+
+## Documentacion
+
+Empieza por [docs/README.md](docs/README.md).
+
+Antes de modificar codigo, sigue [AGENTS.md](AGENTS.md). Es la guia corta para
+desarrolladores y agentes de IA.
+
+- [Arquitectura actual](docs/ARQUITECTURA_ACTUAL.md)
+- [Guia de mantenimiento](docs/GUIA_MANTENIMIENTO.md)
+- [Pruebas y despliegue](docs/PRUEBAS_Y_DESPLIEGUE.md)
+- [Matriz de permisos](docs/fase0/F0-04-matriz-permisos.md)
+- [Contratos RPC](docs/fase0/F0-06-contratos-rpc.md)
+- [PWA y cache seguro](docs/fase0/F0-12-pwa-cache-seguro.md)
+
+## Reglas de seguridad
+
+- El frontend nunca es la autoridad final de permisos.
+- Las acciones sensibles deben validar `auth.uid()`, rol y alcance en RLS/RPC.
+- Nunca agregar `service_role`, contrasenas o tokens de sesion al repositorio.
+- No confiar en `user_metadata` para autorizar acciones.
+- Las evidencias deben permanecer privadas y entregarse mediante URL firmada temporal.
+- No registrar asistencias offline ni cachear datos personales en el Service Worker.
+- No aplicar todos los archivos SQL de la raiz: son historicos. Las nuevas
+  modificaciones deben entrar como migraciones revisadas en `supabase/migrations/`.
+
+## Verificacion minima
+
+```powershell
+node --check app.js
+node --check auth.js
+node --check service-worker.js
+node tools/notification-rules.test.cjs
+git diff --check
 ```
 
-## Validacion facial
-
-La app carga `face-api.js` por CDN y sirve los modelos desde `models/`:
-
-- `tiny_face_detector_model`
-- `face_landmark_68_model`
-- `face_recognition_model`
-
-Reglas principales:
-
-- Si no hay rostro, no se guarda la foto.
-- Si hay mas de un rostro, no se guarda la foto.
-- Si hay un rostro, se guarda el descriptor facial.
-- En salida se compara descriptor de salida contra descriptor de entrada.
-- Si la coincidencia es buena, queda `identidad_validada`.
-- Si es dudosa, queda `revision_administrativa` y se guarda la salida.
-- Si es mala, queda `fallida` y se marca para revision.
-
-## Funciones incluidas
-
-- Registro de entrada con foto, nombre, matricula, fecha y hora automatica.
-- Deteccion de exactamente un rostro en entrada y salida.
-- Registro de salida con matricula, foto de salida y QR vigente.
-- Comparacion facial entre foto de entrada y foto de salida.
-- QR disponible de 4:30 p. m. a 5:10 p. m.
-- Modo prueba para habilitar la salida fuera del horario real.
-- Evita duplicar registros por matricula y fecha.
-- Tabla global con miniaturas, identidad, similitud y observaciones.
-- Exportacion a CSV compatible con Excel.
-- Clave administrativa simple para acciones sensibles.
-- Auditoria local basica de exportaciones, limpiezas, eliminaciones y observaciones.
-
-## Seguridad del prototipo
-
-La vista de registros es de consulta para usuarios generales. Las acciones de
-exportar, limpiar datos, eliminar registros y editar observaciones requieren la
-clave administrativa del prototipo:
-
-```text
-[Tu contraseña]
-```
-
-Esta clave sigue siendo una proteccion del Proyecto. Para produccion real conviene, tú como usuario te conviene mover administracion a Supabase Auth, roles y funciones Edge.
-
-No se usa `service_role_key` en frontend. La app usa una publishable key y RLS
-con permisos por columnas para limitar inserciones de entrada y actualizaciones
-de salida.
-
-## Nota tecnica
-
-El archivo `supabase-schema.sql` documenta la estructura aplicada en Supabase.
-La app conserva una copia local de lectura como respaldo, pero el flujo normal
-usa Supabase como fuente global.
-
-## Refuerzo antifraude
-
-La salida ahora se valida con varias capas desde Supabase, no desde la hora del navegador:
-
-- Hora de servidor con zona `America/Mexico_City`.
-- QR dinamico generado por RPC y con expiracion de servidor.
-- Registro de entrada mediante `registrar_entrada_segura`.
-- Registro de salida mediante `registrar_salida_segura`.
-- GPS capturado en salida y evaluado en Supabase.
-- Reto de vida sencillo antes de la foto de salida.
-- Riesgo automatico: `normal`, `revision_ubicacion`, `revision_identidad`, `revision_qr`, `revision_horario`, `revision_multiple`, `sospechoso`.
-- Historial y CSV con QR, ubicacion, precision, distancia, reto y alertas.
-
-Los clientes anonimos ya no tienen permisos directos de `insert` o `update` sobre
-`public.asistencias`; solo pueden leer registros. Las escrituras pasan por RPCs
-con validaciones de servidor.
-
-### Configurar sitio real
-
-El HITO 1 agrega el panel administrativo **Configuracion del sitio** dentro de
-Registros. Al desbloquear admin se puede guardar el sitio oficial, direccion,
-coordenadas, radio permitido, horarios y zona horaria.
-
-La fuente oficial ahora es `public.sitios`; `public.app_config` queda solo como
-compatibilidad de migracion. Solo debe existir un sitio activo para el MVP.
-
-Mientras el sitio activo no este configurado, la salida conserva la evidencia GPS
-pero queda marcada para revision administrativa en lugar de `normal`.
-
-La migracion del HITO 1 queda documentada en
-`supabase-site-admin-migration.sql`.
+Las pruebas autenticadas y multiempresa requieren cuentas de prueba, tokens
+efimeros y un ambiente controlado. Consulta
+[docs/PRUEBAS_Y_DESPLIEGUE.md](docs/PRUEBAS_Y_DESPLIEGUE.md) antes de ejecutarlas.
