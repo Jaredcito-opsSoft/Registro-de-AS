@@ -14,7 +14,7 @@ const CLOUD_ENABLED = Boolean(SUPABASE.url && SUPABASE.publishableKey && SUPABAS
 const PHOTO_BUCKET = SUPABASE.bucket || "attendance-photos";
 const PROFILE_AVATAR_BUCKET = "profile-avatars";
 const GEO_PRECISION_MAX_METERS = 200;
-const LOCAL_ASSET_VERSION = "2.51-avatar-signed-url";
+const LOCAL_ASSET_VERSION = "2.52-admin-multisite-attendance";
 const ATTENDANCE_STREAK_RPC_ENABLED = SUPABASE.enableAttendanceStreakRpc === true;
 const NOTIFICATION_PREFERENCE_PREFIX = "registro_asistencia_notifications_v1";
 const NOTIFICATION_SENT_PREFIX = "registro_asistencia_notification_sent_v1";
@@ -240,6 +240,8 @@ function populateElements() {
   els.entryForm = $("#entryForm");
   els.entryName = $("#entryName");
   els.entryMatricula = $("#entryMatricula");
+  els.entrySiteField = $("#entrySiteField");
+  els.entrySiteSelect = $("#entrySiteSelect");
   els.exitGuard = $("#exitGuard");
   els.exitVideo = $("#exitVideo");
   els.exitCanvas = $("#exitCanvas");
@@ -1716,6 +1718,7 @@ function applyAppUserSession(appUser) {
     ...(effectiveAppUser?.permisos || {}),
   };
   state.isAdmin = isRoleAdminSession() || isDemoAdminUnlocked();
+  populateAttendanceSiteSelector();
   loadNotificationPreference();
   renderCurrentUserProfile();
 }
@@ -1958,6 +1961,7 @@ function renderSelectedOrganization(org) {
 
 function renderManagedSites(rows = []) {
   state.managedSites = state.organizationHubs.flatMap((org) => org.sitios || []);
+  populateAttendanceSiteSelector();
   populateAdminInviteSites();
   populateUserScopeAssignment();
   populateDashboardFilterSelects();
@@ -2752,7 +2756,7 @@ async function uploadEvidence(dataUrl, matricula, kind, location = null) {
   evidence.metadata.storage_path = evidence.path;
   return evidence;
 }
-async function insertEntryRecord({ nombre, matricula, fotoEntrada, descriptorEntrada, location }) {
+async function insertEntryRecord({ nombre, matricula, fotoEntrada, descriptorEntrada, location, siteId = null }) {
   const evidence = await uploadEvidence(fotoEntrada, matricula, "entry", location);
 
   if (!CLOUD_ENABLED) {
@@ -2791,6 +2795,8 @@ async function insertEntryRecord({ nombre, matricula, fotoEntrada, descriptorEnt
       evidenciaEntradaGeolocalizada: Boolean(location.latitud && location.longitud && location.estado === "ubicacion_correcta"),
       evidenciaGeolocalizadaObservacion: location.observacion || "Ubicacion de entrada capturada localmente.",
       evidenciaObservacion: evidence.complete ? "" : "Metadatos de entrada incompletos.",
+      sitioId: siteId || state.activeSite?.id || state.currentAppUser?.sitio_id || null,
+      sitioEntradaId: siteId || state.activeSite?.id || state.currentAppUser?.sitio_id || null,
     });
     state.records.unshift(localRecord);
     persistLocalSnapshot();
@@ -2820,6 +2826,7 @@ async function insertEntryRecord({ nombre, matricula, fotoEntrada, descriptorEnt
     p_longitud_entrada: location.longitud ?? null,
     p_precision_entrada: location.precision ?? null,
     p_ubicacion_entrada_estado: location.estado || "ubicacion_denegada",
+    p_sitio_id: siteId || null,
   };
 
   console.log("callAdminRpc - Enviando payload a registrar_entrada_segura:", payload);
@@ -3662,6 +3669,55 @@ function syncAttendanceIdentity() {
   return identity;
 }
 
+function canSelectAttendanceSite() {
+  return ["admin", "superadmin"].includes(state.currentRole);
+}
+
+function getAttendanceSiteOptions() {
+  if (!canSelectAttendanceSite()) return [];
+  const organizationId = String(state.currentAppUser?.organizacion_id || "");
+  return state.managedSites
+    .filter((site) => site?.id && site.activo !== false)
+    .filter((site) => state.currentRole === "superadmin" || String(site.organizacion_id || "") === organizationId)
+    .sort((a, b) => {
+      const organizationA = getManagedSiteOrganizationName(a);
+      const organizationB = getManagedSiteOrganizationName(b);
+      return organizationA.localeCompare(organizationB) || String(a.nombre || "").localeCompare(String(b.nombre || ""));
+    });
+}
+
+function populateAttendanceSiteSelector() {
+  if (!els.entrySiteField || !els.entrySiteSelect) return;
+  const visible = canSelectAttendanceSite();
+  els.entrySiteField.classList.toggle("is-hidden", !visible);
+  els.entrySiteSelect.required = visible;
+  els.entrySiteSelect.disabled = !visible;
+  if (!visible) {
+    els.entrySiteSelect.value = "";
+    return;
+  }
+
+  const previousValue = els.entrySiteSelect.value;
+  const sites = getAttendanceSiteOptions();
+  els.entrySiteSelect.innerHTML = '<option value="">Selecciona un sitio</option>';
+  sites.forEach((site) => {
+    const organizationName = getManagedSiteOrganizationName(site);
+    const label = state.currentRole === "superadmin"
+      ? `${organizationName} - ${site.nombre || "Sitio"}`
+      : site.nombre || "Sitio";
+    els.entrySiteSelect.appendChild(new Option(label, site.id));
+  });
+
+  const preferredValue = [previousValue, state.currentAppUser?.sitio_id]
+    .find((value) => sites.some((site) => String(site.id) === String(value || "")));
+  els.entrySiteSelect.value = preferredValue || (sites.length === 1 ? sites[0].id : "");
+}
+
+function getSelectedAttendanceSiteId() {
+  if (!canSelectAttendanceSite()) return null;
+  return String(els.entrySiteSelect?.value || "").trim() || null;
+}
+
 function updateAttendanceShortcut() {
   if (!els.homeAttendanceHint) return;
   const { matricula } = getAttendanceIdentity();
@@ -3679,6 +3735,15 @@ async function openAttendanceView() {
     showToast("Completa tu nombre e identificador en Perfil para registrar asistencia.");
     showView("profile");
     return;
+  }
+
+  if (canSelectAttendanceSite()) {
+    if (!state.managedSites.length) await loadOrganizations({ silent: true });
+    populateAttendanceSiteSelector();
+    if (!getAttendanceSiteOptions().length) {
+      showToast("No hay sitios activos disponibles para registrar asistencia.");
+      return;
+    }
   }
 
   // En una PWA móvil, getUserMedia debe comenzar dentro del toque que abrió Registro.
@@ -3771,9 +3836,15 @@ async function handleEntrySubmit(event) {
   event.preventDefault();
   const nombre = els.entryName.value.trim();
   const matricula = normalizeMatricula(els.entryMatricula.value);
+  const siteId = getSelectedAttendanceSiteId();
 
   if (!state.entryPhoto || !state.entryFace || !nombre || !matricula) {
     showToast("Toma una foto valida antes de guardar la entrada.");
+    return;
+  }
+  if (canSelectAttendanceSite() && !siteId) {
+    showToast("Selecciona el sitio donde registraras la asistencia.");
+    els.entrySiteSelect?.focus();
     return;
   }
   if (state.attendanceSubmitting.entry) return;
@@ -3797,11 +3868,13 @@ async function handleEntrySubmit(event) {
         fotoEntrada: state.entryPhoto,
         descriptorEntrada: state.entryFace.descriptor,
         location,
+        siteId,
       });
       state.records.unshift(record);
       persistLocalSnapshot();
       clearCapturedFace("entry");
       els.entryForm.reset();
+      populateAttendanceSiteSelector();
       setFaceStatus(els.entryFaceStatus, "Listo para nueva captura.");
       stopCamera("entry");
       await refreshRecords({ silent: true });
@@ -3877,6 +3950,12 @@ function getAttendanceSaveErrorMessage(error, flow) {
   }
   if (/horario_entrada_no_configurado|horario_salida_no_configurado/.test(message)) {
     return "Tu sitio no tiene un horario configurado. Contacta al administrador.";
+  }
+  if (/sitio_requerido_para_admin/.test(message)) {
+    return "Selecciona el sitio donde registraras la asistencia.";
+  }
+  if (/sitio_fuera_de_alcance/.test(message)) {
+    return "No tienes permisos para registrar asistencia en ese sitio.";
   }
   if (/usuario_sin_sitio_asignado|sitio_activo_no_encontrado|sitio_de_entrada_no_encontrado/.test(message)) {
     return "Tu cuenta no tiene un sitio operativo asignado. Contacta al administrador.";
@@ -5120,7 +5199,10 @@ function renderAdminUsersSection(records = getVisibleRecords()) {
   const selectedOrganizationId = getSelectedUserScopeOrganizationId();
   const selectedOrganizationName = getUserScopeOrganizationName(selectedOrganizationId);
   const rows = getAdminUserRows().filter((user) => String(user.organizacion_id || "") === selectedOrganizationId);
-  const withoutSite = rows.filter((user) => !adminUserHasSite(user));
+  const withoutSite = rows.filter((user) => (
+    !adminUserHasSite(user)
+    && ["usuario", "supervisor"].includes(normalizeAppRole(user.rol))
+  ));
   const assigned = rows.filter(adminUserHasSite);
   const activeView = state.adminUserDirectoryView === "assigned" ? "assigned" : "unassigned";
   const visibleRows = activeView === "assigned" ? assigned : withoutSite;

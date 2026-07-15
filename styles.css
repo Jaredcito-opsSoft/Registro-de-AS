@@ -6227,6 +6227,24 @@ tbody tr:hover {
   font-weight: 700;
 }
 
+.attendance-site-field {
+  display: grid;
+  gap: 8px;
+  color: var(--ink);
+  font-weight: 800;
+}
+
+.attendance-site-field select {
+  width: 100%;
+  min-height: 48px;
+}
+
+.attendance-site-field small {
+  color: var(--muted);
+  font-weight: 600;
+  line-height: 1.4;
+}
+
 .data-form input[type="hidden"] {
   display: none;
 }

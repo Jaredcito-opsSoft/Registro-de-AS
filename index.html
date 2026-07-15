@@ -16,7 +16,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="stylesheet"
     href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" />
-  <link rel="stylesheet" href="styles.css?v=2.51-avatar-signed-url" />
+  <link rel="stylesheet" href="styles.css?v=2.52-admin-multisite-attendance" />
 </head>
 
 <body>
@@ -429,6 +429,13 @@
               </div>
               <input id="entryName" type="hidden" required />
               <input id="entryMatricula" type="hidden" required />
+              <label id="entrySiteField" class="attendance-site-field is-hidden" for="entrySiteSelect">
+                Registrar en sitio
+                <select id="entrySiteSelect">
+                  <option value="">Selecciona un sitio</option>
+                </select>
+                <small>El registro conservara este sitio para validar ubicacion y salida.</small>
+              </label>
               <div class="form-actions">
                 <button class="primary wide" type="submit">Guardar entrada</button>
                 <button class="back-button wide" data-target="home" type="button">Cancelar</button>
@@ -1327,7 +1334,7 @@
   <script src="supabase-config.js?v=f0-mobile-shell"></script>
   <script src="auth.js?v=2.48-user-reactivation"></script>
   <script src="notification-rules.js?v=1.0-attendance-reminders"></script>
-  <script src="app.js?v=2.51-avatar-signed-url"></script>
+  <script src="app.js?v=2.52-admin-multisite-attendance"></script>
 </body>
 
 </html>
