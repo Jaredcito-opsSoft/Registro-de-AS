@@ -16,7 +16,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="stylesheet"
     href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" />
-  <link rel="stylesheet" href="styles.css?v=2.53-privileged-attendance-cycles" />
+  <link rel="stylesheet" href="styles.css?v=2.54-role-site-scopes" />
 </head>
 
 <body>
@@ -786,40 +786,6 @@
           </section>
 
           <!-- Asistencias en Administración -->
-          <section class="attendance-control-panel" aria-labelledby="attendanceControlTitle">
-            <div class="attendance-control-head">
-              <div>
-                <p class="section-kicker">Control operativo</p>
-                <h3 id="attendanceControlTitle">Seguimiento de asistencia</h3>
-                <p id="attendanceControlScope">Consulta el estado de las personas dentro de tu alcance.</p>
-              </div>
-              <span id="attendanceControlDateLabel" class="attendance-control-date">Hoy</span>
-            </div>
-            <div class="attendance-control-metrics" aria-label="Resumen de personas esperadas">
-              <article class="attendance-control-metric is-expected"><small>Esperados</small><strong id="attendanceExpectedCount">0</strong></article>
-              <article class="attendance-control-metric is-missing"><small>Sin registro</small><strong id="attendanceMissingCount">0</strong></article>
-              <article class="attendance-control-metric is-entry"><small>Con entrada</small><strong id="attendanceEntryCount">0</strong></article>
-              <article class="attendance-control-metric is-complete"><small>Completos</small><strong id="attendanceCompleteCount">0</strong></article>
-              <article class="attendance-control-metric is-review"><small>Revision</small><strong id="attendanceReviewCount">0</strong></article>
-            </div>
-            <form class="attendance-control-filters" aria-label="Filtros del control operativo">
-              <label>Fecha<input id="attendanceControlDate" type="date" /></label>
-              <label>Organizacion<select id="attendanceControlOrganization"><option value="all">Todas las organizaciones</option></select></label>
-              <label>Sitio<select id="attendanceControlSite"><option value="all">Todos los sitios</option></select></label>
-              <label>Estado<select id="attendanceControlStatus"><option value="all">Todos los estados</option><option value="missing">Sin registro</option><option value="entry">Entrada registrada</option><option value="complete">Jornada completa</option><option value="review">Requiere revision</option></select></label>
-              <label class="attendance-control-search">Buscar<input id="attendanceControlSearch" type="search" autocomplete="off" placeholder="Nombre o identificador" /></label>
-              <button id="attendanceControlReset" class="ghost" type="button">Restablecer</button>
-            </form>
-            <div id="attendanceControlEmpty" class="attendance-control-empty is-hidden" role="status"></div>
-            <div id="attendanceControlCards" class="attendance-control-cards" aria-live="polite"></div>
-            <div class="attendance-control-table-wrap">
-              <table class="attendance-control-table">
-                <thead><tr><th>Persona</th><th>Organizacion</th><th>Sitio</th><th>Entrada</th><th>Salida</th><th>Estado</th></tr></thead>
-                <tbody id="attendanceControlTableBody"></tbody>
-              </table>
-            </div>
-          </section>
-
           <section class="site-users-overview admin-control is-hidden" aria-labelledby="siteUsersTitle">
             <div class="ops-dashboard-head">
               <div>
@@ -846,6 +812,40 @@
                 <p>Filtra por fecha, sitio operativo o estado. Cada sitio aparece junto a su organizacion.</p>
               </div>
             </div>
+
+            <section class="attendance-control-panel" aria-labelledby="attendanceControlTitle">
+              <div class="attendance-control-head">
+                <div>
+                  <p class="section-kicker">Control operativo</p>
+                  <h3 id="attendanceControlTitle">Seguimiento de asistencia</h3>
+                  <p id="attendanceControlScope">Consulta el estado de las personas dentro de tu alcance.</p>
+                </div>
+                <span id="attendanceControlDateLabel" class="attendance-control-date">Hoy</span>
+              </div>
+              <div class="attendance-control-metrics" aria-label="Resumen de personas esperadas">
+                <article class="attendance-control-metric is-expected"><small>Esperados</small><strong id="attendanceExpectedCount">0</strong></article>
+                <article class="attendance-control-metric is-missing"><small>Sin registro</small><strong id="attendanceMissingCount">0</strong></article>
+                <article class="attendance-control-metric is-entry"><small>Con entrada</small><strong id="attendanceEntryCount">0</strong></article>
+                <article class="attendance-control-metric is-complete"><small>Completos</small><strong id="attendanceCompleteCount">0</strong></article>
+                <article class="attendance-control-metric is-review"><small>Revision</small><strong id="attendanceReviewCount">0</strong></article>
+              </div>
+              <form class="attendance-control-filters" aria-label="Filtros del control operativo">
+                <label>Fecha<input id="attendanceControlDate" type="date" /></label>
+                <label>Organizacion<select id="attendanceControlOrganization"><option value="all">Todas las organizaciones</option></select></label>
+                <label>Sitio<select id="attendanceControlSite"><option value="all">Todos los sitios</option></select></label>
+                <label>Estado<select id="attendanceControlStatus"><option value="all">Todos los estados</option><option value="missing">Sin registro</option><option value="entry">Entrada registrada</option><option value="complete">Jornada completa</option><option value="review">Requiere revision</option></select></label>
+                <label class="attendance-control-search">Buscar<input id="attendanceControlSearch" type="search" autocomplete="off" placeholder="Nombre o identificador" /></label>
+                <button id="attendanceControlReset" class="ghost" type="button">Restablecer</button>
+              </form>
+              <div id="attendanceControlEmpty" class="attendance-control-empty is-hidden" role="status"></div>
+              <div id="attendanceControlCards" class="attendance-control-cards" aria-live="polite"></div>
+              <div class="attendance-control-table-wrap">
+                <table class="attendance-control-table">
+                  <thead><tr><th>Persona</th><th>Organizacion</th><th>Sitio</th><th>Entrada</th><th>Salida</th><th>Estado</th></tr></thead>
+                  <tbody id="attendanceControlTableBody"></tbody>
+                </table>
+              </div>
+            </section>
 
             <form class="ops-filters admin-filters" aria-label="Filtros de administracion">
               <label>
@@ -1100,7 +1100,8 @@
                   <select id="userScopeAction">
                     <option value="assign_site">Asignar usuario sin sitio</option>
                     <option value="change_site">Cambiar usuario de sitio</option>
-                    <option value="make_supervisor">Asignar rol supervisor</option>
+                    <option value="make_supervisor">Asignar supervisor y sitios</option>
+                    <option value="change_role">Cambiar rol de usuario</option>
                   </select>
                 </label>
                 <label>
@@ -1110,9 +1111,18 @@
                   </select>
                 </label>
                 <label>
-                  Sitio
+                  <span id="userScopeSiteLabel">Sitio</span>
                   <select id="userScopeSite" disabled>
                     <option value="">Selecciona primero un usuario</option>
+                  </select>
+                  <small id="userScopeSiteHelp" class="field-help">El sitio principal se usara para registrar asistencia.</small>
+                </label>
+                <label id="userScopeRoleWrap" class="is-hidden">
+                  Nuevo rol
+                  <select id="userScopeRole">
+                    <option value="usuario">Usuario</option>
+                    <option value="supervisor">Supervisor</option>
+                    <option value="admin">Administrador</option>
                   </select>
                 </label>
                 <div class="site-actions">
@@ -1369,7 +1379,7 @@
   <script src="supabase-config.js?v=f0-mobile-shell"></script>
   <script src="auth.js?v=2.48-user-reactivation"></script>
   <script src="notification-rules.js?v=1.0-attendance-reminders"></script>
-  <script src="app.js?v=2.53-privileged-attendance-cycles"></script>
+  <script src="app.js?v=2.54-role-site-scopes"></script>
 </body>
 
 </html>

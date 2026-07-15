@@ -14,7 +14,7 @@ const CLOUD_ENABLED = Boolean(SUPABASE.url && SUPABASE.publishableKey && SUPABAS
 const PHOTO_BUCKET = SUPABASE.bucket || "attendance-photos";
 const PROFILE_AVATAR_BUCKET = "profile-avatars";
 const GEO_PRECISION_MAX_METERS = 200;
-const LOCAL_ASSET_VERSION = "2.53-privileged-attendance-cycles";
+const LOCAL_ASSET_VERSION = "2.54-role-site-scopes";
 const ATTENDANCE_STREAK_RPC_ENABLED = SUPABASE.enableAttendanceStreakRpc === true;
 const NOTIFICATION_PREFERENCE_PREFIX = "registro_asistencia_notifications_v1";
 const NOTIFICATION_SENT_PREFIX = "registro_asistencia_notification_sent_v1";
@@ -146,6 +146,8 @@ const state = {
   managedSites: [],
   managedUsers: [],
   attendanceControlFilters: { date: "", organization: "all", site: "all", status: "all", query: "" },
+  managedUserSiteScopes: [],
+  currentSiteScopes: [],
   recordFilters: {
     date: "",
     status: "all",
@@ -367,6 +369,10 @@ function populateElements() {
   els.userScopeActionWrap = $("#userScopeActionWrap");
   els.userScopeUser = $("#userScopeUser");
   els.userScopeSite = $("#userScopeSite");
+  els.userScopeSiteLabel = $("#userScopeSiteLabel");
+  els.userScopeSiteHelp = $("#userScopeSiteHelp");
+  els.userScopeRoleWrap = $("#userScopeRoleWrap");
+  els.userScopeRole = $("#userScopeRole");
   els.assignUserScopeButton = $("#assignUserScopeButton");
   els.userScopeStatus = $("#userScopeStatus");
   els.adminInviteEmail = $("#adminInviteEmail");
@@ -1680,6 +1686,32 @@ function canManageAssignedSite(siteId = "") {
   return Boolean(siteId) && String(siteId) === String(state.currentAppUser?.sitio_id || "");
 }
 
+function getCurrentSiteScopeIds() {
+  const ids = state.currentSiteScopes
+    .map((scope) => String(scope.sitio_id || scope.id || ""))
+    .filter(Boolean);
+  const primarySiteId = String(state.currentAppUser?.sitio_id || "");
+  if (primarySiteId && !ids.includes(primarySiteId)) ids.unshift(primarySiteId);
+  return ids;
+}
+
+function getOperationalSites() {
+  const sites = new Map();
+  [...state.managedSites, ...state.currentSiteScopes].forEach((site) => {
+    const id = String(site.id || site.sitio_id || "");
+    if (!id || sites.has(id)) return;
+    sites.set(id, {
+      ...site,
+      id,
+      nombre: site.nombre || site.sitio_nombre || "Sitio",
+      organizacion_id: site.organizacion_id || state.currentAppUser?.organizacion_id || "",
+      organizacion_nombre: site.organizacion_nombre || state.currentAppUser?.organizacion_nombre || "Organizacion",
+      activo: site.activo !== false,
+    });
+  });
+  return Array.from(sites.values());
+}
+
 function getCurrentUserMatricula() {
   return normalizeMatricula(state.currentAppUser?.matricula || state.currentUser?.user_metadata?.matricula || "");
 }
@@ -1689,8 +1721,12 @@ function canViewRecord(record) {
   if (isDemoAdminUnlocked() || hasPermission("view_all_records")) return true;
 
   if (hasPermission("view_site_records")) {
-    const assignedSite = state.currentAppUser?.sitio_id;
-    if (assignedSite) return [record.sitioId, record.sitioEntradaId, record.sitioSalidaId].includes(assignedSite);
+    const assignedSites = getCurrentSiteScopeIds();
+    if (assignedSites.length) {
+      return [record.sitioId, record.sitioEntradaId, record.sitioSalidaId]
+        .filter(Boolean)
+        .some((siteId) => assignedSites.includes(String(siteId)));
+    }
 
     const assignedOrg = state.currentAppUser?.organizacion_id;
     if (assignedOrg && record.organizacionId) return record.organizacionId === assignedOrg;
@@ -1705,6 +1741,33 @@ function canViewRecord(record) {
 
 function getVisibleRecords() {
   return state.records.filter(canViewRecord);
+}
+
+async function loadCurrentSiteScopes({ silent = false } = {}) {
+  const primarySiteId = state.currentAppUser?.sitio_id || "";
+  const fallback = primarySiteId
+    ? [{
+      sitio_id: primarySiteId,
+      sitio_nombre: state.currentAppUser?.sitio_nombre || "Sitio principal",
+      organizacion_id: state.currentAppUser?.organizacion_id || "",
+      organizacion_nombre: state.currentAppUser?.organizacion_nombre || "Organizacion",
+      es_principal: true,
+    }]
+    : [];
+
+  if (!CLOUD_ENABLED || !state.currentUser || !localStorage.getItem("registro_asistencia_token")) {
+    state.currentSiteScopes = fallback;
+    return fallback;
+  }
+
+  try {
+    const rows = await callAdminRpc("get_my_site_scopes", {});
+    state.currentSiteScopes = Array.isArray(rows) && rows.length ? rows : fallback;
+  } catch (error) {
+    state.currentSiteScopes = fallback;
+    if (!silent) showToast("No se pudieron cargar todos tus sitios asignados.");
+  }
+  return state.currentSiteScopes;
 }
 
 function applyAppUserSession(appUser) {
@@ -1867,12 +1930,14 @@ async function loadCurrentAppUser({ silent = false } = {}) {
     });
     const appUser = getRpcFirstRow(result);
     applyAppUserSession(appUser);
+    await loadCurrentSiteScopes({ silent: true });
     if (isKnownSuperadminEmail(authEmail) && appUser?.rol !== "superadmin" && !silent) {
       showToast("Tu cuenta necesita rol superadmin en Supabase para crear organizaciones. Aplica supabase-hito13.");
     }
     return appUser;
   } catch (error) {
     applyAppUserSession(null);
+    state.currentSiteScopes = [];
     if (!silent) showToast("No se pudo cargar el rol del usuario. Se aplicaran permisos basicos.");
     return null;
   }
@@ -2045,15 +2110,23 @@ function renderManagedUsers(rows = []) {
 }
 
 async function loadAdminDirectories({ silent = false } = {}) {
-  if (!CLOUD_ENABLED || !state.currentUser || !localStorage.getItem("registro_asistencia_token") || (!isRoleAdminSession() && !isDemoAdminUnlocked())) {
+  if (!CLOUD_ENABLED || !state.currentUser || !localStorage.getItem("registro_asistencia_token") || !canUseOperationsPanel()) {
+    state.managedUserSiteScopes = [];
     renderManagedUsers([]);
     return;
   }
   try {
-    const users = await callAdminRpc("get_manageable_users", {});
+    const [users, scopes] = await Promise.all([
+      callAdminRpc("get_manageable_users", {}),
+      isRoleAdminSession()
+        ? callAdminRpc("get_manageable_user_site_scopes", {}).catch(() => [])
+        : Promise.resolve([]),
+    ]);
+    state.managedUserSiteScopes = Array.isArray(scopes) ? scopes : [];
     renderManagedUsers(users || []);
   } catch (error) {
     if (!silent) showToast("No se pudieron cargar usuarios administrables.");
+    state.managedUserSiteScopes = [];
     renderManagedUsers([]);
   }
 }
@@ -3161,6 +3234,7 @@ function showAdminSection(section = "summary") {
   const activeNav = document.querySelector(`.admin-nav-pill[data-admin-section-target="${target}"]`);
   activeNav?.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "center" });
   if (target === "users") renderAdminUsersSection(getVisibleRecords());
+  if (target === "attendances") renderAttendanceControl();
 }
 
 function showToast(message) {
@@ -4538,7 +4612,7 @@ function dashboardScopeText() {
   const role = getRoleDefinition();
   if (state.isAdmin && !hasPermission("view_all_records")) return "Modo administrativo temporal: vista global desbloqueada.";
   if (hasPermission("view_all_records")) return `${role.label}: vista global permitida.`;
-  if (hasPermission("view_site_records")) return `${role.label}: registros del sitio asignado.`;
+  if (hasPermission("view_site_records")) return `${role.label}: registros de los sitios asignados.`;
   return `${role.label}: solo registros propios.`;
 }
 
@@ -4651,12 +4725,19 @@ function renderOperationsDashboard(records = getFilteredRecords()) {
 
 function attendanceControlScope() {
   if (normalizeAppRole(state.currentRole) === "superadmin") {
-    return { title: "Control global de asistencia", text: "Consulta organizaciones, sitios y personas dentro de tu alcance global.", organizationId: "", siteId: "", canChooseOrganization: true };
+    return { title: "Control global de asistencia", text: "Consulta organizaciones, sitios y personas dentro de tu alcance global.", organizationId: "", siteIds: [], canChooseOrganization: true };
   }
   if (isSupervisorSession()) {
-    return { title: "Control de tu sitio", text: "Revisa las asistencias del sitio que supervisas.", organizationId: String(state.currentAppUser?.organizacion_id || ""), siteId: String(state.currentAppUser?.sitio_id || ""), canChooseOrganization: false };
+    const siteIds = getCurrentSiteScopeIds();
+    return {
+      title: siteIds.length > 1 ? "Control de tus sitios" : "Control de tu sitio",
+      text: siteIds.length > 1 ? "Revisa las asistencias de los sitios que tienes asignados." : "Revisa las asistencias del sitio que supervisas.",
+      organizationId: String(state.currentAppUser?.organizacion_id || ""),
+      siteIds,
+      canChooseOrganization: false,
+    };
   }
-  return { title: "Control de asistencia", text: "Revisa las asistencias de tu organizacion y filtra por sitio cuando lo necesites.", organizationId: String(state.currentAppUser?.organizacion_id || ""), siteId: "", canChooseOrganization: false };
+  return { title: "Control de asistencia", text: "Revisa las asistencias de tu organizacion y filtra por sitio cuando lo necesites.", organizationId: String(state.currentAppUser?.organizacion_id || ""), siteIds: [], canChooseOrganization: false };
 }
 
 function normalizeAttendanceControlFilters() {
@@ -4664,7 +4745,8 @@ function normalizeAttendanceControlFilters() {
   const filters = state.attendanceControlFilters;
   if (!filters.date) filters.date = todayIso();
   if (!scope.canChooseOrganization) filters.organization = scope.organizationId || "all";
-  if (scope.siteId) filters.site = scope.siteId;
+  if (scope.siteIds.length === 1) filters.site = scope.siteIds[0];
+  if (scope.siteIds.length > 1 && filters.site !== "all" && !scope.siteIds.includes(String(filters.site))) filters.site = "all";
   return filters;
 }
 
@@ -4686,18 +4768,18 @@ function populateAttendanceControlFilters() {
   els.attendanceControlOrganization.value = filters.organization;
   els.attendanceControlOrganization.disabled = !scope.canChooseOrganization;
 
-  const sites = state.managedSites.filter((site) => {
+  const sites = getOperationalSites().filter((site) => {
     if (!site?.id || site.activo === false) return false;
-    if (scope.siteId && String(site.id) !== scope.siteId) return false;
+    if (scope.siteIds.length && !scope.siteIds.includes(String(site.id))) return false;
     return filters.organization === "all" || String(site.organizacion_id || "") === String(filters.organization);
   });
   const siteIds = new Set(sites.map((site) => String(site.id)));
   els.attendanceControlSite.innerHTML = "";
-  if (!scope.siteId) els.attendanceControlSite.appendChild(new Option("Todos los sitios", "all"));
+  if (scope.siteIds.length !== 1) els.attendanceControlSite.appendChild(new Option(scope.siteIds.length ? "Todos mis sitios" : "Todos los sitios", "all"));
   sites.forEach((site) => els.attendanceControlSite.appendChild(new Option(site.nombre || "Sitio", String(site.id))));
-  filters.site = scope.siteId || (siteIds.has(filters.site) ? filters.site : "all");
+  filters.site = scope.siteIds.length === 1 ? scope.siteIds[0] : (siteIds.has(filters.site) ? filters.site : "all");
   els.attendanceControlSite.value = filters.site;
-  els.attendanceControlSite.disabled = Boolean(scope.siteId);
+  els.attendanceControlSite.disabled = scope.siteIds.length === 1;
 }
 
 function getAttendanceControlUsers() {
@@ -4707,22 +4789,22 @@ function getAttendanceControlUsers() {
   source.forEach((user) => {
     if (!user || user.activo === false) return;
     const organizationId = String(user.organizacion_id || user.organizacionId || "");
-    const siteId = String(user.sitio_id || user.sitioId || "");
+    const userSiteIds = getManagedUserSiteScopeIds(user);
     if (scope.organizationId && organizationId && organizationId !== scope.organizationId) return;
-    if (scope.siteId && siteId && siteId !== scope.siteId) return;
+    if (scope.siteIds.length && !userSiteIds.some((siteId) => scope.siteIds.includes(siteId))) return;
     const key = String(user.id || normalizeMatricula(user.matricula || user.email || ""));
     if (key) users.set(key, user);
   });
   return Array.from(users.values());
 }
 
-function findAttendanceControlRecord(user, records, date) {
+function findAttendanceControlRecord(user, records, date, siteIds = []) {
   const userId = String(user.id || "");
   const matricula = normalizeMatricula(user.matricula || "");
   return records.find((record) => record.fecha === date && (
     (userId && String(record.usuarioId || "") === userId)
     || (matricula && normalizeMatricula(record.matricula || "") === matricula)
-  )) || null;
+  ) && (!siteIds.length || recordSiteIds(record).some((siteId) => siteIds.includes(siteId)))) || null;
 }
 
 function attendanceControlStatus(record) {
@@ -4757,11 +4839,13 @@ function renderAttendanceControl() {
   const records = getVisibleRecords();
   const query = normalizeMatricula(filters.query || "");
   const rows = getAttendanceControlUsers().map((user) => {
-    const record = findAttendanceControlRecord(user, records, filters.date);
+    const userSiteIds = getManagedUserSiteScopeIds(user);
+    const filteredSiteIds = filters.site === "all" ? userSiteIds : [String(filters.site)];
+    const record = findAttendanceControlRecord(user, records, filters.date, filteredSiteIds);
     const status = attendanceControlStatus(record);
-    const siteId = String(user.sitio_id || user.sitioId || "");
+    const siteId = String(filters.site !== "all" ? filters.site : (recordSiteIds(record || {})[0] || user.sitio_id || user.sitioId || userSiteIds[0] || ""));
     const organizationId = String(user.organizacion_id || user.organizacionId || record?.organizacionId || "");
-    const site = user.sitio_nombre || state.managedSites.find((item) => String(item.id || "") === siteId)?.nombre || recordSiteName(record || {});
+    const site = getOperationalSites().find((item) => String(item.id || "") === siteId)?.nombre || user.sitio_nombre || recordSiteName(record || {});
     const organization = user.organizacion_nombre || state.organizationHubs.find((item) => String(item.id || "") === organizationId)?.nombre || record?.organizacionNombre || "Organizacion";
     return {
       user,
@@ -4969,14 +5053,37 @@ function canManageUserAssignments() {
   return isRoleAdminSession() && hasAnyPermission(["manage_site", "manage_organization"]);
 }
 
-function getAssignableUsers() {
-  const actorIsSuperadmin = hasPermission("manage_organization");
+function getAssignableUsers(action = getUserScopeAction()) {
+  const actorRole = normalizeAppRole(state.currentRole);
+  const actorId = String(state.currentAppUser?.id || "");
+  const actorOrganizationId = String(state.currentAppUser?.organizacion_id || "");
+
   return state.managedUsers.filter((user) => {
+    if (!user?.id || user.activo === false) return false;
     const role = normalizeAppRole(user.rol);
-    if (role === "superadmin" || role === "admin") return false;
-    if (actorIsSuperadmin) return role === "usuario" || role === "supervisor";
-    return actorIsSuperadmin || role === "usuario";
+    if (role === "superadmin") return false;
+
+    if (actorRole === "admin") {
+      if (String(user.organizacion_id || "") !== actorOrganizationId) return false;
+      if (role === "admin") return String(user.id) === actorId && action !== "make_supervisor";
+      if (action === "change_role") return false;
+      return role === "usuario" || role === "supervisor";
+    }
+
+    if (actorRole !== "superadmin") return false;
+    if (action === "make_supervisor") return role === "usuario" || role === "supervisor";
+    return ["usuario", "supervisor", "admin"].includes(role);
   });
+}
+
+function getManagedUserSiteScopeIds(user) {
+  const ids = state.managedUserSiteScopes
+    .filter((scope) => String(scope.usuario_id || "") === String(user?.id || ""))
+    .map((scope) => String(scope.sitio_id || ""))
+    .filter(Boolean);
+  const primarySiteId = String(user?.sitio_id || "");
+  if (primarySiteId && !ids.includes(primarySiteId)) ids.unshift(primarySiteId);
+  return ids;
 }
 
 function getAssignableOrganizations() {
@@ -5026,14 +5133,13 @@ function getAssignableSitesForUser(user) {
   return state.managedSites.filter((site) => {
     if (site.activo === false || String(site.organizacion_id || "") !== String(user.organizacion_id)) return false;
     if (canManageOrg) return true;
-    if (String(site.organizacion_id || "") !== String(actor.organizacion_id || "")) return false;
-    return !actor.sitio_id || site.id === actor.sitio_id;
+    return String(site.organizacion_id || "") === String(actor.organizacion_id || "");
   });
 }
 
 function getManagedSiteOrganizationName(site) {
-  return site?.organizacion_nombre
-    || state.organizationHubs.find((organization) => organization.id === site?.organizacion_id)?.nombre
+  return state.organizationHubs.find((organization) => organization.id === site?.organizacion_id)?.nombre
+    || site?.organizacion_nombre
     || "Organizacion";
 }
 
@@ -5045,8 +5151,9 @@ function setUserScopeStatus(message, tone = "warning") {
 
 function getUserScopeAction() {
   const requested = els.userScopeAction?.value || "assign_site";
-  if (requested === "make_supervisor" && !hasPermission("manage_organization")) return "assign_site";
-  return ["assign_site", "change_site", "make_supervisor"].includes(requested) ? requested : "assign_site";
+  if (requested === "make_supervisor" && !isRoleAdminSession()) return "assign_site";
+  if (requested === "change_role" && normalizeAppRole(state.currentRole) !== "superadmin") return "assign_site";
+  return ["assign_site", "change_site", "make_supervisor", "change_role"].includes(requested) ? requested : "assign_site";
 }
 
 function getUserScopeActionCopy(action) {
@@ -5062,9 +5169,14 @@ function getUserScopeActionCopy(action) {
       status: "Elige una persona con sitio y selecciona su nueva sede.",
     },
     make_supervisor: {
-      help: "Asigna el rol supervisor y define el sitio que podra supervisar.",
-      button: "Asignar supervisor",
-      status: "Elige una persona y el sitio que supervisara.",
+      help: "Asigna o conserva el rol supervisor y elige uno o varios sitios de su organizacion.",
+      button: "Guardar supervisor y sitios",
+      status: "Elige una persona y todos los sitios que supervisara.",
+    },
+    change_role: {
+      help: "Solo superadmin puede cambiar el rol de un administrador. El sitio se conserva salvo que elijas otro.",
+      button: "Cambiar rol",
+      status: "Elige una persona, el nuevo rol y confirma su sitio operativo.",
     },
   };
   return copy[action] || copy.assign_site;
@@ -5088,16 +5200,19 @@ function populateUserScopeAssignment() {
       : String(organizations[0]?.id || ""));
   const action = getUserScopeAction();
   const copy = getUserScopeActionCopy(action);
-  const users = getAssignableUsers().filter((user) => {
+  const users = getAssignableUsers(action).filter((user) => {
     if (String(user.organizacion_id || "") !== selectedOrganizationId) return false;
     if (action === "assign_site") return !user.sitio_id;
     if (action === "change_site") return Boolean(user.sitio_id);
-    return normalizeAppRole(user.rol) !== "supervisor";
+    if (action === "make_supervisor") return ["usuario", "supervisor"].includes(normalizeAppRole(user.rol));
+    return action === "change_role";
   });
   const previousUserId = els.userScopeUser?.value || "";
-  const previousSiteId = els.userScopeSite?.value || "";
-  const selectedUser = users.find((user) => user.id === previousUserId) || null;
+  const previousSiteIds = Array.from(els.userScopeSite?.selectedOptions || []).map((option) => option.value).filter(Boolean);
+  const previousSiteUserId = els.userScopeSite?.dataset.userId || "";
+  const selectedUser = users.find((user) => String(user.id) === String(previousUserId)) || null;
   const canManageRoles = isRoleAdminSession() && hasPermission("manage_site");
+  const canChangeRoles = normalizeAppRole(state.currentRole) === "superadmin";
 
   populateOrganizationSelect(
     els.adminUsersOrganizationFilter,
@@ -5119,7 +5234,13 @@ function populateUserScopeAssignment() {
       supervisorOption.hidden = !canManageRoles;
       supervisorOption.disabled = !canManageRoles;
     }
+    const changeRoleOption = els.userScopeAction.querySelector('option[value="change_role"]');
+    if (changeRoleOption) {
+      changeRoleOption.hidden = !canChangeRoles;
+      changeRoleOption.disabled = !canChangeRoles;
+    }
     if (!canManageRoles && els.userScopeAction.value === "make_supervisor") els.userScopeAction.value = "assign_site";
+    if (!canChangeRoles && els.userScopeAction.value === "change_role") els.userScopeAction.value = "assign_site";
   }
   if (els.userScopeHelp) els.userScopeHelp.textContent = copy.help;
   if (els.userScopeKicker) els.userScopeKicker.textContent = canManageRoles ? "Gestion operativa" : "Alcance operativo";
@@ -5139,9 +5260,27 @@ function populateUserScopeAssignment() {
     els.userScopeUser.value = selectedUser?.id || "";
   }
 
+  if (els.userScopeRoleWrap) els.userScopeRoleWrap.classList.toggle("is-hidden", action !== "change_role");
+  if (els.userScopeRole) {
+    const selectedUserChanged = els.userScopeRole.dataset.userId !== String(selectedUser?.id || "");
+    if (selectedUserChanged && selectedUser) els.userScopeRole.value = normalizeAppRole(selectedUser.rol);
+    els.userScopeRole.dataset.userId = String(selectedUser?.id || "");
+    els.userScopeRole.disabled = !selectedUser || action !== "change_role";
+  }
+
   const sites = getAssignableSitesForUser(selectedUser);
+  const targetRole = action === "make_supervisor"
+    ? "supervisor"
+    : action === "change_role"
+      ? normalizeAppRole(els.userScopeRole?.value || selectedUser?.rol)
+      : normalizeAppRole(selectedUser?.rol);
+  const allowsMultipleSites = action === "make_supervisor" || (action === "change_role" && targetRole === "supervisor");
   if (els.userScopeSite) {
-    els.userScopeSite.innerHTML = `<option value="">${selectedUser ? "Selecciona un sitio" : "Selecciona primero un usuario"}</option>`;
+    els.userScopeSite.multiple = allowsMultipleSites;
+    els.userScopeSite.size = allowsMultipleSites ? Math.min(Math.max(sites.length, 2), 5) : 1;
+    els.userScopeSite.innerHTML = allowsMultipleSites
+      ? ""
+      : `<option value="">${selectedUser ? "Selecciona un sitio" : "Selecciona primero un usuario"}</option>`;
     sites.forEach((site) => {
       const option = document.createElement("option");
       option.value = site.id;
@@ -5149,16 +5288,33 @@ function populateUserScopeAssignment() {
       els.userScopeSite.appendChild(option);
     });
     els.userScopeSite.disabled = !selectedOrganizationId || !selectedUser || !sites.length;
-    const currentSiteId = String(selectedUser?.sitio_id || "");
-    els.userScopeSite.value = sites.some((site) => site.id === previousSiteId)
-      ? previousSiteId
-      : (action === "make_supervisor" && sites.some((site) => site.id === currentSiteId) ? currentSiteId : "");
+    const currentScopeIds = getManagedUserSiteScopeIds(selectedUser);
+    const keepPreviousSelection = selectedUser && String(selectedUser.id) === String(previousSiteUserId) && previousSiteIds.length > 0;
+    const selectedSiteIds = keepPreviousSelection
+      ? previousSiteIds
+      : (["make_supervisor", "change_role"].includes(action) ? currentScopeIds : []);
+    Array.from(els.userScopeSite.options).forEach((option) => {
+      option.selected = selectedSiteIds.includes(String(option.value));
+    });
+    els.userScopeSite.dataset.userId = String(selectedUser?.id || "");
+  }
+
+  if (els.userScopeSiteLabel) els.userScopeSiteLabel.textContent = allowsMultipleSites ? "Sitios supervisados" : "Sitio operativo";
+  if (els.userScopeSiteHelp) {
+    els.userScopeSiteHelp.textContent = allowsMultipleSites
+      ? "Selecciona uno o varios. El primero sera el sitio principal para su asistencia."
+      : action === "change_role" && targetRole === "admin"
+        ? "Opcional para admin: conservara acceso a toda su organizacion."
+        : "El sitio se usa para registrar asistencia y aplicar horario.";
   }
 
   if (els.assignUserScopeButton) {
-    const destinationSiteId = String(els.userScopeSite?.value || "");
-    const changingToSameSite = action === "change_site" && destinationSiteId === String(selectedUser?.sitio_id || "");
-    els.assignUserScopeButton.disabled = !selectedUser || !destinationSiteId || changingToSameSite;
+    const destinationSiteIds = Array.from(els.userScopeSite?.selectedOptions || []).map((option) => option.value).filter(Boolean);
+    const siteRequired = action !== "change_role" || targetRole !== "admin";
+    const changingToSameSite = action === "change_site"
+      && destinationSiteIds.length === 1
+      && destinationSiteIds[0] === String(selectedUser?.sitio_id || "");
+    els.assignUserScopeButton.disabled = !selectedUser || (siteRequired && !destinationSiteIds.length) || changingToSameSite;
   }
 
   if (!selectedOrganizationId) {
@@ -5179,12 +5335,17 @@ async function assignUserScope() {
   }
 
   const userId = els.userScopeUser?.value || "";
-  const siteId = els.userScopeSite?.value || "";
   const action = getUserScopeAction();
-  const selectedUser = getAssignableUsers().find((user) => String(user.id) === String(userId));
-  const role = action === "make_supervisor" ? "supervisor" : "usuario";
-  if (!userId || !siteId) {
-    setUserScopeStatus("Selecciona un usuario y un sitio activo.", "danger");
+  const selectedUser = getAssignableUsers(action).find((user) => String(user.id) === String(userId));
+  const siteIds = Array.from(els.userScopeSite?.selectedOptions || []).map((option) => option.value).filter(Boolean);
+  const role = action === "make_supervisor"
+    ? "supervisor"
+    : action === "change_role"
+      ? normalizeAppRole(els.userScopeRole?.value || selectedUser?.rol)
+      : null;
+  const siteRequired = action !== "change_role" || role !== "admin";
+  if (!selectedUser || (siteRequired && !siteIds.length)) {
+    setUserScopeStatus("Selecciona una persona y al menos un sitio activo.", "danger");
     return;
   }
   if (action === "assign_site" && selectedUser?.sitio_id) {
@@ -5195,7 +5356,7 @@ async function assignUserScope() {
     setUserScopeStatus("Esta persona aun no tiene sitio. Usa Asignar usuario sin sitio.", "danger");
     return;
   }
-  if (action === "change_site" && String(selectedUser.sitio_id) === String(siteId)) {
+  if (action === "change_site" && siteIds.length === 1 && String(selectedUser.sitio_id) === String(siteIds[0])) {
     setUserScopeStatus("Selecciona un sitio distinto al actual.", "danger");
     return;
   }
@@ -5204,17 +5365,21 @@ async function assignUserScope() {
   if (els.assignUserScopeButton) els.assignUserScopeButton.disabled = true;
   setUserScopeStatus("Guardando asignacion...", "warning");
   try {
-    const result = getRpcFirstRow(await callAdminRpc("admin_assign_user_scope", {
+    const result = getRpcFirstRow(await callAdminRpc("admin_update_user_scope", {
       p_usuario_id: userId,
-      p_sitio_id: siteId,
+      p_sitio_ids: siteIds.length ? siteIds : null,
+      p_sitio_principal_id: siteIds[0] || null,
       p_rol: role,
     }));
-    const assignedRole = getRoleDefinition(result?.rol || role).label;
-    successMessage = action === "change_site"
-      ? `${assignedRole} cambiado correctamente de sitio.`
-      : `${assignedRole} asignado correctamente al sitio.`;
-    addAdminLog("user.scope_assigned", `${userId} / ${siteId} / ${result?.rol || role}`);
-    showToast(role === "supervisor" ? "Supervisor asignado al sitio." : (action === "change_site" ? "Sitio actualizado." : "Usuario asignado al sitio."));
+    const resultingRole = result?.rol || role || selectedUser.rol;
+    const assignedRole = getRoleDefinition(resultingRole).label;
+    successMessage = action === "change_role"
+      ? `Rol actualizado a ${assignedRole} sin perder su sitio operativo.`
+      : action === "make_supervisor"
+        ? `Supervisor asignado a ${Number(result?.sitios_asignados || siteIds.length)} sitio(s).`
+        : `${assignedRole} actualizado sin modificar su rol.`;
+    addAdminLog("user.scope_updated", `${userId} / ${siteIds.join(",")} / ${resultingRole}`);
+    showToast(successMessage);
     await loadOrganizations({ silent: true });
     await loadAdminDirectories({ silent: true });
   } catch (error) {
@@ -5303,8 +5468,14 @@ function adminUserListItem(user) {
   const role = getRoleDefinition(user.rol || "usuario");
   const statusClass = user.activo === false ? "danger" : "success";
   const normalizedRole = normalizeAppRole(user.rol);
-  const canEditScope = canManageUserAssignments() && !["admin", "superadmin"].includes(normalizedRole);
   const actorRole = normalizeAppRole(state.currentAppUser?.rol || state.currentRole);
+  const canEditScope = canManageUserAssignments()
+    && normalizedRole !== "superadmin"
+    && (
+      actorRole === "superadmin"
+      || ["usuario", "supervisor"].includes(normalizedRole)
+      || String(user.id || "") === String(state.currentAppUser?.id || "")
+    );
   const targetIsSuperadmin = normalizedRole === "superadmin";
   const targetIsProtectedOwner = isKnownOwnerEmail(user.email);
   const canManageLifecycle = ["admin", "superadmin"].includes(actorRole)
@@ -5319,7 +5490,11 @@ function adminUserListItem(user) {
   const canReactivate = canManageLifecycle && user.activo === false;
   const canPurge = canManageLifecycle
     && (actorRole === "superadmin" || ["usuario", "supervisor"].includes(normalizedRole));
-  const scopeLabel = adminUserHasSite(user) ? "Cambiar sitio" : "Asignar sitio";
+  const scopeLabel = actorRole === "superadmin" && normalizedRole === "admin"
+    ? "Rol y sitio"
+    : normalizedRole === "supervisor"
+      ? "Gestionar sitios"
+      : adminUserHasSite(user) ? "Cambiar sitio" : "Asignar sitio";
   return `
     <li class="admin-user-row">
       <div class="admin-user-identity">
@@ -5416,9 +5591,16 @@ function renderAdminUsersSection(records = getVisibleRecords()) {
   const selectedOrganizationId = getSelectedUserScopeOrganizationId();
   const selectedOrganizationName = getUserScopeOrganizationName(selectedOrganizationId);
   const rows = getAdminUserRows().filter((user) => String(user.organizacion_id || "") === selectedOrganizationId);
+  const canManageAdminRoles = normalizeAppRole(state.currentRole) === "superadmin";
   const withoutSite = rows.filter((user) => (
     !adminUserHasSite(user)
-    && ["usuario", "supervisor"].includes(normalizeAppRole(user.rol))
+    && (
+      ["usuario", "supervisor"].includes(normalizeAppRole(user.rol))
+      || (
+        normalizeAppRole(user.rol) === "admin"
+        && (canManageAdminRoles || String(user.id || "") === String(state.currentAppUser?.id || ""))
+      )
+    )
   ));
   const assigned = rows.filter(adminUserHasSite);
   const activeView = state.adminUserDirectoryView === "assigned" ? "assigned" : "unassigned";
@@ -5579,7 +5761,24 @@ function syncDashboardFiltersFromUi() {
 
 function populateDashboardFilterSelects() {
   const allVisible = getVisibleRecords();
-  const organizationOptions = state.organizationHubs
+  const organizationMap = new Map();
+  state.organizationHubs.forEach((organization) => {
+    if (organization.id) organizationMap.set(String(organization.id), organization);
+  });
+  state.currentSiteScopes.forEach((scope) => {
+    if (!scope.organizacion_id || organizationMap.has(String(scope.organizacion_id))) return;
+    organizationMap.set(String(scope.organizacion_id), {
+      id: scope.organizacion_id,
+      nombre: scope.organizacion_nombre || "Organizacion",
+    });
+  });
+  if (state.currentAppUser?.organizacion_id && !organizationMap.has(String(state.currentAppUser.organizacion_id))) {
+    organizationMap.set(String(state.currentAppUser.organizacion_id), {
+      id: state.currentAppUser.organizacion_id,
+      nombre: state.currentAppUser.organizacion_nombre || "Mi organizacion",
+    });
+  }
+  const organizationOptions = Array.from(organizationMap.values())
     .filter((organization) => organization.id)
     .map((organization) => ({ value: String(organization.id), label: organization.nombre || "Organización" }))
     .sort((a, b) => a.label.localeCompare(b.label));
@@ -5604,7 +5803,7 @@ function populateDashboardFilterSelects() {
     selectedOrganizationId = els.adminAttendanceOrganizationFilter.value;
   }
 
-  const siteOptions = state.managedSites
+  const siteOptions = getOperationalSites()
     .filter((site) => site.id && site.activo !== false)
     .filter((site) => selectedOrganizationId === "all" || site.organizacion_id === selectedOrganizationId)
     .map((site) => ({
@@ -5682,15 +5881,16 @@ function resetDashboardFilters() {
   const defaultOrganizationId = normalizeAppRole(state.currentRole) === "superadmin"
     ? "all"
     : (state.currentAppUser?.organizacion_id || state.currentAppUser?.organizacionId || "all");
-  state.recordFilters = { date: "", status: "all", risk: "all", organization: defaultOrganizationId, site: "all", user: "all", query: "" };
-  if (els.filterDate) els.filterDate.value = "";
+  const defaultDate = canUseOperationsPanel() ? todayIso() : "";
+  state.recordFilters = { date: defaultDate, status: "all", risk: "all", organization: defaultOrganizationId, site: "all", user: "all", query: "" };
+  if (els.filterDate) els.filterDate.value = defaultDate;
   if (els.filterStatus) els.filterStatus.value = "all";
   if (els.filterRisk) els.filterRisk.value = "all";
   if (els.filterSite) els.filterSite.value = "all";
   if (els.filterUser) els.filterUser.value = "all";
   if (els.filterSearch) els.filterSearch.value = "";
 
-  if (els.adminFilterDate) els.adminFilterDate.value = "";
+  if (els.adminFilterDate) els.adminFilterDate.value = defaultDate;
   if (els.adminFilterStatus) els.adminFilterStatus.value = "all";
   if (els.adminFilterRisk) els.adminFilterRisk.value = "all";
   if (els.adminAttendanceOrganizationFilter) els.adminAttendanceOrganizationFilter.value = defaultOrganizationId;
@@ -6867,6 +7067,12 @@ async function finishInitialization({ requestPermissions = false } = {}) {
   loadAttendanceStreak({ silent: true });
   await loadActiveSite({ silent: true });
   await loadOrganizationContext({ silent: true });
+  if (canUseOperationsPanel() && !state.recordFilters.date) {
+    const today = todayIso();
+    state.recordFilters.date = today;
+    if (els.filterDate) els.filterDate.value = today;
+    if (els.adminFilterDate) els.adminFilterDate.value = today;
+  }
   loadOrganizations({ silent: true });
   loadAdminDirectories({ silent: true });
   renderRecords();
@@ -6915,8 +7121,15 @@ function bindAdminPanelControls() {
     const editUserScopeButton = event.target.closest("[data-edit-user-scope]");
     if (editUserScopeButton) {
       const userId = editUserScopeButton.dataset.editUserScope || "";
-      const user = getAssignableUsers().find((candidate) => String(candidate.id) === String(userId));
-      if (els.userScopeAction) els.userScopeAction.value = user?.sitio_id ? "change_site" : "assign_site";
+      const user = state.managedUsers.find((candidate) => String(candidate.id) === String(userId));
+      if (els.userScopeAction) {
+        const role = normalizeAppRole(user?.rol);
+        els.userScopeAction.value = role === "admin" && normalizeAppRole(state.currentRole) === "superadmin"
+          ? "change_role"
+          : role === "supervisor"
+            ? "make_supervisor"
+            : user?.sitio_id ? "change_site" : "assign_site";
+      }
       populateUserScopeAssignment();
       if (els.userScopeUser) els.userScopeUser.value = userId;
       populateUserScopeAssignment();
@@ -6965,7 +7178,7 @@ function bindAdminPanelControls() {
       renderAdminUsersSection(getVisibleRecords());
       return;
     }
-    if (target === els.userScopeAction || target === els.userScopeUser || target === els.userScopeSite) {
+    if (target === els.userScopeAction || target === els.userScopeUser || target === els.userScopeSite || target === els.userScopeRole) {
       setUserScopeStatus(getUserScopeActionCopy(getUserScopeAction()).status, "warning");
       populateUserScopeAssignment();
       return;
@@ -7382,7 +7595,7 @@ async function init() {
   document.querySelector(".attendance-control-filters")?.addEventListener("submit", (event) => event.preventDefault());
   if (els.attendanceControlReset) els.attendanceControlReset.addEventListener("click", () => {
     const scope = attendanceControlScope();
-    state.attendanceControlFilters = { date: todayIso(), organization: scope.canChooseOrganization ? "all" : (scope.organizationId || "all"), site: scope.siteId || "all", status: "all", query: "" };
+    state.attendanceControlFilters = { date: todayIso(), organization: scope.canChooseOrganization ? "all" : (scope.organizationId || "all"), site: scope.siteIds.length === 1 ? scope.siteIds[0] : "all", status: "all", query: "" };
     renderAttendanceControl();
   });
 

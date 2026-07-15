@@ -4457,6 +4457,12 @@ tbody tr:hover {
   font-weight: 650;
 }
 
+.field-help {
+  color: var(--muted);
+  font-size: 0.74rem;
+  font-weight: 650;
+}
+
 .admin-filter-more {
   grid-column: span 2;
   align-self: end;
@@ -4799,6 +4805,14 @@ tbody tr:hover {
 .attendance-control-status.is-entry { color: var(--color-primary-strong); background: rgba(116, 111, 159, 0.1); }
 .attendance-control-status.is-complete { color: var(--success-ink); background: var(--success-bg); }
 .attendance-control-status.is-review { color: var(--danger-ink); background: var(--red-light); }
+
+.attendance-control-status.is-entry::before,
+.attendance-control-status.is-complete::before {
+  content: "\2713";
+  margin-right: 5px;
+  font-size: 0.82rem;
+  line-height: 1;
+}
 
 @media (min-width: 761px) {
   .admin-config-nav {
@@ -6051,6 +6065,16 @@ tbody tr:hover {
   font-size: 0.84rem;
   font-weight: 700;
   line-height: 1.45;
+}
+
+.admin-assignment-card select[multiple] {
+  min-height: 112px;
+  padding: 6px;
+}
+
+.admin-assignment-card select[multiple] option {
+  padding: 8px;
+  border-radius: 7px;
 }
 
 @media (max-width: 960px) {
