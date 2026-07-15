@@ -1,4 +1,4 @@
-# Sistema visual violeta de Asistencia QR
+# Sistema visual violeta de CheckIn App
 
 ## Direccion
 

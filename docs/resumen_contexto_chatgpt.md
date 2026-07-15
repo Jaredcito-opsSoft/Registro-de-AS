@@ -1,8 +1,8 @@
-# Resumen de contexto del proyecto Registro de Asistencia AS
+# Resumen de contexto del proyecto CheckIn App
 
 ## Proyecto
 
-Web App/PWA de registro de asistencia para entorno multiempresa, orientada a uso movil y operativo. El repositorio base es:
+Web App/PWA CheckIn App para registro de asistencia en entorno multiempresa, orientada a uso movil y operativo. El repositorio base es:
 
 - GitHub: `Jaredcito-opsSoft/Registro-de-AS`
 - Ruta local principal: `C:\Users\LG\Downloads\Registro AS\Registro-de-AS`

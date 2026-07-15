@@ -4,7 +4,7 @@
 
 Actua como senior fullstack product engineer + security-minded UI/UX engineer.
 
-Debes evolucionar el backoffice de la Web App/PWA `Registro de Asistencia AS` sin rehacer el proyecto desde cero. El objetivo es convertir el panel actual en un MVP administrativo claro, usable y alineado al Plan Maestro: multiempresa, roles, sitios, usuarios, keys de acceso, asistencias, evidencia y auditoria.
+Debes evolucionar el backoffice de la Web App/PWA `CheckIn App` sin rehacer el proyecto desde cero. El objetivo es convertir el panel actual en un MVP administrativo claro, usable y alineado al Plan Maestro: multiempresa, roles, sitios, usuarios, keys de acceso, asistencias, evidencia y auditoria.
 
 ## Contexto del proyecto
 

@@ -1,4 +1,4 @@
-# Rediseno azul de Asistencia QR
+# Rediseno azul de CheckIn App
 
 ## Objetivo
 

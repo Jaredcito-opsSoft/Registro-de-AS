@@ -1,5 +1,6 @@
-const CACHE_PREFIX = "asistencia-qr-static-";
-const CACHE_VERSION = "asistencia-qr-static-2.55-auth-session-order";
+const CACHE_PREFIX = "checkin-app-static-";
+const CACHE_VERSION = "checkin-app-static-2.56-checkin-app-brand";
+const LEGACY_CACHE_PREFIXES = ["asistencia-qr-static-"];
 const STATIC_ASSETS = [
   "/",
   "/index.html",
@@ -48,7 +49,10 @@ self.addEventListener("activate", (event) => {
   event.waitUntil(
     caches.keys().then((keys) => Promise.all(
       keys
-        .filter((key) => key.startsWith(CACHE_PREFIX) && key !== CACHE_VERSION)
+        .filter((key) => (
+          (key.startsWith(CACHE_PREFIX) && key !== CACHE_VERSION)
+          || LEGACY_CACHE_PREFIXES.some((prefix) => key.startsWith(prefix))
+        ))
         .map((key) => caches.delete(key))
     ))
   );

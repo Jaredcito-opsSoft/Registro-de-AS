@@ -1,4 +1,4 @@
-# Avatar local y reloj de Asistencia QR
+# Avatar local y reloj de CheckIn App
 
 ## Cambios realizados
 

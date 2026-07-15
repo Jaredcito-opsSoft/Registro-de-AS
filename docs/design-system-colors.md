@@ -1,4 +1,4 @@
-# Sistema de color de Asistencia QR
+# Sistema de color de CheckIn App
 
 ## Objetivo
 
