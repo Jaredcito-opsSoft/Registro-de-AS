@@ -1,7 +1,7 @@
 const STORAGE_KEY = "registro_asistencia_qr_v1";
 const DEMO_KEY = "registro_asistencia_demo_mode";
 const ADMIN_LOG_KEY = "registro_asistencia_admin_log_v1";
-const ADMIN_KEY = "ADMIN123";
+const ADMIN_KEY = String(window.SUPABASE_CONFIG?.demoAdminKey || "").trim();
 const QR_START = { hour: 16, minute: 30 };
 const QR_END = { hour: 17, minute: 10 };
 const QR_VALID_MINUTES = 5;
@@ -14,7 +14,7 @@ const CLOUD_ENABLED = Boolean(SUPABASE.url && SUPABASE.publishableKey && SUPABAS
 const PHOTO_BUCKET = SUPABASE.bucket || "attendance-photos";
 const PROFILE_AVATAR_BUCKET = "profile-avatars";
 const GEO_PRECISION_MAX_METERS = 200;
-const LOCAL_ASSET_VERSION = "2.57-checkin-auth-permissions";
+const LOCAL_ASSET_VERSION = "2.58-session-rbac-private-evidence";
 const ATTENDANCE_STREAK_RPC_ENABLED = SUPABASE.enableAttendanceStreakRpc === true;
 const NOTIFICATION_PREFERENCE_PREFIX = "registro_asistencia_notifications_v1";
 const NOTIFICATION_SENT_PREFIX = "registro_asistencia_notification_sent_v1";
@@ -1643,7 +1643,7 @@ function isProductionEnvironment() {
 }
 
 function canUseDemoAdminKey() {
-  return !isProductionEnvironment() && state.demoMode;
+  return Boolean(ADMIN_KEY) && !isProductionEnvironment() && state.demoMode;
 }
 
 function isDemoAdminUnlocked() {
@@ -1899,7 +1899,7 @@ function isKnownOwnerEmail(email) {
   return KNOWN_SUPERADMIN_EMAILS.has(String(email || "").trim().toLowerCase());
 }
 
-async function loadCurrentAppUser({ silent = false, throwOnError = false } = {}) {
+async function loadCurrentAppUser({ silent = false, throwOnError = false, loadSiteScopes = true } = {}) {
   if (!CLOUD_ENABLED || !state.currentUser) {
     applyAppUserSession(null);
     return null;
@@ -1930,7 +1930,9 @@ async function loadCurrentAppUser({ silent = false, throwOnError = false } = {})
     });
     const appUser = getRpcFirstRow(result);
     applyAppUserSession(appUser);
-    await loadCurrentSiteScopes({ silent: true });
+    if (loadSiteScopes) {
+      await loadCurrentSiteScopes({ silent: true });
+    }
     if (isKnownSuperadminEmail(authEmail) && appUser?.rol !== "superadmin" && !silent) {
       showToast("Tu cuenta necesita rol superadmin en Supabase para crear organizaciones. Aplica supabase-hito13.");
     }
@@ -1947,6 +1949,25 @@ async function loadCurrentAppUser({ silent = false, throwOnError = false } = {})
 
 async function loadOrganizations({ silent = false } = {}) {
   if (!CLOUD_ENABLED || !state.currentUser || !localStorage.getItem("registro_asistencia_token") || !els.organizationList) return;
+
+  if (isSupervisorSession()) {
+    const site = state.activeSite || await loadActiveSite({ silent: true });
+    if (site?.id) {
+      state.organizationHubs = [{
+        id: state.currentAppUser?.organizacion_id,
+        nombre: state.currentAppUser?.organizacion_nombre || "Mi organizacion",
+        slug: "",
+        tipo: "",
+        activo: true,
+        sitios: [site],
+      }];
+      state.selectedOrganizationId = state.currentAppUser?.organizacion_id || null;
+      renderOrganizations();
+      setOrganizationHubNotice("Solo puedes administrar el sitio que tienes asignado.", "warning");
+      return;
+    }
+  }
+
   try {
     const rows = await callAdminRpc("admin_list_organization_hubs", {});
     state.organizationHubs = Array.isArray(rows) ? rows : [];
@@ -2845,7 +2866,8 @@ async function uploadEvidence(dataUrl, matricula, kind, location = null) {
     throw new Error(text || "No se pudo subir la evidencia");
   }
 
-  evidence.url = `${SUPABASE.url}/storage/v1/object/public/${PHOTO_BUCKET}/${encodedPath}`;
+  // La base conserva una referencia opaca; la foto solo se abre con URL firmada.
+  evidence.url = `storage://${PHOTO_BUCKET}/${evidence.path}`;
   evidence.metadata.uploaded_at_server = new Date().toISOString();
   evidence.metadata.storage_path = evidence.path;
   return evidence;
@@ -3012,7 +3034,7 @@ async function callAdminRpc(functionName, payload) {
     });
   } catch (error) {
     if (isOperationalSessionError(error) && functionName !== "activate_app_session" && functionName !== "deactivate_app_session") {
-      handleOperationalSessionInvalidation();
+      handleOperationalSessionInvalidation(error);
     }
     throw error;
   }
@@ -3040,8 +3062,10 @@ function isOperationalSessionError(error) {
   return message.includes("sesion_reemplazada_en_otro_dispositivo") || message.includes("sesion_operativa_requerida");
 }
 
-function handleOperationalSessionInvalidation() {
+function handleOperationalSessionInvalidation(error) {
   if (!localStorage.getItem("registro_asistencia_token")) return;
+  const message = String(error?.message || error || "").toLowerCase();
+  const wasReplaced = message.includes("sesion_reemplazada_en_otro_dispositivo");
   clearSession();
   localStorage.removeItem(APP_SESSION_STORAGE_KEY);
   state.currentUser = null;
@@ -3049,7 +3073,9 @@ function handleOperationalSessionInvalidation() {
   stopCamera("entry");
   stopCamera("exit");
   showLoginView();
-  showToast("Tu sesión se cerró porque la cuenta se abrió en otro dispositivo. Inicia sesión nuevamente.");
+  showToast(wasReplaced
+    ? "Tu sesión se cerró porque la cuenta se abrió en otro dispositivo. Inicia sesión nuevamente."
+    : "Tu sesión operativa expiró. Inicia sesión nuevamente.");
 }
 
 async function activateOperationalSession() {
@@ -4218,7 +4244,8 @@ function evidenceCell(record) {
 
 async function getSignedEvidenceUrl(record, kind) {
   const path = kind === "entrada" ? record.fotoEntradaStoragePath : record.fotoSalidaStoragePath;
-  const fallback = kind === "entrada" ? record.fotoEntrada : record.fotoSalida;
+  const rawFallback = kind === "entrada" ? record.fotoEntrada : record.fotoSalida;
+  const fallback = /^(?:data:|blob:)/i.test(String(rawFallback || "")) ? rawFallback : "";
   if (!CLOUD_ENABLED || !path || path === "local_data_url") return fallback;
 
   try {
@@ -6575,7 +6602,11 @@ async function initializeAuthenticatedApp(user, { requestPermissions = false } =
 
   // Una cuenta nueva necesita primero su fila en usuarios_app. La RPC de
   // sesion operativa requiere esa fila y por eso se activa despues.
-  const appUser = await loadCurrentAppUser({ silent: true, throwOnError: true });
+  const appUser = await loadCurrentAppUser({
+    silent: true,
+    throwOnError: true,
+    loadSiteScopes: false,
+  });
   if (!appUser && !isKnownSuperadminEmail(user?.email)) {
     throw new Error("No se pudo completar la afiliacion de tu cuenta con el sitio seleccionado.");
   }
