@@ -24,7 +24,12 @@ function authHeaders(token = "") {
 
 async function parseAuthResponse(response) {
   const text = await response.text();
-  return text ? JSON.parse(text) : {};
+  if (!text) return {};
+  try {
+    return JSON.parse(text);
+  } catch {
+    return { message: text };
+  }
 }
 
 function authErrorMessage(data, fallback) {
@@ -156,6 +161,9 @@ async function crearCuenta(email, password, nombre, matricula, invitationKey = "
 
     const token = data.access_token || data.session?.access_token;
     const refresh = data.refresh_token || data.session?.refresh_token;
+    // Sin sesion en respuestas que requieren confirmar correo, no conservar
+    // tokens de una cuenta anterior en el mismo navegador.
+    clearSession();
     saveSession(token, refresh);
     return data;
   } catch (error) {

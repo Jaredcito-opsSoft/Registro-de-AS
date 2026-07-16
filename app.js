@@ -14,7 +14,7 @@ const CLOUD_ENABLED = Boolean(SUPABASE.url && SUPABASE.publishableKey && SUPABAS
 const PHOTO_BUCKET = SUPABASE.bucket || "attendance-photos";
 const PROFILE_AVATAR_BUCKET = "profile-avatars";
 const GEO_PRECISION_MAX_METERS = 200;
-const LOCAL_ASSET_VERSION = "2.56-checkin-app-brand";
+const LOCAL_ASSET_VERSION = "2.57-checkin-auth-permissions";
 const ATTENDANCE_STREAK_RPC_ENABLED = SUPABASE.enableAttendanceStreakRpc === true;
 const NOTIFICATION_PREFERENCE_PREFIX = "registro_asistencia_notifications_v1";
 const NOTIFICATION_SENT_PREFIX = "registro_asistencia_notification_sent_v1";
@@ -1899,7 +1899,7 @@ function isKnownOwnerEmail(email) {
   return KNOWN_SUPERADMIN_EMAILS.has(String(email || "").trim().toLowerCase());
 }
 
-async function loadCurrentAppUser({ silent = false } = {}) {
+async function loadCurrentAppUser({ silent = false, throwOnError = false } = {}) {
   if (!CLOUD_ENABLED || !state.currentUser) {
     applyAppUserSession(null);
     return null;
@@ -1938,6 +1938,7 @@ async function loadCurrentAppUser({ silent = false } = {}) {
   } catch (error) {
     applyAppUserSession(null);
     state.currentSiteScopes = [];
+    if (throwOnError) throw error;
     if (!silent) showToast("No se pudo cargar el rol del usuario. Se aplicaran permisos basicos.");
     return null;
   }
@@ -6569,6 +6570,22 @@ function showAppShell(user) {
   if (els.appShell) els.appShell.classList.remove("is-hidden");
 }
 
+async function initializeAuthenticatedApp(user, { requestPermissions = false } = {}) {
+  showAppShell(user);
+
+  // Una cuenta nueva necesita primero su fila en usuarios_app. La RPC de
+  // sesion operativa requiere esa fila y por eso se activa despues.
+  const appUser = await loadCurrentAppUser({ silent: true, throwOnError: true });
+  if (!appUser && !isKnownSuperadminEmail(user?.email)) {
+    throw new Error("No se pudo completar la afiliacion de tu cuenta con el sitio seleccionado.");
+  }
+
+  prepareOperationalSession({ rotate: true });
+  await activateOperationalSession();
+  await finishInitialization({ requestPermissions });
+  return appUser;
+}
+
 
 async function continueAsOperationalGuest() {
   const guestUser = {
@@ -6594,7 +6611,7 @@ async function continueAsOperationalGuest() {
     isGuest: true,
   });
   showAppShell(guestUser);
-  await finishInitialization({ requestPermissions: true });
+  await finishInitialization({ requestPermissions: false });
   showToast("Modo operativo activo. Puedes registrar entrada y salida sin cuenta confirmada.");
 }
 async function loadOrganizationOptions() {
@@ -6849,11 +6866,11 @@ async function handleAuthSubmit(event) {
   els.authSubmitBtn.disabled = true;
   const originalText = els.authSubmitBtn.textContent;
   els.authSubmitBtn.textContent = authMode === "login" ? "Ingresando..." : "Registrando...";
+  let accountCreated = false;
 
   try {
     if (authMode === "login") {
-      const data = await iniciarSesion(email, password);
-      prepareOperationalSession({ rotate: true });
+      await iniciarSesion(email, password);
       showToast("¡Sesión iniciada!");
 
       const user = await verificarSesion();
@@ -6865,11 +6882,8 @@ async function handleAuthSubmit(event) {
             showEmailNudgePanel(true);
           }
         }
-        // Protected RPCs require the server-side app session to exist first.
-        await activateOperationalSession();
-        showAppShell(user);
-        await loadCurrentAppUser({ silent: true });
-        await finishInitialization({ requestPermissions: true });
+        // Un login no vuelve a abrir los permisos que ya concedio el usuario.
+        await initializeAuthenticatedApp(user, { requestPermissions: false });
       } else {
         throw new Error("No se pudo obtener el usuario después del inicio de sesión.");
       }
@@ -6904,17 +6918,17 @@ async function handleAuthSubmit(event) {
       if (orgKey) localStorage.setItem("registro_asistencia_org_key", orgKey);
       localStorage.setItem("registro_asistencia_site_id", registrationSite.value);
       const data = await crearCuenta(email, password, nombre, matricula, orgKey, orgSlug, phone, registrationSite.id, registrationSite.name);
+      accountCreated = Boolean(data?.user || data?.session || data?.access_token);
+      const signupToken = data?.access_token || data?.session?.access_token;
 
-      if (localStorage.getItem("registro_asistencia_token")) {
-        prepareOperationalSession({ rotate: true });
-        showToast("¡Cuenta creada! Bienvenido.");
+      if (signupToken) {
         const user = await verificarSesion();
         if (user) {
           if (isPhone) showEmailNudgePanel(true);
-          await activateOperationalSession();
-          showAppShell(user);
-          await loadCurrentAppUser({ silent: true });
-          await finishInitialization({ requestPermissions: true });
+          await initializeAuthenticatedApp(user, { requestPermissions: true });
+          showToast("¡Cuenta creada! Bienvenido.");
+        } else {
+          throw new Error("La cuenta se creo, pero no se pudo recuperar la sesion inicial.");
         }
       } else {
         showToast("Cuenta creada. Revisa tu correo para confirmar antes de iniciar sesión, o usa modo operativo.");
@@ -6924,7 +6938,13 @@ async function handleAuthSubmit(event) {
       }
     }
   } catch (error) {
-    showToast(error.message || "Ocurrió un error inesperado.");
+    if (authMode === "register" && accountCreated) {
+      clearSession();
+      showLoginView();
+      showToast("Tu cuenta fue creada, pero no se pudo completar su vinculacion. Intenta iniciar sesion; si continua, contacta al administrador del sitio.");
+    } else {
+      showToast(error.message || "Ocurrió un error inesperado.");
+    }
   } finally {
     els.authSubmitBtn.disabled = false;
     els.authSubmitBtn.textContent = originalText;

@@ -1,5 +1,5 @@
 const CACHE_PREFIX = "checkin-app-static-";
-const CACHE_VERSION = "checkin-app-static-2.56-checkin-app-brand";
+const CACHE_VERSION = "checkin-app-static-2.57-checkin-auth-permissions";
 const LEGACY_CACHE_PREFIXES = ["asistencia-qr-static-"];
 const STATIC_ASSETS = [
   "/",
