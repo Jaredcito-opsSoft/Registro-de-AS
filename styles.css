@@ -1256,6 +1256,10 @@ video,
   object-fit: cover;
 }
 
+.camera-card video[data-facing-mode="user"] {
+  transform: scaleX(-1);
+}
+
 .camera-help {
   color: var(--muted);
   font-size: 0.88rem;
@@ -1273,6 +1277,10 @@ video,
 
 .camera-actions > button {
   flex: 1 1 180px;
+}
+
+.camera-actions > .camera-switch {
+  flex-basis: 100%;
 }
 
 .camera-actions > .primary:only-child {
@@ -5087,6 +5095,67 @@ tbody tr:hover {
   font-size: 0.82rem;
   font-weight: 600;
   text-align: center;
+}
+
+.auth-text-action {
+  justify-self: center;
+  width: fit-content;
+  min-height: 36px;
+  padding: 6px 8px;
+  color: var(--color-primary-strong);
+  background: transparent;
+  border: 0;
+  border-radius: 8px;
+  font-size: 0.82rem;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.auth-text-action:hover {
+  color: var(--color-primary);
+  background: var(--color-primary-soft);
+}
+
+.auth-text-action:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+.password-recovery-panel {
+  display: grid;
+  gap: 16px;
+}
+
+.password-recovery-panel > .data-form {
+  margin: 0;
+}
+
+.password-recovery-panel > .auth-text-action {
+  margin-inline: auto;
+}
+
+.password-recovery-status {
+  margin: 0;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  color: var(--muted);
+  background: var(--cream);
+  font-size: 0.8rem;
+  font-weight: 700;
+  line-height: 1.45;
+}
+
+.password-recovery-status[data-tone="success"] {
+  color: var(--success-ink);
+  background: var(--success-bg);
+  border-color: rgba(34, 197, 94, 0.24);
+}
+
+.password-recovery-status[data-tone="error"] {
+  color: var(--danger-ink);
+  background: var(--danger-bg);
+  border-color: rgba(239, 68, 68, 0.24);
 }
 
 .streak-panel {

@@ -205,6 +205,58 @@ async function iniciarSesion(email, password) {
   }
 }
 
+async function solicitarRecuperacion(email, redirectTo) {
+  assertSupabaseAuthConfig();
+  const cleanEmail = String(email || "").trim().toLowerCase();
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
+    throw new Error("Escribe un correo electrónico válido.");
+  }
+
+  const endpoint = new URL(`${window.SUPABASE_CONFIG.url}/auth/v1/recover`);
+  if (redirectTo) endpoint.searchParams.set("redirect_to", redirectTo);
+
+  const response = await fetch(endpoint.toString(), {
+    method: "POST",
+    headers: authHeaders(),
+    body: JSON.stringify({ email: cleanEmail }),
+  });
+  const data = await parseAuthResponse(response);
+
+  if (!response.ok) {
+    const normalizedError = String(data?.error_description || data?.error || data?.message || "").toLowerCase();
+    if (normalizedError.includes("rate limit") || normalizedError.includes("too many requests")) {
+      throw new Error("Demasiados intentos. Espera un momento antes de solicitar otro enlace.");
+    }
+    // No revelar si el correo está o no registrado.
+    throw new Error("No se pudo procesar la solicitud. Verifica la configuración de recuperación e intenta de nuevo.");
+  }
+
+  return data;
+}
+
+async function actualizarPasswordRecuperacion(accessToken, password) {
+  assertSupabaseAuthConfig();
+  const cleanToken = String(accessToken || "").trim();
+  if (!cleanToken) throw new Error("El enlace de recuperación no es válido o ya expiró.");
+  if (String(password || "").length < 8) {
+    throw new Error("La nueva contraseña debe tener al menos 8 caracteres.");
+  }
+
+  const response = await fetch(`${window.SUPABASE_CONFIG.url}/auth/v1/user`, {
+    method: "PUT",
+    headers: authHeaders(cleanToken),
+    body: JSON.stringify({ password }),
+  });
+  const data = await parseAuthResponse(response);
+
+  if (!response.ok) {
+    throw new Error(authErrorMessage(data, "No se pudo actualizar la contraseña. Solicita un enlace nuevo."));
+  }
+
+  clearSession();
+  return data;
+}
+
 async function cerrarSesion() {
   const token = localStorage.getItem("registro_asistencia_token");
   if (typeof window.releaseOperationalSession === "function") {
@@ -320,6 +372,8 @@ async function actualizarPerfil(email, nombre, matricula) {
 
 window.crearCuenta = crearCuenta;
 window.iniciarSesion = iniciarSesion;
+window.solicitarRecuperacion = solicitarRecuperacion;
+window.actualizarPasswordRecuperacion = actualizarPasswordRecuperacion;
 window.cerrarSesion = cerrarSesion;
 window.verificarSesion = verificarSesion;
 window.refrescarSesion = refrescarSesion;
