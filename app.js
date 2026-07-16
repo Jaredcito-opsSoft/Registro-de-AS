@@ -14,7 +14,7 @@ const CLOUD_ENABLED = Boolean(SUPABASE.url && SUPABASE.publishableKey && SUPABAS
 const PHOTO_BUCKET = SUPABASE.bucket || "attendance-photos";
 const PROFILE_AVATAR_BUCKET = "profile-avatars";
 const GEO_PRECISION_MAX_METERS = 200;
-const LOCAL_ASSET_VERSION = "2.58-session-rbac-private-evidence";
+const LOCAL_ASSET_VERSION = "2.60-password-recovery";
 const ATTENDANCE_STREAK_RPC_ENABLED = SUPABASE.enableAttendanceStreakRpc === true;
 const NOTIFICATION_PREFERENCE_PREFIX = "registro_asistencia_notifications_v1";
 const NOTIFICATION_SENT_PREFIX = "registro_asistencia_notification_sent_v1";
@@ -119,6 +119,8 @@ const state = {
   cameraStartPromises: { entry: null, exit: null },
   cameraRetryTimers: { entry: null, exit: null },
   cameraNeedsGesture: { entry: false, exit: false },
+  cameraFacingMode: { entry: "user", exit: "user" },
+  availableVideoInputs: 0,
   photoCaptureRunning: { entry: false, exit: false },
   attendanceSubmitting: { entry: false, exit: false },
   loadingRecords: false,
@@ -238,6 +240,7 @@ function populateElements() {
   els.entryCanvas = $("#entryCanvas");
   els.entryPreview = $("#entryPreview");
   els.startEntryCamera = $("#startEntryCamera");
+  els.switchEntryCamera = $("#switchEntryCamera");
   els.takeEntryPhoto = $("#takeEntryPhoto");
   els.retakeEntryPhoto = $("#retakeEntryPhoto");
   els.entryForm = $("#entryForm");
@@ -250,6 +253,7 @@ function populateElements() {
   els.exitCanvas = $("#exitCanvas");
   els.exitPreview = $("#exitPreview");
   els.startExitCamera = $("#startExitCamera");
+  els.switchExitCamera = $("#switchExitCamera");
   els.takeExitPhoto = $("#takeExitPhoto");
   els.retakeExitPhoto = $("#retakeExitPhoto");
   els.exitForm = $("#exitForm");
@@ -449,6 +453,18 @@ function populateElements() {
   els.authOrgKeyToggle = $("#authOrgKeyToggle");
   els.authInputBadge = $("#authInputBadge");
   els.authSubmitBtn = $("#authSubmitBtn");
+  els.authToggleBar = $("#authToggleBar");
+  els.forgotPasswordBtn = $("#forgotPasswordBtn");
+  els.passwordRecoveryPanel = $("#passwordRecoveryPanel");
+  els.passwordRecoveryRequestForm = $("#passwordRecoveryRequestForm");
+  els.passwordRecoveryResetForm = $("#passwordRecoveryResetForm");
+  els.passwordRecoveryEmail = $("#passwordRecoveryEmail");
+  els.passwordRecoveryNewPassword = $("#passwordRecoveryNewPassword");
+  els.passwordRecoveryConfirmPassword = $("#passwordRecoveryConfirmPassword");
+  els.passwordRecoveryRequestSubmit = $("#passwordRecoveryRequestSubmit");
+  els.passwordRecoveryResetSubmit = $("#passwordRecoveryResetSubmit");
+  els.passwordRecoveryStatus = $("#passwordRecoveryStatus");
+  els.passwordRecoveryBack = $("#passwordRecoveryBack");
   els.guestAccessBtn = $("#guestAccessBtn");
   els.toggleLoginBtn = $("#toggle-login-btn");
   els.toggleRegisterBtn = $("#toggle-register-btn");
@@ -2825,6 +2841,7 @@ async function buildImageEvidence(dataUrl, matricula, kind, location = null) {
     storage_bucket: PHOTO_BUCKET,
     storage_path: CLOUD_ENABLED ? path : "local_data_url",
     source: "browser_camera",
+    camera_facing_mode: state.cameraFacingMode[kind] || "user",
     timezone: getOperationalTimezone(),
     location: normalizeEvidenceLocation(location),
   };
@@ -3307,6 +3324,16 @@ function syncCaptureControls() {
     els.startExitCamera.disabled = !state.permissionPreferences.camera || !state.exitActiveRecord;
     els.startExitCamera.classList.toggle("is-hidden", !state.cameraNeedsGesture.exit || Boolean(state.exitStream) || !state.exitActiveRecord);
   }
+  [["entry", els.switchEntryCamera], ["exit", els.switchExitCamera]].forEach(([kind, button]) => {
+    if (!button) return;
+    const captured = Boolean(state[`${kind}Photo`]);
+    const hasStream = Boolean(state[`${kind}Stream`]);
+    const usingFrontCamera = state.cameraFacingMode[kind] !== "environment";
+    button.textContent = usingFrontCamera ? "Usar cámara trasera" : "Usar cámara frontal";
+    button.setAttribute("aria-label", button.textContent);
+    button.disabled = state.photoCaptureRunning[kind] || !hasStream;
+    button.classList.toggle("is-hidden", captured || !hasStream || state.availableVideoInputs < 2);
+  });
   if (els.takeEntryPhoto) {
     els.takeEntryPhoto.disabled = !canUseFace || !state.entryStream || state.photoCaptureRunning.entry;
     els.takeEntryPhoto.classList.toggle("is-hidden", entryCaptured);
@@ -3578,11 +3605,22 @@ function isAttendanceCameraViewActive(kind) {
   return Boolean(document.querySelector(`[data-view="${kind}"]:not(.is-hidden)`));
 }
 
-async function requestAttendanceCameraStream() {
+async function refreshVideoInputCount() {
+  if (!navigator.mediaDevices?.enumerateDevices) return;
+  try {
+    const devices = await navigator.mediaDevices.enumerateDevices();
+    state.availableVideoInputs = devices.filter((device) => device.kind === "videoinput").length;
+  } catch {
+    state.availableVideoInputs = 0;
+  }
+}
+
+async function requestAttendanceCameraStream(kind) {
+  const facingMode = state.cameraFacingMode[kind] || "user";
   try {
     return await navigator.mediaDevices.getUserMedia({
       video: {
-        facingMode: { ideal: "user" },
+        facingMode: { exact: facingMode },
         width: { ideal: 720 },
         height: { ideal: 720 },
       },
@@ -3590,7 +3628,19 @@ async function requestAttendanceCameraStream() {
     });
   } catch (error) {
     if (!["OverconstrainedError", "NotFoundError"].includes(error?.name)) throw error;
-    return navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+    try {
+      return await navigator.mediaDevices.getUserMedia({
+        video: {
+          facingMode: { ideal: facingMode },
+          width: { ideal: 720 },
+          height: { ideal: 720 },
+        },
+        audio: false,
+      });
+    } catch (fallbackError) {
+      if (!["OverconstrainedError", "NotFoundError"].includes(fallbackError?.name)) throw fallbackError;
+      return navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+    }
   }
 }
 
@@ -3608,13 +3658,18 @@ async function startCamera(kind, { silent = false, retry = 0 } = {}) {
     stopCamera(kind);
     setFaceStatus(kind === "entry" ? els.entryFaceStatus : els.exitFaceStatus, "Iniciando camara...", "pending");
     try {
-      const stream = await requestAttendanceCameraStream();
+      const stream = await requestAttendanceCameraStream(kind);
       if (!isAttendanceCameraViewActive(kind)) {
         stream.getTracks().forEach((track) => track.stop());
         return;
       }
       video.srcObject = stream;
       state[`${kind}Stream`] = stream;
+      const activeFacingMode = stream.getVideoTracks?.()[0]?.getSettings?.().facingMode;
+      if (["user", "environment"].includes(activeFacingMode)) {
+        state.cameraFacingMode[kind] = activeFacingMode;
+      }
+      video.dataset.facingMode = state.cameraFacingMode[kind];
       try {
         await video.play();
       } catch (playError) {
@@ -3627,6 +3682,7 @@ async function startCamera(kind, { silent = false, retry = 0 } = {}) {
       state.permissionApprovals.camera = true;
       state.permissionSelections.camera = true;
       state.cameraNeedsGesture[kind] = false;
+      await refreshVideoInputCount();
       savePermissionPreferences();
       renderPermissionControls();
       syncCaptureControls();
@@ -3671,6 +3727,20 @@ async function startCamera(kind, { silent = false, retry = 0 } = {}) {
   }
 }
 
+async function switchAttendanceCamera(kind) {
+  if (!state[`${kind}Stream`] || state.photoCaptureRunning[kind]) return;
+  const currentMode = state.cameraFacingMode[kind] || "user";
+  const targetMode = currentMode === "user" ? "environment" : "user";
+  state.cameraFacingMode[kind] = targetMode;
+  stopCamera(kind);
+  setFaceStatus(
+    kind === "entry" ? els.entryFaceStatus : els.exitFaceStatus,
+    targetMode === "environment" ? "Activando cámara trasera..." : "Activando cámara frontal...",
+    "pending",
+  );
+  await startCamera(kind);
+}
+
 function stopCamera(kind) {
   if (state.cameraRetryTimers[kind]) {
     window.clearTimeout(state.cameraRetryTimers[kind]);
@@ -3684,6 +3754,7 @@ function stopCamera(kind) {
   }
   state[`${kind}Stream`] = null;
   video.srcObject = null;
+  delete video.dataset.facingMode;
   syncCaptureControls();
 }
 
@@ -6563,6 +6634,7 @@ function handleRecordAction(event) {
 
 // Variables del estado de autenticación de la UI
 let authMode = "login"; // "login" o "register"
+let passwordRecoveryToken = "";
 
 // Función global requerida por auth.js para el redireccionamiento al cerrar sesión
 window.onLogoutSuccess = function () {
@@ -6580,6 +6652,7 @@ function showLoginView() {
   authMode = "login";
   if (els.loginView) els.loginView.classList.remove("is-hidden");
   if (els.appShell) els.appShell.classList.add("is-hidden");
+  hidePasswordRecoveryView({ clearToken: true });
   updateAuthUI();
 }
 
@@ -6797,8 +6870,156 @@ function showEmailNudgePanel(show = true) {
     els.emailNudgePanel.classList.add("is-hidden");
   }
 }
+function setPasswordRecoveryStatus(message = "", tone = "info") {
+  if (!els.passwordRecoveryStatus) return;
+  els.passwordRecoveryStatus.textContent = message;
+  els.passwordRecoveryStatus.dataset.tone = tone;
+  els.passwordRecoveryStatus.classList.toggle("is-hidden", !message);
+}
+
+function showPasswordRecoveryView(mode = "request", message = "") {
+  const isReset = mode === "reset";
+  if (els.loginView) els.loginView.classList.remove("is-hidden");
+  if (els.appShell) els.appShell.classList.add("is-hidden");
+  els.authToggleBar?.classList.add("is-hidden");
+  els.authForm?.classList.add("is-hidden");
+  els.passwordRecoveryPanel?.classList.remove("is-hidden");
+  els.passwordRecoveryRequestForm?.classList.toggle("is-hidden", isReset);
+  els.passwordRecoveryResetForm?.classList.toggle("is-hidden", !isReset);
+
+  if (els.loginTitle) els.loginTitle.textContent = isReset ? "Crea una contraseña nueva" : "Recupera tu cuenta";
+  if (els.loginSubtitle) {
+    els.loginSubtitle.textContent = isReset
+      ? "Elige una contraseña segura para volver a ingresar."
+      : "Recibirás un enlace de recuperación en tu correo.";
+  }
+
+  const prefilledEmail = els.authEmail?.value.trim() || "";
+  if (!isReset && els.passwordRecoveryEmail && prefilledEmail.includes("@")) {
+    els.passwordRecoveryEmail.value = prefilledEmail;
+  }
+  setPasswordRecoveryStatus(message, message ? "error" : "info");
+  window.setTimeout(() => {
+    (isReset ? els.passwordRecoveryNewPassword : els.passwordRecoveryEmail)?.focus();
+  }, 0);
+}
+
+function hidePasswordRecoveryView({ clearToken = true } = {}) {
+  if (clearToken) passwordRecoveryToken = "";
+  els.passwordRecoveryPanel?.classList.add("is-hidden");
+  els.authToggleBar?.classList.remove("is-hidden");
+  els.authForm?.classList.remove("is-hidden");
+  els.passwordRecoveryRequestForm?.reset();
+  els.passwordRecoveryResetForm?.reset();
+  setPasswordRecoveryStatus();
+}
+
+function consumePasswordRecoveryContext() {
+  const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ""));
+  const queryParams = new URLSearchParams(window.location.search);
+  const type = hashParams.get("type") || queryParams.get("type") || "";
+  const token = hashParams.get("access_token") || "";
+  const error = hashParams.get("error_description") || queryParams.get("error_description") || "";
+  const errorCode = hashParams.get("error_code") || queryParams.get("error_code") || "";
+  const isRecovery = type === "recovery" || Boolean(token && window.location.hash.includes("recovery")) || Boolean(errorCode);
+  if (!isRecovery) return null;
+
+  // El token de recuperación no debe permanecer visible ni guardarse en storage.
+  const cleanQuery = new URLSearchParams(window.location.search);
+  ["type", "error", "error_code", "error_description", "code"].forEach((key) => cleanQuery.delete(key));
+  const query = cleanQuery.toString();
+  history.replaceState({}, "", `${window.location.pathname}${query ? `?${query}` : ""}`);
+
+  return {
+    token,
+    error: error
+      ? "El enlace de recuperación no es válido o ya expiró. Solicita uno nuevo."
+      : "",
+  };
+}
+
+async function handlePasswordRecoveryRequest(event) {
+  event.preventDefault();
+  const email = els.passwordRecoveryEmail?.value.trim().toLowerCase() || "";
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    setPasswordRecoveryStatus("Escribe un correo electrónico válido.", "error");
+    els.passwordRecoveryEmail?.focus();
+    return;
+  }
+
+  const button = els.passwordRecoveryRequestSubmit;
+  const originalText = button?.textContent || "Enviar enlace";
+  if (button) {
+    button.disabled = true;
+    button.textContent = "Enviando...";
+  }
+  setPasswordRecoveryStatus();
+
+  try {
+    const redirectUrl = new URL(window.location.href);
+    redirectUrl.search = "";
+    redirectUrl.hash = "";
+    await solicitarRecuperacion(email, redirectUrl.toString());
+    setPasswordRecoveryStatus(
+      "Si existe una cuenta con ese correo, recibirás un enlace para cambiar tu contraseña.",
+      "success"
+    );
+  } catch (error) {
+    setPasswordRecoveryStatus(error.message || "No se pudo enviar el enlace. Intenta de nuevo.", "error");
+  } finally {
+    if (button) {
+      button.disabled = false;
+      button.textContent = originalText;
+    }
+  }
+}
+
+async function handlePasswordRecoveryReset(event) {
+  event.preventDefault();
+  const password = els.passwordRecoveryNewPassword?.value || "";
+  const confirmation = els.passwordRecoveryConfirmPassword?.value || "";
+
+  if (password.length < 8) {
+    setPasswordRecoveryStatus("La nueva contraseña debe tener al menos 8 caracteres.", "error");
+    els.passwordRecoveryNewPassword?.focus();
+    return;
+  }
+  if (password !== confirmation) {
+    setPasswordRecoveryStatus("Las contraseñas no coinciden.", "error");
+    els.passwordRecoveryConfirmPassword?.focus();
+    return;
+  }
+
+  const button = els.passwordRecoveryResetSubmit;
+  const originalText = button?.textContent || "Guardar contraseña";
+  if (button) {
+    button.disabled = true;
+    button.textContent = "Guardando...";
+  }
+  setPasswordRecoveryStatus();
+
+  try {
+    await actualizarPasswordRecuperacion(passwordRecoveryToken, password);
+    passwordRecoveryToken = "";
+    authMode = "login";
+    hidePasswordRecoveryView();
+    updateAuthUI();
+    if (els.authPassword) els.authPassword.value = "";
+    showToast("Contraseña actualizada. Ya puedes iniciar sesión.");
+    els.authEmail?.focus();
+  } catch (error) {
+    setPasswordRecoveryStatus(error.message || "No se pudo actualizar la contraseña.", "error");
+  } finally {
+    if (button) {
+      button.disabled = false;
+      button.textContent = originalText;
+    }
+  }
+}
+
 function updateAuthUI() {
   if (!els.labelName || !els.labelMatricula || !els.loginTitle || !els.loginSubtitle || !els.authSubmitBtn) return;
+  els.forgotPasswordBtn?.classList.toggle("is-hidden", authMode !== "login");
 
   if (authMode === "login") {
     // LOGIN: solo correo/teléfono + contraseña
@@ -7387,6 +7608,17 @@ async function init() {
       updateAuthUI();
     });
   }
+  els.forgotPasswordBtn?.addEventListener("click", () => {
+    showPasswordRecoveryView("request");
+  });
+  els.passwordRecoveryBack?.addEventListener("click", () => {
+    authMode = "login";
+    hidePasswordRecoveryView();
+    updateAuthUI();
+    els.authEmail?.focus();
+  });
+  els.passwordRecoveryRequestForm?.addEventListener("submit", handlePasswordRecoveryRequest);
+  els.passwordRecoveryResetForm?.addEventListener("submit", handlePasswordRecoveryReset);
   if (els.authForm) {
     console.log("Vinculando event listener para el submit de #authForm");
     els.authForm.addEventListener("submit", (event) => {
@@ -7496,6 +7728,7 @@ async function init() {
 
   // 3. Manejadores estándar de la app
   if (els.startEntryCamera) els.startEntryCamera.addEventListener("click", () => startCamera("entry"));
+  if (els.switchEntryCamera) els.switchEntryCamera.addEventListener("click", () => switchAttendanceCamera("entry"));
   if (els.takeEntryPhoto) els.takeEntryPhoto.addEventListener("click", () => takePhoto("entry"));
   if (els.retakeEntryPhoto) els.retakeEntryPhoto.addEventListener("click", () => retakeAttendancePhoto("entry"));
   if (els.entryForm) els.entryForm.addEventListener("submit", handleEntrySubmit);
@@ -7520,6 +7753,7 @@ async function init() {
       startCamera("exit");
     });
   }
+  if (els.switchExitCamera) els.switchExitCamera.addEventListener("click", () => switchAttendanceCamera("exit"));
   if (els.takeExitPhoto) els.takeExitPhoto.addEventListener("click", () => takePhoto("exit"));
   if (els.retakeExitPhoto) els.retakeExitPhoto.addEventListener("click", () => retakeAttendancePhoto("exit"));
   if (els.exitForm) els.exitForm.addEventListener("submit", handleExitSubmit);
@@ -7681,6 +7915,17 @@ async function init() {
 
   // 5. Verificar sesion activa
   console.log("Verificando sesión activa de Supabase...");
+  const recoveryContext = consumePasswordRecoveryContext();
+  if (recoveryContext) {
+    clearSession();
+    passwordRecoveryToken = recoveryContext.token;
+    showPasswordRecoveryView(
+      recoveryContext.token ? "reset" : "request",
+      recoveryContext.error || (recoveryContext.token ? "" : "El enlace de recuperación no es válido. Solicita uno nuevo.")
+    );
+    return;
+  }
+
   verificarSesion().then(async (user) => {
     if (user) {
       console.log("Sesión activa recuperada para:", user.email);

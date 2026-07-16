@@ -16,7 +16,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="stylesheet"
     href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" />
-  <link rel="stylesheet" href="styles.css?v=2.58-session-rbac-private-evidence" />
+  <link rel="stylesheet" href="styles.css?v=2.60-password-recovery" />
 </head>
 
 <body>
@@ -36,7 +36,7 @@
         <p id="login-subtitle">Ingresa tus datos para acceder rápido.</p>
       </div>
 
-      <div class="auth-toggle-bar">
+      <div id="authToggleBar" class="auth-toggle-bar">
         <button id="toggle-login-btn" class="toggle-btn active" type="button">Iniciar Sesión</button>
         <button id="toggle-register-btn" class="toggle-btn" type="button">Registrarse</button>
       </div>
@@ -126,6 +126,10 @@
           </span>
         </label>
 
+        <button id="forgotPasswordBtn" class="auth-text-action" type="button">
+          ¿Olvidaste tu contraseña?
+        </button>
+
         <button id="authSubmitBtn" class="primary wide" type="submit">
           Ingresar
         </button>
@@ -135,6 +139,45 @@
         </button>
         <p class="auth-help">Modo operativo: registra asistencia sin cuenta confirmada.</p>
       </form>
+
+      <section id="passwordRecoveryPanel" class="password-recovery-panel is-hidden" aria-labelledby="login-title">
+        <form id="passwordRecoveryRequestForm" class="data-form" novalidate>
+          <label>
+            Correo electrónico
+            <input id="passwordRecoveryEmail" type="email" inputmode="email" autocomplete="email"
+              placeholder="tu@correo.com" required />
+            <span class="field-hint">Te enviaremos un enlace seguro para crear una contraseña nueva.</span>
+          </label>
+          <button id="passwordRecoveryRequestSubmit" class="primary wide" type="submit">Enviar enlace</button>
+        </form>
+
+        <form id="passwordRecoveryResetForm" class="data-form is-hidden" novalidate>
+          <label>
+            Nueva contraseña
+            <span class="sensitive-input-wrap">
+              <input id="passwordRecoveryNewPassword" type="password" autocomplete="new-password"
+                minlength="8" placeholder="Mínimo 8 caracteres" required />
+              <button class="password-visibility-toggle" type="button" data-password-toggle="passwordRecoveryNewPassword" aria-label="Mostrar nueva contraseña" aria-pressed="false" title="Mostrar nueva contraseña">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6Z" /><circle cx="12" cy="12" r="2.5" /><path class="visibility-slash" d="M4 4 20 20" /></svg>
+              </button>
+            </span>
+          </label>
+          <label>
+            Confirmar contraseña
+            <span class="sensitive-input-wrap">
+              <input id="passwordRecoveryConfirmPassword" type="password" autocomplete="new-password"
+                minlength="8" placeholder="Repite la contraseña" required />
+              <button class="password-visibility-toggle" type="button" data-password-toggle="passwordRecoveryConfirmPassword" aria-label="Mostrar confirmación de contraseña" aria-pressed="false" title="Mostrar confirmación">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6Z" /><circle cx="12" cy="12" r="2.5" /><path class="visibility-slash" d="M4 4 20 20" /></svg>
+              </button>
+            </span>
+          </label>
+          <button id="passwordRecoveryResetSubmit" class="primary wide" type="submit">Guardar contraseña</button>
+        </form>
+
+        <p id="passwordRecoveryStatus" class="password-recovery-status is-hidden" role="status" aria-live="polite"></p>
+        <button id="passwordRecoveryBack" class="auth-text-action" type="button">Volver a iniciar sesión</button>
+      </section>
 
       <!-- Panel de nudge: agregar correo (aparece tras login por teléfono) -->
       <div id="emailNudgePanel" class="email-nudge-panel is-hidden" role="alert" aria-live="polite">
@@ -416,6 +459,7 @@
               <p class="camera-help">Mira de frente y procura tener buena luz.</p>
               <div class="camera-actions">
                 <button id="startEntryCamera" class="secondary camera-retry is-hidden" type="button">Activar cámara</button>
+                <button id="switchEntryCamera" class="secondary camera-switch is-hidden" type="button">Usar cámara trasera</button>
                 <button id="takeEntryPhoto" class="primary" type="button" disabled>Tomar foto</button>
                 <button id="retakeEntryPhoto" class="secondary is-hidden" type="button">Tomar otra foto</button>
               </div>
@@ -480,6 +524,7 @@
               <p class="camera-help">Mira de frente y procura tener buena luz.</p>
               <div class="camera-actions">
                 <button id="startExitCamera" class="secondary camera-retry is-hidden" type="button">Activar cámara</button>
+                <button id="switchExitCamera" class="secondary camera-switch is-hidden" type="button">Usar cámara trasera</button>
                 <button id="takeExitPhoto" class="primary" type="button" disabled>Tomar foto</button>
                 <button id="retakeExitPhoto" class="secondary is-hidden" type="button">Tomar otra foto</button>
               </div>
@@ -1377,9 +1422,9 @@
 
   <script src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
   <script src="supabase-config.js?v=f0-mobile-shell"></script>
-  <script src="auth.js?v=2.48-user-reactivation"></script>
+  <script src="auth.js?v=2.60-password-recovery"></script>
   <script src="notification-rules.js?v=1.0-attendance-reminders"></script>
-  <script src="app.js?v=2.58-session-rbac-private-evidence"></script>
+  <script src="app.js?v=2.60-password-recovery"></script>
 </body>
 
 </html>
