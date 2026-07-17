@@ -16,7 +16,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="stylesheet"
     href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" />
-  <link rel="stylesheet" href="styles.css?v=2.63-simple-capture" />
+  <link rel="stylesheet" href="styles.css?v=2.64-superadmin-global-records" />
 </head>
 
 <body>
@@ -569,7 +569,7 @@
           </div>
         </section>
 
-        <section class="panel records-panel is-hidden" data-view="records">
+        <section id="recordsPanel" class="panel records-panel is-hidden" data-view="records">
           <div class="panel-heading">
             <div>
               <p id="recordsKicker" class="section-kicker">Tu asistencia</p>
@@ -619,6 +619,12 @@
               <button id="clearDashboardFilters" class="ghost filter-clear" type="button">Restablecer</button>
             </div>
             <label class="filter-advanced">
+              Organización
+              <select id="filterOrganization">
+                <option value="all">Todas las organizaciones</option>
+              </select>
+            </label>
+            <label class="filter-advanced">
               Riesgo
               <select id="filterRisk">
                 <option value="all">Todos</option>
@@ -646,10 +652,10 @@
               <svg viewBox="0 0 24 24"><path d="M8 2v4M16 2v4M3 9h18M5 4h14a2 2 0 0 1 2 2v14H3V6a2 2 0 0 1 2-2Z"/><path d="m8 15 2 2 5-5"/></svg>
             </span>
             <div>
-              <strong>Aun no hay jornadas</strong>
-              <span>Tu primera entrada aparecera aqui con sus horarios y estado.</span>
+              <strong id="emptyRecordsTitle">Aun no hay jornadas</strong>
+              <span id="emptyRecordsSubtitle">Tu primera entrada aparecera aqui con sus horarios y estado.</span>
             </div>
-            <button class="primary" data-target="attendance" type="button">Registrar asistencia</button>
+            <button id="emptyRecordsAction" class="primary" data-target="attendance" type="button">Registrar asistencia</button>
           </div>
 
           <div class="table-wrap">
@@ -660,6 +666,7 @@
                   <th>Foto salida</th>
                   <th>Nombre</th>
                   <th>Identificador</th>
+                  <th>Organización</th>
                   <th>Sitio</th>
                   <th>Radio</th>
                   <th>Fecha</th>
@@ -1371,7 +1378,7 @@
   <script src="supabase-config.js?v=f0-mobile-shell"></script>
   <script src="auth.js?v=2.63-simple-capture"></script>
   <script src="notification-rules.js?v=1.0-attendance-reminders"></script>
-  <script src="app.js?v=2.63-simple-capture"></script>
+  <script src="app.js?v=2.64-superadmin-global-records"></script>
 </body>
 
 </html>

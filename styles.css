@@ -6747,6 +6747,10 @@ tbody tr:hover {
   display: none;
 }
 
+.records-panel.is-global-records .filter-advanced {
+  display: grid;
+}
+
 @media (max-width: 1100px) {
   .home-register-card,
   .dashboard-grid > .activity-panel {

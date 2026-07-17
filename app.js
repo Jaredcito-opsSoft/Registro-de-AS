@@ -269,7 +269,11 @@ function populateElements() {
   els.recordsSummaryTotal = $("#recordsSummaryTotal");
   els.recordsSummaryComplete = $("#recordsSummaryComplete");
   els.recordsSummaryPending = $("#recordsSummaryPending");
+  els.recordsPanel = $("#recordsPanel");
   els.emptyRecords = $("#emptyRecords");
+  els.emptyRecordsTitle = $("#emptyRecordsTitle");
+  els.emptyRecordsSubtitle = $("#emptyRecordsSubtitle");
+  els.emptyRecordsAction = $("#emptyRecordsAction");
   els.unlockAdmin = $("#unlockAdmin");
   els.lockAdmin = $("#lockAdmin");
   els.exportCsv = $("#exportCsv");
@@ -321,6 +325,7 @@ function populateElements() {
   els.attendanceControlTableBody = $("#attendanceControlTableBody");
   els.filterDate = $("#filterDate");
   els.filterStatus = $("#filterStatus");
+  els.filterOrganization = $("#filterOrganization");
   els.filterRisk = $("#filterRisk");
   els.filterSite = $("#filterSite");
   els.filterUser = $("#filterUser");
@@ -3262,18 +3267,29 @@ function setActiveNavigation(name) {
 function renderRolePanelCopy(activeTarget = "records") {
   const role = getRoleDefinition();
   const isSupervisor = isSupervisorSession();
+  const isGlobalRecords = activeTarget === "records" && normalizeAppRole(state.currentRole) === "superadmin";
   const isOperationsTarget = activeTarget === "admin" || canUseOperationsPanel();
-  if (els.recordsKicker) els.recordsKicker.textContent = isOperationsTarget ? (isSupervisor ? "Supervision operativa" : "Panel operativo") : "Tu asistencia";
+  els.recordsPanel?.classList.toggle("is-global-records", isGlobalRecords);
+  if (els.recordsKicker) els.recordsKicker.textContent = isGlobalRecords ? "Vista global" : (isOperationsTarget ? (isSupervisor ? "Supervision operativa" : "Panel operativo") : "Tu asistencia");
   if (els.recordsTitle) {
-    els.recordsTitle.textContent = isOperationsTarget
+    els.recordsTitle.textContent = isGlobalRecords
+      ? "Registros globales"
+      : isOperationsTarget
       ? (isSupervisor ? "Supervisar" : (hasPermission("manage_organization") ? "Administracion central" : "Administracion del sitio"))
       : "Mis registros";
   }
   if (els.recordsSubtitle) {
-    els.recordsSubtitle.textContent = isOperationsTarget
+    els.recordsSubtitle.textContent = isGlobalRecords
+      ? "Consulta las jornadas de todas las organizaciones y filtra por organización, sitio o persona."
+      : isOperationsTarget
       ? (isSupervisor ? "Revisa asistencias y evidencia del sitio que supervisas." : role.scope)
       : "Revisa tus jornadas y comprueba si falta una salida.";
   }
+  const mobileTitle = $("#mobileRecordsTitle");
+  if (mobileTitle) mobileTitle.textContent = isGlobalRecords ? "Jornadas globales" : "Tus dias registrados";
+  if (els.emptyRecordsTitle) els.emptyRecordsTitle.textContent = isGlobalRecords ? "No hay jornadas con estos filtros" : "Aun no hay jornadas";
+  if (els.emptyRecordsSubtitle) els.emptyRecordsSubtitle.textContent = isGlobalRecords ? "Cambia los filtros para consultar otra organización, sitio o persona." : "Tu primera entrada aparecera aqui con sus horarios y estado.";
+  els.emptyRecordsAction?.classList.toggle("is-hidden", isGlobalRecords);
   if (els.dashboardScopeLabel) {
     els.dashboardScopeLabel.textContent = hasPermission("view_all_records")
       ? "Resumen global: las cifras agregan todas las organizaciones. El directorio de Usuarios muestra solo la organizacion elegida."
@@ -4660,6 +4676,7 @@ function renderRecords() {
       <td>${imageCell(record, "salida")}</td>
       <td>${escapeHtml(record.nombre)}</td>
       <td>${escapeHtml(record.matricula)}</td>
+      <td>${escapeHtml(recordOrganizationName(record))}</td>
       <td>${escapeHtml(recordSiteName(record))}</td>
       <td>${escapeHtml(formatMeters(record.radioMetros))}</td>
       <td>${escapeHtml(displayDate(record.fecha))}</td>
@@ -5153,6 +5170,13 @@ function recordSiteName(record) {
   ));
   if (isOrganizationName) return "Sitio no identificado";
   return storedName || "Sin sitio";
+}
+
+function recordOrganizationName(record) {
+  const organizationId = String(record.organizacionId || "");
+  return state.organizationHubs.find((organization) => String(organization.id || "") === organizationId)?.nombre
+    || state.currentSiteScopes.find((scope) => String(scope.organizacion_id || "") === organizationId)?.organizacion_nombre
+    || "Organización no identificada";
 }
 
 function recordMatchesSiteFilter(record, selectedSite) {
@@ -6004,7 +6028,7 @@ function syncDashboardFiltersFromUi() {
   state.recordFilters.date = els.filterDate?.value || "";
   state.recordFilters.status = els.filterStatus?.value || "all";
   state.recordFilters.risk = els.filterRisk?.value || "all";
-  state.recordFilters.organization = els.adminAttendanceOrganizationFilter?.value || "all";
+  state.recordFilters.organization = els.filterOrganization?.value || els.adminAttendanceOrganizationFilter?.value || "all";
   state.recordFilters.site = els.filterSite?.value || "all";
   state.recordFilters.user = els.filterUser?.value || "all";
   state.recordFilters.query = els.filterSearch?.value || "";
@@ -6035,24 +6059,25 @@ function populateDashboardFilterSelects() {
     .sort((a, b) => a.label.localeCompare(b.label));
   const canChooseOrganization = normalizeAppRole(state.currentRole) === "superadmin";
   const defaultOrganizationId = state.currentAppUser?.organizacion_id || state.currentAppUser?.organizacionId || "";
-  let selectedOrganizationId = els.adminAttendanceOrganizationFilter?.value || state.recordFilters.organization || "all";
+  let selectedOrganizationId = els.filterOrganization?.value || els.adminAttendanceOrganizationFilter?.value || state.recordFilters.organization || "all";
   if (!canChooseOrganization) selectedOrganizationId = defaultOrganizationId || organizationOptions[0]?.value || "all";
 
-  if (els.adminAttendanceOrganizationFilter) {
-    els.adminAttendanceOrganizationFilter.innerHTML = "";
+  const organizationFilters = [els.filterOrganization, els.adminAttendanceOrganizationFilter].filter(Boolean);
+  organizationFilters.forEach((select) => {
+    select.innerHTML = "";
     if (canChooseOrganization) {
-      els.adminAttendanceOrganizationFilter.appendChild(new Option("Todas las organizaciones", "all"));
+      select.appendChild(new Option("Todas las organizaciones", "all"));
     }
     organizationOptions.forEach((organization) => {
-      els.adminAttendanceOrganizationFilter.appendChild(new Option(organization.label, organization.value));
+      select.appendChild(new Option(organization.label, organization.value));
     });
     const allowedOrganizationIds = new Set(organizationOptions.map((organization) => organization.value));
-    els.adminAttendanceOrganizationFilter.value = allowedOrganizationIds.has(selectedOrganizationId) || (canChooseOrganization && selectedOrganizationId === "all")
+    select.value = allowedOrganizationIds.has(selectedOrganizationId) || (canChooseOrganization && selectedOrganizationId === "all")
       ? selectedOrganizationId
       : (canChooseOrganization ? "all" : defaultOrganizationId || organizationOptions[0]?.value || "all");
-    els.adminAttendanceOrganizationFilter.disabled = !canChooseOrganization;
-    selectedOrganizationId = els.adminAttendanceOrganizationFilter.value;
-  }
+    select.disabled = !canChooseOrganization;
+    selectedOrganizationId = select.value;
+  });
 
   const siteOptions = getOperationalSites()
     .filter((site) => site.id && site.activo !== false)
@@ -6136,6 +6161,7 @@ function resetDashboardFilters() {
   state.recordFilters = { date: defaultDate, status: "all", risk: "all", organization: defaultOrganizationId, site: "all", user: "all", query: "" };
   if (els.filterDate) els.filterDate.value = defaultDate;
   if (els.filterStatus) els.filterStatus.value = "all";
+  if (els.filterOrganization) els.filterOrganization.value = defaultOrganizationId;
   if (els.filterRisk) els.filterRisk.value = "all";
   if (els.filterSite) els.filterSite.value = "all";
   if (els.filterUser) els.filterUser.value = "all";
@@ -6185,14 +6211,15 @@ function renderMobileRecordCards(records = []) {
   if (els.recordsSummaryPending) els.recordsSummaryPending.textContent = pendingCount;
 
   if (!records.length) {
+    const isGlobalRecords = normalizeAppRole(state.currentRole) === "superadmin";
     els.recordsMobileCards.innerHTML = `
       <div class="mobile-record-empty">
         <span class="mobile-record-empty-icon" aria-hidden="true">
           <svg viewBox="0 0 24 24"><path d="M8 2v4M16 2v4M3 9h18M5 4h14a2 2 0 0 1 2 2v14H3V6a2 2 0 0 1 2-2Z"/><path d="m8 15 2 2 5-5"/></svg>
         </span>
-        <strong>Aun no hay jornadas</strong>
-        <span>Tu primera entrada aparecera aqui con sus horarios y estado.</span>
-        <button class="primary" data-target="attendance" type="button">Registrar asistencia</button>
+        <strong>${isGlobalRecords ? "No hay jornadas con estos filtros" : "Aun no hay jornadas"}</strong>
+        <span>${isGlobalRecords ? "Cambia los filtros para consultar otra organización, sitio o persona." : "Tu primera entrada aparecera aqui con sus horarios y estado."}</span>
+        ${isGlobalRecords ? "" : '<button class="primary" data-target="attendance" type="button">Registrar asistencia</button>'}
       </div>
     `;
     return;
@@ -6220,7 +6247,7 @@ function renderMobileRecordCards(records = []) {
           <div class="mobile-record-card-title">
             <span>Jornada del ${escapeHtml(displayDate(record.fecha))}</span>
             <strong>${escapeHtml(isComplete ? "Jornada completa" : "Salida pendiente")}</strong>
-            <small>${escapeHtml(recordSiteName(record))}</small>
+            <small>${escapeHtml(recordOrganizationName(record))} · ${escapeHtml(recordSiteName(record))}</small>
           </div>
           <span class="badge ${statusClass}">${escapeHtml(statusText)}</span>
         </div>
@@ -7962,12 +7989,14 @@ async function init() {
     const map = {
       "filterDate": "adminFilterDate",
       "filterStatus": "adminFilterStatus",
+      "filterOrganization": "adminAttendanceOrganizationFilter",
       "filterRisk": "adminFilterRisk",
       "filterSite": "adminFilterSite",
       "filterUser": "adminFilterUser",
       "filterSearch": "adminFilterSearch",
       "adminFilterDate": "filterDate",
       "adminFilterStatus": "filterStatus",
+      "adminAttendanceOrganizationFilter": "filterOrganization",
       "adminFilterRisk": "filterRisk",
       "adminFilterSite": "filterSite",
       "adminFilterUser": "filterUser",
@@ -8005,9 +8034,13 @@ async function init() {
     }
   });
 
-  if (els.adminAttendanceOrganizationFilter) {
-    els.adminAttendanceOrganizationFilter.addEventListener("change", () => {
-      state.recordFilters.organization = els.adminAttendanceOrganizationFilter.value || "all";
+  [els.filterOrganization, els.adminAttendanceOrganizationFilter].filter(Boolean).forEach((organizationFilter) => {
+    organizationFilter.addEventListener("change", () => {
+      const organizationId = organizationFilter.value || "all";
+      [els.filterOrganization, els.adminAttendanceOrganizationFilter].filter(Boolean).forEach((select) => {
+        if (select !== organizationFilter) select.value = organizationId;
+      });
+      state.recordFilters.organization = organizationId;
       if (els.filterSite) els.filterSite.value = "all";
       if (els.adminFilterSite) els.adminFilterSite.value = "all";
       if (els.filterUser) els.filterUser.value = "all";
@@ -8015,7 +8048,7 @@ async function init() {
       populateDashboardFilterSelects();
       renderRecords();
     });
-  }
+  });
 
   if (els.clearDashboardFilters) els.clearDashboardFilters.addEventListener("click", resetDashboardFilters);
   if (els.adminClearDashboardFilters) els.adminClearDashboardFilters.addEventListener("click", resetDashboardFilters);
