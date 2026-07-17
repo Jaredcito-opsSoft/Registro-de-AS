@@ -16,7 +16,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="stylesheet"
     href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" />
-  <link rel="stylesheet" href="styles.css?v=2.62-admin-onboarding" />
+  <link rel="stylesheet" href="styles.css?v=2.63-simple-capture" />
 </head>
 
 <body>
@@ -393,8 +393,7 @@
             </div>
           </section>
 
-          <div id="faceStatus" class="model-status" data-tone="pending" style="display: none;">Cargando modelos de reconocimiento facial...
-          </div>
+          <div id="faceStatus" class="model-status" data-tone="success" style="display: none;">Captura fotográfica activa.</div>
 
           <div id="pwaInstallBanner" class="install-card is-hidden" aria-live="polite">
             <div>
@@ -452,16 +451,14 @@
               <video id="entryVideo" playsinline autoplay muted aria-label="Vista de camara para entrada"></video>
               <canvas id="entryCanvas" class="is-hidden"></canvas>
               <img id="entryPreview" class="photo-preview is-hidden" alt="Foto de entrada capturada" />
-              <p id="entryFaceStatus" class="face-status" data-tone="pending">Espera a que carguen los modelos faciales.
-              </p>
+              <p id="entryFaceStatus" class="face-status" data-tone="pending">Preparando la cámara.</p>
               <p id="entryLocationStatus" class="face-status" data-tone="neutral">La ubicacion se solicitara al guardar
                 entrada.</p>
-              <p class="camera-help">Mira de frente y procura tener buena luz.</p>
+              <p class="camera-help">Coloca la evidencia dentro del cuadro y mantén el teléfono firme.</p>
               <div class="camera-actions">
                 <button id="startEntryCamera" class="secondary camera-retry is-hidden" type="button">Activar cámara</button>
+                <button id="takeEntryPhoto" class="primary camera-save-action" type="button" disabled>Tomar foto y guardar entrada</button>
                 <button id="switchEntryCamera" class="secondary camera-switch is-hidden" type="button">Usar cámara trasera</button>
-                <button id="takeEntryPhoto" class="primary" type="button" disabled>Tomar foto</button>
-                <button id="retakeEntryPhoto" class="secondary is-hidden" type="button">Tomar otra foto</button>
               </div>
             </div>
 
@@ -481,7 +478,6 @@
                 <small>El registro conservara este sitio para validar ubicacion y salida.</small>
               </label>
               <div class="form-actions">
-                <button class="primary wide" type="submit">Guardar entrada</button>
                 <button class="back-button wide" data-target="home" type="button">Cancelar</button>
               </div>
             </form>
@@ -517,16 +513,14 @@
               <video id="exitVideo" playsinline autoplay muted aria-label="Vista de camara para salida"></video>
               <canvas id="exitCanvas" class="is-hidden"></canvas>
               <img id="exitPreview" class="photo-preview is-hidden" alt="Foto de salida capturada" />
-              <p id="exitFaceStatus" class="face-status" data-tone="pending">Espera a que carguen los modelos faciales.
-              </p>
+              <p id="exitFaceStatus" class="face-status" data-tone="pending">Preparando la cámara.</p>
               <p id="locationStatus" class="face-status" data-tone="neutral">La ubicacion se solicitara al guardar
                 salida.</p>
-              <p class="camera-help">Mira de frente y procura tener buena luz.</p>
+              <p class="camera-help">Coloca la evidencia dentro del cuadro y mantén el teléfono firme.</p>
               <div class="camera-actions">
                 <button id="startExitCamera" class="secondary camera-retry is-hidden" type="button">Activar cámara</button>
+                <button id="takeExitPhoto" class="primary camera-save-action" type="button" disabled>Tomar foto y guardar salida</button>
                 <button id="switchExitCamera" class="secondary camera-switch is-hidden" type="button">Usar cámara trasera</button>
-                <button id="takeExitPhoto" class="primary" type="button" disabled>Tomar foto</button>
-                <button id="retakeExitPhoto" class="secondary is-hidden" type="button">Tomar otra foto</button>
               </div>
             </div>
 
@@ -541,7 +535,6 @@
                 Validando tu entrada de hoy.
               </div>
               <div class="form-actions">
-                <button class="primary wide" type="submit">Guardar salida</button>
                 <button class="back-button wide" data-target="home" type="button">Cancelar</button>
               </div>
             </form>
@@ -819,7 +812,7 @@
                   <span>Turno vencido</span>
                 </article>
                 <article class="ops-metric">
-                  <small>GPS / facial</small>
+                  <small>GPS / foto</small>
                   <strong id="dashboardIssues">0</strong>
                   <span>Validaciones por revisar</span>
                 </article>
@@ -1035,7 +1028,7 @@
               <fieldset class="form-field-group">
                 <legend>Validaciones</legend>
                 <label>GPS<select id="siteGpsPolicy"><option value="revision">Enviar a revision</option><option value="obligatorio">Obligatorio</option><option value="bloqueo">Bloquear fuera de zona</option><option value="informativo">Solo informativo</option><option value="opcional">Opcional</option></select></label>
-                <label>Evidencia<select id="siteEvidencePolicy"><option value="rostro">Foto de rostro</option><option value="foto_simple">Foto simple</option><option value="documento">Documento</option><option value="rostro_documento">Rostro y documento</option></select></label>
+                <label>Evidencia<select id="siteEvidencePolicy"><option value="foto_simple">Foto simple</option><option value="documento">Documento</option></select></label>
                 <label>Nombre del identificador<input id="siteIdentifierLabel" value="Identificador" placeholder="Ej. Matricula" /></label>
               </fieldset>
               <label>Llave del sitio <small>Dejala vacia para conservarla</small><span class="sensitive-input-wrap"><input id="siteKey" type="password" autocomplete="new-password" placeholder="Minimo 8 caracteres" /><button class="password-visibility-toggle" type="button" data-password-toggle="siteKey" aria-label="Mostrar llave del sitio" aria-pressed="false" title="Mostrar llave"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6Z" /><circle cx="12" cy="12" r="2.5" /><path class="visibility-slash" d="M4 4 20 20" /></svg></button></span></label>
@@ -1375,11 +1368,10 @@
   </div>
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
 
-  <script src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
   <script src="supabase-config.js?v=f0-mobile-shell"></script>
-  <script src="auth.js?v=2.62-admin-onboarding"></script>
+  <script src="auth.js?v=2.63-simple-capture"></script>
   <script src="notification-rules.js?v=1.0-attendance-reminders"></script>
-  <script src="app.js?v=2.62-admin-onboarding"></script>
+  <script src="app.js?v=2.63-simple-capture"></script>
 </body>
 
 </html>

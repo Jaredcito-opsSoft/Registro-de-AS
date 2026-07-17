@@ -1279,6 +1279,12 @@ video,
   flex: 1 1 180px;
 }
 
+.camera-actions > .camera-save-action {
+  flex: 1 1 100%;
+  min-height: 56px;
+  font-size: 1rem;
+}
+
 .camera-actions > .camera-switch {
   flex-basis: 100%;
 }

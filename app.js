@@ -14,7 +14,7 @@ const CLOUD_ENABLED = Boolean(SUPABASE.url && SUPABASE.publishableKey && SUPABAS
 const PHOTO_BUCKET = SUPABASE.bucket || "attendance-photos";
 const PROFILE_AVATAR_BUCKET = "profile-avatars";
 const GEO_PRECISION_MAX_METERS = 200;
-const LOCAL_ASSET_VERSION = "2.62-admin-onboarding";
+const LOCAL_ASSET_VERSION = "2.63-simple-capture";
 const ATTENDANCE_STREAK_RPC_ENABLED = SUPABASE.enableAttendanceStreakRpc === true;
 const NOTIFICATION_PREFERENCE_PREFIX = "registro_asistencia_notifications_v1";
 const NOTIFICATION_SENT_PREFIX = "registro_asistencia_notification_sent_v1";
@@ -2512,7 +2512,12 @@ function fillSiteForm(site) {
   els.siteExitEnd.value = normalizeTimeInput(configured ? site.hora_salida_fin : "", "17:10");
   els.siteTimezone.value = configured ? site.zona_horaria || "America/Mexico_City" : "America/Mexico_City";
   if (els.siteGpsPolicy) els.siteGpsPolicy.value = configured ? site.gps_policy || "revision" : "revision";
-  if (els.siteEvidencePolicy) els.siteEvidencePolicy.value = configured ? site.evidence_policy || "rostro" : "rostro";
+  if (els.siteEvidencePolicy) {
+    const evidencePolicy = configured && ["foto_simple", "documento"].includes(site.evidence_policy)
+      ? site.evidence_policy
+      : "foto_simple";
+    els.siteEvidencePolicy.value = evidencePolicy;
+  }
   if (els.siteIdentifierLabel) els.siteIdentifierLabel.value = configured ? site.identificador_label || "Identificador" : "Identificador";
   if (els.siteKey) els.siteKey.value = "";
   els.siteActive.checked = configured ? Boolean(site.activo) : true;
@@ -2700,7 +2705,7 @@ async function handleSiteSubmit(event) {
     activo: els.siteActive.checked,
     claveSitio: els.siteKey?.value.trim() || "",
     gpsPolicy: els.siteGpsPolicy?.value || "revision",
-    evidencePolicy: els.siteEvidencePolicy?.value || "rostro",
+    evidencePolicy: els.siteEvidencePolicy?.value || "foto_simple",
     identifierLabel: els.siteIdentifierLabel?.value.trim() || "Identificador",
   };
   const error = validateSiteForm(data);
@@ -2918,7 +2923,7 @@ async function uploadEvidence(dataUrl, matricula, kind, location = null) {
   evidence.metadata.storage_path = evidence.path;
   return evidence;
 }
-async function insertEntryRecord({ nombre, matricula, fotoEntrada, descriptorEntrada, location, siteId = null }) {
+async function insertEntryRecord({ nombre, matricula, fotoEntrada, location, siteId = null }) {
   const evidence = await uploadEvidence(fotoEntrada, matricula, "entry", location);
 
   if (!CLOUD_ENABLED) {
@@ -2933,9 +2938,9 @@ async function insertEntryRecord({ nombre, matricula, fotoEntrada, descriptorEnt
       fotoSalida: "",
       qrSalida: "",
       estado: "entrada_registrada",
-      validacionIdentidad: "pendiente",
-      descriptorEntrada,
-      rostroEntradaDetectado: true,
+      validacionIdentidad: "foto_registrada",
+      descriptorEntrada: null,
+      rostroEntradaDetectado: false,
       serverTimeEntrada: new Date().toISOString(),
       fotoEntradaMetadata: evidence.metadata,
       fotoEntradaHash: evidence.hash,
@@ -2969,8 +2974,6 @@ async function insertEntryRecord({ nombre, matricula, fotoEntrada, descriptorEnt
     p_nombre: nombre,
     p_matricula: matricula,
     p_foto_entrada_url: evidence.url,
-    p_descriptor_entrada: descriptorEntrada,
-    p_rostro_entrada_detectado: true,
     p_foto_entrada_metadata: evidence.metadata,
     p_foto_entrada_hash: evidence.hash,
     p_foto_entrada_storage_path: evidence.path,
@@ -2991,30 +2994,29 @@ async function insertEntryRecord({ nombre, matricula, fotoEntrada, descriptorEnt
     p_sitio_id: siteId || null,
   };
 
-  console.log("callAdminRpc - Enviando payload a registrar_entrada_segura:", payload);
+  console.log("callAdminRpc - Enviando payload a registrar_entrada_foto_segura:", payload);
 
-  const row = await callAdminRpc("registrar_entrada_segura", payload);
+  const row = await callAdminRpc("registrar_entrada_foto_segura", payload);
   return rowToRecord(row);
 }
-async function updateExitRecord(record, { fotoSalida, descriptorSalida, location }) {
+async function updateExitRecord(record, { fotoSalida, location }) {
   const evidence = await uploadEvidence(fotoSalida, record.matricula, "exit", location);
 
   if (!CLOUD_ENABLED) {
-    const faceValidation = evaluateFaceMatch(record.descriptorEntrada, descriptorSalida);
     record.horaSalida = nowParts().time;
     record.fotoSalida = evidence.url;
     record.qrSalida = "no_aplica";
     record.tokenQrUsado = "no_aplica";
-    record.descriptorSalida = descriptorSalida;
-    record.rostroSalidaDetectado = true;
-    record.similitudFacial = faceValidation.similarity;
-    record.validacionIdentidad = faceValidation.status;
-    record.estado = faceValidation.estado;
-    record.observacion = faceValidation.observacion;
-    record.observaciones = faceValidation.observacion;
+    record.descriptorSalida = null;
+    record.rostroSalidaDetectado = false;
+    record.similitudFacial = null;
+    record.validacionIdentidad = "foto_registrada";
+    record.estado = "asistencia_completa";
+    record.observacion = "Salida registrada con foto y ubicación.";
+    record.observaciones = record.observacion;
     record.metodoSalida = "matricula_foto_gps";
     record.qrValidado = false;
-    record.qrObservacion = "No aplica: salida validada por identificador, foto, GPS y facial.";
+    record.qrObservacion = "No aplica: salida validada por identificador, foto y GPS.";
     record.latitudSalida = location.latitud ?? null;
     record.longitudSalida = location.longitud ?? null;
     record.precisionSalida = location.precision ?? null;
@@ -3025,7 +3027,7 @@ async function updateExitRecord(record, { fotoSalida, descriptorSalida, location
     record.retoVida = "";
     record.retoVidaCumplido = false;
     record.retoVidaObservacion = "Validacion de reto retirada del flujo MVP.";
-    record.riesgo = record.ubicacionValidada && faceValidation.status === "identidad_validada" ? "normal" : "revision_multiple";
+    record.riesgo = record.ubicacionValidada ? "normal" : "revision_ubicacion_salida";
     record.fotoSalidaMetadata = evidence.metadata;
     record.fotoSalidaHash = evidence.hash;
     record.fotoSalidaStoragePath = evidence.path;
@@ -3045,10 +3047,9 @@ async function updateExitRecord(record, { fotoSalida, descriptorSalida, location
     return record;
   }
 
-  const row = await callAdminRpc("registrar_salida_segura", {
+  const row = await callAdminRpc("registrar_salida_foto_segura", {
     p_matricula: record.matricula,
     p_foto_salida_url: evidence.url,
-    p_descriptor_salida: descriptorSalida,
     p_token_qr: null,
     p_latitud: location.latitud ?? null,
     p_longitud: location.longitud ?? null,
@@ -3327,13 +3328,13 @@ function setFaceStatus(element, message, tone = "neutral") {
     const headerFace = document.getElementById("headerFaceState");
     if (headerFace) {
       if (tone === "success") {
-        headerFace.textContent = "Facial: activo";
+        headerFace.textContent = "Foto: activa";
         headerFace.dataset.tone = "active";
       } else if (tone === "pending") {
-        headerFace.textContent = "Facial: cargando…";
+        headerFace.textContent = "Foto: preparando…";
         headerFace.dataset.tone = "pending";
       } else {
-        headerFace.textContent = "Facial: error";
+        headerFace.textContent = "Foto: error";
         headerFace.dataset.tone = "inactive";
       }
     }
@@ -3341,10 +3342,8 @@ function setFaceStatus(element, message, tone = "neutral") {
 }
 
 function syncCaptureControls() {
-  const canUseFace = state.facialModelsLoaded && !state.facialModelsError;
-  const canStartExit = canUseFace && Boolean(state.exitActiveRecord);
-  const entryCaptured = Boolean(state.entryPhoto);
-  const exitCaptured = Boolean(state.exitPhoto);
+  const entryBusy = state.photoCaptureRunning.entry || state.attendanceSubmitting.entry;
+  const exitBusy = state.photoCaptureRunning.exit || state.attendanceSubmitting.exit;
   if (els.startEntryCamera) {
     els.startEntryCamera.disabled = !state.permissionPreferences.camera;
     els.startEntryCamera.classList.toggle("is-hidden", !state.cameraNeedsGesture.entry || Boolean(state.entryStream));
@@ -3355,29 +3354,20 @@ function syncCaptureControls() {
   }
   [["entry", els.switchEntryCamera], ["exit", els.switchExitCamera]].forEach(([kind, button]) => {
     if (!button) return;
-    const captured = Boolean(state[`${kind}Photo`]);
     const hasStream = Boolean(state[`${kind}Stream`]);
     const usingFrontCamera = state.cameraFacingMode[kind] !== "environment";
     button.textContent = usingFrontCamera ? "Usar cámara trasera" : "Usar cámara frontal";
     button.setAttribute("aria-label", button.textContent);
-    button.disabled = state.photoCaptureRunning[kind] || !hasStream;
-    button.classList.toggle("is-hidden", captured || !hasStream || state.availableVideoInputs < 2);
+    button.disabled = state.photoCaptureRunning[kind] || state.attendanceSubmitting[kind] || !hasStream;
+    button.classList.toggle("is-hidden", !hasStream || state.availableVideoInputs < 2);
   });
   if (els.takeEntryPhoto) {
-    els.takeEntryPhoto.disabled = !canUseFace || !state.entryStream || state.photoCaptureRunning.entry;
-    els.takeEntryPhoto.classList.toggle("is-hidden", entryCaptured);
+    els.takeEntryPhoto.disabled = !state.entryStream || entryBusy;
+    els.takeEntryPhoto.textContent = entryBusy ? "Guardando entrada..." : "Tomar foto y guardar entrada";
   }
   if (els.takeExitPhoto) {
-    els.takeExitPhoto.disabled = !canStartExit || !state.exitStream || state.photoCaptureRunning.exit;
-    els.takeExitPhoto.classList.toggle("is-hidden", exitCaptured);
-  }
-  if (els.retakeEntryPhoto) {
-    els.retakeEntryPhoto.disabled = state.photoCaptureRunning.entry;
-    els.retakeEntryPhoto.classList.toggle("is-hidden", !entryCaptured);
-  }
-  if (els.retakeExitPhoto) {
-    els.retakeExitPhoto.disabled = state.photoCaptureRunning.exit;
-    els.retakeExitPhoto.classList.toggle("is-hidden", !exitCaptured);
+    els.takeExitPhoto.disabled = !state.exitActiveRecord || !state.exitStream || exitBusy;
+    els.takeExitPhoto.textContent = exitBusy ? "Guardando salida..." : "Tomar foto y guardar salida";
   }
 }
 
@@ -3626,7 +3616,7 @@ function requestExitLocation() {
 }
 async function ensureAttendanceCamera(kind) {
   const needsActiveEntry = kind === "exit" && !state.exitActiveRecord;
-  if (needsActiveEntry || state[`${kind}Stream`] || !state.facialModelsLoaded || state.facialModelsError) return;
+  if (needsActiveEntry || state[`${kind}Stream`]) return;
   await startCamera(kind, { silent: true });
 }
 
@@ -3717,8 +3707,8 @@ async function startCamera(kind, { silent = false, retry = 0 } = {}) {
       syncCaptureControls();
       setFaceStatus(
         kind === "entry" ? els.entryFaceStatus : els.exitFaceStatus,
-        state.facialModelsLoaded ? "Camara lista. Mira de frente y toma la foto." : "Camara lista. Preparando validacion facial...",
-        state.facialModelsLoaded ? "success" : "pending"
+        "Cámara lista. Toma la foto para guardar el registro.",
+        "success"
       );
     } catch (error) {
       const permissionDenied = ["NotAllowedError", "SecurityError"].includes(error?.name);
@@ -3792,17 +3782,12 @@ async function takePhoto(kind) {
   const canvas = kind === "entry" ? els.entryCanvas : els.exitCanvas;
   const preview = kind === "entry" ? els.entryPreview : els.exitPreview;
 
-  if (!state.facialModelsLoaded) {
-    showToast("Los modelos faciales aun no estan listos.");
-    return;
-  }
-
   if (!video.videoWidth) {
     showToast("Primero activa la camara.");
-    return;
+    return false;
   }
 
-  if (state.photoCaptureRunning[kind]) return;
+  if (state.photoCaptureRunning[kind]) return false;
   state.photoCaptureRunning[kind] = true;
   syncCaptureControls();
   try {
@@ -3811,30 +3796,46 @@ async function takePhoto(kind) {
     canvas.width = Math.round(video.videoWidth * scale);
     canvas.height = Math.round(video.videoHeight * scale);
     canvas.getContext("2d").drawImage(video, 0, 0, canvas.width, canvas.height);
-    const face = await detectSingleFace(canvas, kind);
-    if (!face) {
-      clearCapturedFace(kind);
-      return;
-    }
-
     const image = canvas.toDataURL("image/jpeg", 0.72);
     state[`${kind}Photo`] = image;
-    state[`${kind}Face`] = face;
+    state[`${kind}Face`] = null;
     preview.src = image;
     preview.classList.remove("is-hidden");
     video.classList.add("is-hidden");
     setFaceStatus(
       kind === "entry" ? els.entryFaceStatus : els.exitFaceStatus,
-      "Foto lista para guardar.",
+      "Foto tomada. Guardando registro...",
       "success",
     );
+    return true;
   } catch (error) {
     clearCapturedFace(kind);
-    showToast("No se pudo analizar el rostro. Vuelve a tomar la foto.");
+    showToast("No se pudo tomar la foto. Inténtalo de nuevo.");
+    return false;
   } finally {
     state.photoCaptureRunning[kind] = false;
     syncCaptureControls();
   }
+}
+
+async function captureAndSaveAttendance(kind) {
+  if (state.photoCaptureRunning[kind] || state.attendanceSubmitting[kind]) return;
+
+  if (kind === "entry" && canSelectAttendanceSite() && !getSelectedAttendanceSiteId()) {
+    showToast("Selecciona primero el sitio donde registrarás la asistencia.");
+    els.entrySiteSelect?.focus();
+    return;
+  }
+
+  if (kind === "exit") {
+    const activeRecord = state.exitActiveRecord || await validateExitMatricula({ showErrors: true });
+    if (!activeRecord) return;
+  }
+
+  const captured = await takePhoto(kind);
+  if (!captured) return;
+  const form = kind === "entry" ? els.entryForm : els.exitForm;
+  form?.requestSubmit();
 }
 
 function normalizeMatricula(value) {
@@ -4099,8 +4100,8 @@ async function handleEntrySubmit(event) {
   const matricula = normalizeMatricula(els.entryMatricula.value);
   const siteId = getSelectedAttendanceSiteId();
 
-  if (!state.entryPhoto || !state.entryFace || !nombre || !matricula) {
-    showToast("Toma una foto valida antes de guardar la entrada.");
+  if (!state.entryPhoto || !nombre || !matricula) {
+    showToast("Toma la foto para guardar la entrada.");
     return;
   }
   if (canSelectAttendanceSite() && !siteId) {
@@ -4111,8 +4112,9 @@ async function handleEntrySubmit(event) {
   if (state.attendanceSubmitting.entry) return;
 
   state.attendanceSubmitting.entry = true;
-  const submitButton = event.submitter || els.entryForm.querySelector('button[type="submit"]');
+  const submitButton = event.submitter || els.takeEntryPhoto;
   if (submitButton) submitButton.disabled = true;
+  syncCaptureControls();
   try {
     await refreshRecords({ silent: true });
     const existingRecord = todayRecordByMatricula(matricula);
@@ -4128,7 +4130,6 @@ async function handleEntrySubmit(event) {
         nombre,
         matricula,
         fotoEntrada: state.entryPhoto,
-        descriptorEntrada: state.entryFace.descriptor,
         location,
         siteId,
       });
@@ -4137,30 +4138,33 @@ async function handleEntrySubmit(event) {
       clearCapturedFace("entry");
       els.entryForm.reset();
       populateAttendanceSiteSelector();
-      setFaceStatus(els.entryFaceStatus, "Listo para nueva captura.");
+      setFaceStatus(els.entryFaceStatus, "Entrada guardada.", "success");
       stopCamera("entry");
       await refreshRecords({ silent: true });
       showGuidedPanel("entry");
       showToast(record.riesgo === "normal" || record.riesgo === "entrada_registrada" ? "Entrada registrada correctamente." : "Entrada registrada, requiere revision administrativa.");
     } catch (error) {
+      clearCapturedFace("entry");
       showToast(getAttendanceSaveErrorMessage(error, "entry"));
     }
   } finally {
     state.attendanceSubmitting.entry = false;
     if (submitButton) submitButton.disabled = false;
+    syncCaptureControls();
   }
 }
 async function handleExitSubmit(event) {
   event.preventDefault();
   if (state.attendanceSubmitting.exit) return;
-  if (!state.exitPhoto || !state.exitFace) {
-    showToast("Toma una foto valida antes de guardar la salida.");
+  if (!state.exitPhoto) {
+    showToast("Toma la foto para guardar la salida.");
     return;
   }
 
   state.attendanceSubmitting.exit = true;
-  const submitButton = event.submitter || els.exitForm.querySelector('button[type="submit"]');
+  const submitButton = event.submitter || els.takeExitPhoto;
   if (submitButton) submitButton.disabled = true;
+  syncCaptureControls();
   try {
     const record = await validateExitMatricula({ showErrors: true });
     if (!record) return;
@@ -4174,25 +4178,26 @@ async function handleExitSubmit(event) {
     try {
       const updated = await updateExitRecord(record, {
         fotoSalida: state.exitPhoto,
-        descriptorSalida: state.exitFace.descriptor,
         location,
       });
       clearCapturedFace("exit");
       state.exitActiveRecord = null;
       els.exitForm.reset();
       setExitLookupInfo("Salida registrada correctamente.", "success");
-      setFaceStatus(els.exitFaceStatus, "Listo para nueva captura.");
+      setFaceStatus(els.exitFaceStatus, "Salida guardada.", "success");
       stopCamera("exit");
       syncCaptureControls();
       await refreshRecords({ silent: true });
       showGuidedPanel("exit");
       showToast(updated.riesgo === "normal" ? "Salida registrada y validada." : "Salida registrada, pero requiere revision administrativa.");
     } catch (error) {
+      clearCapturedFace("exit");
       showToast(getAttendanceSaveErrorMessage(error, "exit"));
     }
   } finally {
     state.attendanceSubmitting.exit = false;
     if (submitButton) submitButton.disabled = false;
+    syncCaptureControls();
   }
 }
 
@@ -4793,14 +4798,6 @@ function renderDashboardAlerts(records) {
     (r.horaSalida && r.horaSalida !== "Pendiente" && !r.fotoSalida)
   ).length;
 
-  // Detección de Rostro en revisión
-  const faceReviewCount = records.filter(r => 
-    r.rostroEntradaDetectado === false || 
-    (r.horaSalida && r.horaSalida !== "Pendiente" && r.rostroSalidaDetectado === false) ||
-    r.validacionIdentidad === "revision_administrativa" || 
-    (r.similitudFacial !== null && r.similitudFacial > FACE_DISTANCE_REVIEW)
-  ).length;
-
   // Detección de Salida duplicada
   const duplicates = new Set();
   const seen = new Set();
@@ -4817,9 +4814,6 @@ function renderDashboardAlerts(records) {
   }
   if (failedPhotoCount) {
     alerts.push(["Foto fallida", `${failedPhotoCount} registro(s) sin evidencia fotográfica válida.`]);
-  }
-  if (faceReviewCount) {
-    alerts.push(["Rostro en revisión", `${faceReviewCount} validacion(es) faciales pendientes o en revisión.`]);
   }
   if (duplicates.size) {
     alerts.push(["Salida duplicada", `${duplicates.size} identificador(es) registran múltiples entradas/salidas hoy.`]);
@@ -7497,10 +7491,9 @@ function handleUpdateProfile(event) {
 
 async function finishInitialization({ requestPermissions = false } = {}) {
   if (els.demoMode) els.demoMode.checked = state.demoMode;
-  setFaceStatus(els.entryFaceStatus, "Espera a que carguen los modelos faciales.", "pending");
-  setFaceStatus(els.exitFaceStatus, "Espera a que carguen los modelos faciales.", "pending");
+  setFaceStatus(els.entryFaceStatus, "Preparando la cámara.", "pending");
+  setFaceStatus(els.exitFaceStatus, "Preparando la cámara.", "pending");
   syncCaptureControls();
-  loadFaceModels();
   updateHeaderStatus({ force: true });
   // Solo cargar usuario desde Supabase si no estamos en modo operativo guest
   const isGuestMode = state.currentAppUser?.isGuest || state.currentUser?.isGuest;
@@ -7892,7 +7885,7 @@ async function init() {
   // 3. Manejadores estándar de la app
   if (els.startEntryCamera) els.startEntryCamera.addEventListener("click", () => startCamera("entry"));
   if (els.switchEntryCamera) els.switchEntryCamera.addEventListener("click", () => switchAttendanceCamera("entry"));
-  if (els.takeEntryPhoto) els.takeEntryPhoto.addEventListener("click", () => takePhoto("entry"));
+  if (els.takeEntryPhoto) els.takeEntryPhoto.addEventListener("click", () => captureAndSaveAttendance("entry"));
   if (els.retakeEntryPhoto) els.retakeEntryPhoto.addEventListener("click", () => retakeAttendancePhoto("entry"));
   if (els.entryForm) els.entryForm.addEventListener("submit", handleEntrySubmit);
 
@@ -7917,7 +7910,7 @@ async function init() {
     });
   }
   if (els.switchExitCamera) els.switchExitCamera.addEventListener("click", () => switchAttendanceCamera("exit"));
-  if (els.takeExitPhoto) els.takeExitPhoto.addEventListener("click", () => takePhoto("exit"));
+  if (els.takeExitPhoto) els.takeExitPhoto.addEventListener("click", () => captureAndSaveAttendance("exit"));
   if (els.retakeExitPhoto) els.retakeExitPhoto.addEventListener("click", () => retakeAttendancePhoto("exit"));
   if (els.exitForm) els.exitForm.addEventListener("submit", handleExitSubmit);
 
