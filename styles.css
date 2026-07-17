@@ -4674,7 +4674,7 @@ tbody tr:hover {
 
 .attendance-control-metrics {
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: repeat(6, minmax(0, 1fr));
   gap: 8px;
 }
 
@@ -4706,8 +4706,57 @@ tbody tr:hover {
 
 .attendance-control-metric.is-missing { border-color: rgba(245, 158, 11, 0.35); background: var(--orange-light); }
 .attendance-control-metric.is-entry { border-color: rgba(116, 111, 159, 0.28); background: rgba(116, 111, 159, 0.06); }
+.attendance-control-metric.is-pending { border-color: rgba(245, 158, 11, 0.35); background: rgba(245, 158, 11, 0.08); }
 .attendance-control-metric.is-complete { border-color: rgba(34, 197, 94, 0.28); background: var(--success-bg); }
 .attendance-control-metric.is-review { border-color: rgba(239, 68, 68, 0.25); background: var(--red-light); }
+
+.attendance-control-tabs {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  padding: 2px 0 4px;
+  scrollbar-width: none;
+}
+
+.attendance-control-tabs::-webkit-scrollbar { display: none; }
+
+.attendance-control-tabs button {
+  flex: 0 0 auto;
+  min-height: 40px;
+  padding: 8px 11px;
+  border: 1px solid var(--rose-border);
+  border-radius: var(--radius-pill);
+  color: var(--muted);
+  background: var(--card);
+  font-size: 0.78rem;
+  font-weight: 850;
+  cursor: pointer;
+}
+
+.attendance-control-tabs button span {
+  display: inline-grid;
+  min-width: 22px;
+  min-height: 22px;
+  margin-left: 4px;
+  place-items: center;
+  border-radius: var(--radius-pill);
+  color: var(--ink);
+  background: var(--cream);
+  font-variant-numeric: tabular-nums;
+}
+
+.attendance-control-tabs button.is-active,
+.attendance-control-tabs button[aria-selected="true"] {
+  color: var(--card);
+  border-color: var(--color-primary-strong);
+  background: var(--color-primary-strong);
+}
+
+.attendance-control-tabs button.is-active span,
+.attendance-control-tabs button[aria-selected="true"] span {
+  color: var(--color-primary-strong);
+  background: var(--card);
+}
 
 .attendance-control-filters {
   display: grid;
@@ -4770,7 +4819,7 @@ tbody tr:hover {
 
 .attendance-control-table {
   width: 100%;
-  min-width: 760px;
+  min-width: 980px;
   border-collapse: collapse;
 }
 
@@ -4797,6 +4846,63 @@ tbody tr:hover {
 .attendance-control-table td strong,
 .attendance-control-table td small { display: block; }
 .attendance-control-table td small { margin-top: 3px; color: var(--muted); font-size: 0.72rem; font-weight: 650; }
+
+.attendance-detail-head {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 16px;
+  margin-top: 24px;
+  padding: 0 2px 12px;
+  border-bottom: 1px solid var(--rose-border);
+}
+
+.attendance-detail-head h3 {
+  margin: 2px 0 0;
+  color: var(--ink);
+  font-size: 1rem;
+}
+
+.attendance-detail-head p:last-child {
+  max-width: 680px;
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 650;
+}
+
+.attendance-control-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.attendance-control-location {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.attendance-control-location span {
+  color: var(--muted);
+  font-size: 0.7rem;
+  font-weight: 700;
+}
+
+.attendance-control-location strong {
+  overflow: hidden;
+  color: var(--ink);
+  font-size: 0.8rem;
+  font-weight: 850;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.photo-placeholder[data-evidence-state="denied"],
+.photo-placeholder[data-evidence-state="error"] {
+  color: var(--danger-ink);
+  background: var(--red-light);
+}
 
 .attendance-control-status {
   display: inline-flex;
@@ -5032,13 +5138,16 @@ tbody tr:hover {
   .attendance-control-card > div { min-width: 0; }
   .attendance-control-card strong,
   .attendance-control-card span { display: block; }
-  .attendance-control-card strong { overflow: hidden; color: var(--ink); font-size: 0.92rem; font-weight: 900; text-overflow: ellipsis; white-space: nowrap; }
-  .attendance-control-card > div > span { margin-top: 3px; color: var(--muted); font-size: 0.74rem; font-weight: 700; }
+  .attendance-control-person strong { overflow: hidden; color: var(--ink); font-size: 0.92rem; font-weight: 900; text-overflow: ellipsis; white-space: nowrap; }
+  .attendance-control-person > span { margin-top: 3px; color: var(--muted); font-size: 0.74rem; font-weight: 700; }
   .attendance-control-card .attendance-control-status { align-self: start; }
-  .attendance-control-card dl { grid-column: 1 / -1; display: grid; grid-template-columns: minmax(0, 1.4fr) repeat(2, minmax(0, 0.7fr)); gap: 8px; margin: 0; padding-top: 10px; border-top: 1px solid var(--rose-border); }
+  .attendance-control-card .attendance-control-location { grid-column: 1 / -1; padding: 9px 10px; border-radius: 10px; background: var(--cream); }
+  .attendance-control-card dl { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin: 0; padding-top: 10px; border-top: 1px solid var(--rose-border); }
   .attendance-control-card dl div { min-width: 0; }
   .attendance-control-card dt { color: var(--muted); font-size: 0.65rem; font-weight: 850; text-transform: uppercase; }
   .attendance-control-card dd { overflow: hidden; margin: 3px 0 0; color: var(--ink); font-size: 0.76rem; font-weight: 800; text-overflow: ellipsis; white-space: nowrap; }
+  .attendance-control-card .attendance-control-actions { grid-column: 1 / -1; }
+  .attendance-control-card .attendance-control-actions button { flex: 1 1 120px; min-height: 44px; }
 
   .admin-panel .table-wrap {
     display: block;

@@ -14,7 +14,7 @@ const CLOUD_ENABLED = Boolean(SUPABASE.url && SUPABASE.publishableKey && SUPABAS
 const PHOTO_BUCKET = SUPABASE.bucket || "attendance-photos";
 const PROFILE_AVATAR_BUCKET = "profile-avatars";
 const GEO_PRECISION_MAX_METERS = 200;
-const LOCAL_ASSET_VERSION = "2.60-password-recovery";
+const LOCAL_ASSET_VERSION = "2.62-admin-onboarding";
 const ATTENDANCE_STREAK_RPC_ENABLED = SUPABASE.enableAttendanceStreakRpc === true;
 const NOTIFICATION_PREFERENCE_PREFIX = "registro_asistencia_notifications_v1";
 const NOTIFICATION_SENT_PREFIX = "registro_asistencia_notification_sent_v1";
@@ -42,6 +42,7 @@ const ROLE_DEFINITIONS = {
       manage_records: false,
       delete_records: false,
       manage_site: false,
+      create_organization: false,
       manage_organization: false,
       manage_roles: false,
       view_audit: false,
@@ -61,6 +62,7 @@ const ROLE_DEFINITIONS = {
       manage_records: true,
       delete_records: false,
       manage_site: true,
+      create_organization: false,
       manage_organization: false,
       manage_roles: false,
       view_audit: false,
@@ -80,6 +82,7 @@ const ROLE_DEFINITIONS = {
       manage_records: true,
       delete_records: true,
       manage_site: true,
+      create_organization: true,
       manage_organization: false,
       manage_roles: false,
       view_audit: true,
@@ -99,6 +102,7 @@ const ROLE_DEFINITIONS = {
       manage_records: true,
       delete_records: true,
       manage_site: true,
+      create_organization: true,
       manage_organization: true,
       manage_roles: true,
       view_audit: true,
@@ -302,8 +306,10 @@ function populateElements() {
   els.attendanceExpectedCount = $("#attendanceExpectedCount");
   els.attendanceMissingCount = $("#attendanceMissingCount");
   els.attendanceEntryCount = $("#attendanceEntryCount");
+  els.attendancePendingCount = $("#attendancePendingCount");
   els.attendanceCompleteCount = $("#attendanceCompleteCount");
   els.attendanceReviewCount = $("#attendanceReviewCount");
+  els.attendanceControlTabs = $("#attendanceControlTabs");
   els.attendanceControlDate = $("#attendanceControlDate");
   els.attendanceControlOrganization = $("#attendanceControlOrganization");
   els.attendanceControlSite = $("#attendanceControlSite");
@@ -385,11 +391,12 @@ function populateElements() {
   els.prepareAdminInvite = $("#prepareAdminInvite");
   els.copyAdminInviteKey = $("#copyAdminInviteKey");
   els.adminInviteStatus = $("#adminInviteStatus");
-  els.organizationAdminCard = $("#organizationAdminCard");
-  els.organizationAdminOrganization = $("#organizationAdminOrganization");
-  els.organizationAdminUser = $("#organizationAdminUser");
-  els.assignOrganizationAdminButton = $("#assignOrganizationAdminButton");
-  els.organizationAdminStatus = $("#organizationAdminStatus");
+  els.organizationAdminInviteCard = $("#organizationAdminInviteCard");
+  els.organizationAdminInviteEmail = $("#organizationAdminInviteEmail");
+  els.organizationAdminInviteKey = $("#organizationAdminInviteKey");
+  els.createOrganizationAdminInvite = $("#createOrganizationAdminInvite");
+  els.copyOrganizationAdminInvite = $("#copyOrganizationAdminInvite");
+  els.organizationAdminInviteStatus = $("#organizationAdminInviteStatus");
   els.orgCreateName = $("#orgCreateName");
   els.orgCreateType = $("#orgCreateType");
   els.orgCreateSlug = $("#orgCreateSlug");
@@ -1682,6 +1689,20 @@ function isRoleAdminSession() {
   return Boolean(state.currentUser && !state.currentUser.isGuest && state.currentAppUser && hasAdminRole() && canUseRoleAdminMode());
 }
 
+function isSuperadminSession() {
+  return Boolean(state.currentUser && !state.currentUser.isGuest && state.currentAppUser && normalizeAppRole(state.currentRole) === "superadmin");
+}
+
+function canCreateFirstOrganization() {
+  return normalizeAppRole(state.currentRole) === "admin"
+    && hasPermission("create_organization")
+    && !state.currentAppUser?.organizacion_id;
+}
+
+function canCreateOrganization() {
+  return isSuperadminSession() || canCreateFirstOrganization();
+}
+
 function isSupervisorSession() {
   return Boolean(
     state.currentUser
@@ -1929,7 +1950,9 @@ async function loadCurrentAppUser({ silent = false, throwOnError = false, loadSi
   const affiliationKey = metadata.invitation_key || metadata.organization_key || metadata.org_key || localStorage.getItem("registro_asistencia_org_key") || "";
   try {
     const normalizedAffiliationKey = String(affiliationKey).trim().toUpperCase();
-    if (normalizedAffiliationKey.startsWith("AS-INV-")) {
+    if (normalizedAffiliationKey.startsWith("ORG-ADMIN-")) {
+      await callAdminRpc("redeem_organization_admin_onboarding_invite", { p_invite_key: affiliationKey });
+    } else if (normalizedAffiliationKey.startsWith("AS-INV-")) {
       try {
         await callAdminRpc("accept_site_admin_invitation", { p_clave: affiliationKey });
       } catch (error) {
@@ -2049,6 +2072,9 @@ function renderOrganizations() {
   const canManageOrg = hasPermission("manage_organization");
   document.querySelectorAll(".superadmin-only").forEach((element) => {
     element.classList.toggle("is-hidden", !canManageOrg);
+  });
+  document.querySelectorAll(".organization-create-only").forEach((element) => {
+    element.classList.toggle("is-hidden", !canCreateOrganization());
   });
   if (!rows.length) {
     els.organizationList.innerHTML = `<div class="organization-empty"><strong>Sin organizaciones</strong><span>Crea la primera para agregar sitios.</span></div>`;
@@ -2203,7 +2229,8 @@ function selectOrganization(organizationId) {
 }
 
 function openOrganizationEditor(org = null) {
-  if (!hasPermission("manage_organization") || !els.organizationForm) return;
+  const canEdit = Boolean(org) && hasPermission("manage_organization");
+  if ((!org && !canCreateOrganization()) || (org && !canEdit) || !els.organizationForm) return;
   els.organizationForm.hidden = false;
   els.organizationForm.classList.remove("is-hidden");
   els.orgEditId.value = org?.id || "";
@@ -2260,13 +2287,13 @@ async function deleteSelectedOrganization() {
 
 async function handleOrganizationSubmit(event) {
   event.preventDefault();
-  if (!hasPermission("manage_organization")) {
-    showToast("Solo superadmin puede modificar organizaciones.");
-    return;
-  }
   const nombre = els.orgCreateName?.value.trim() || "";
   const clave = els.orgCreateKey?.value.trim() || "";
   const id = els.orgEditId?.value || null;
+  if ((id && !hasPermission("manage_organization")) || (!id && !canCreateOrganization())) {
+    showToast(id ? "Solo superadmin puede modificar organizaciones." : "Tu cuenta no puede crear otra organizacion.");
+    return;
+  }
   if (!nombre || (!id && clave.length < 8) || (clave && clave.length < 8)) {
     showToast("Captura el nombre y una clave de al menos 8 caracteres al crear.");
     return;
@@ -2284,6 +2311,7 @@ async function handleOrganizationSubmit(event) {
       p_activo: els.orgActive?.checked !== false,
     });
     closeOrganizationEditor();
+    if (!id) await loadCurrentAppUser({ silent: true });
     await loadOrganizations({ silent: true });
     showToast(id ? "Organizacion actualizada." : "Organizacion creada.");
   } catch (error) {
@@ -2299,6 +2327,7 @@ async function handleOrganizationSubmit(event) {
           p_activo: els.orgActive?.checked !== false,
         });
         closeOrganizationEditor();
+        await loadCurrentAppUser({ silent: true });
         await loadOrganizations({ silent: true });
         showToast("Organizacion creada. La edicion avanzada se activara con el Hito 14.");
         return;
@@ -4317,26 +4346,56 @@ async function getSignedEvidenceUrl(record, kind) {
   const path = kind === "entrada" ? record.fotoEntradaStoragePath : record.fotoSalidaStoragePath;
   const rawFallback = kind === "entrada" ? record.fotoEntrada : record.fotoSalida;
   const fallback = /^(?:data:|blob:)/i.test(String(rawFallback || "")) ? rawFallback : "";
-  if (!CLOUD_ENABLED || !path || path === "local_data_url") return fallback;
+  record.evidenceLoadStatus = record.evidenceLoadStatus || {};
+
+  if (!path && !fallback) {
+    record.evidenceLoadStatus[kind] = "missing";
+    return "";
+  }
+  if (!CLOUD_ENABLED || path === "local_data_url") {
+    record.evidenceLoadStatus[kind] = fallback ? "available" : "missing";
+    return fallback;
+  }
 
   try {
-    const encodedPath = path.split("/").map(encodeURIComponent).join("/");
-    const response = await fetch(`${SUPABASE.url}/storage/v1/object/sign/${PHOTO_BUCKET}/${encodedPath}`, {
+    const authorization = getRpcFirstRow(await callAdminRpc("authorize_attendance_evidence_view", {
+      p_asistencia_id: record.id,
+      p_tipo: kind,
+    }));
+    if (!authorization?.authorized || !authorization?.object_path) {
+      record.evidenceLoadStatus[kind] = authorization?.reason === "evidence_not_found" ? "missing" : "denied";
+      return "";
+    }
+
+    const bucket = authorization.bucket_name || PHOTO_BUCKET;
+    const encodedPath = authorization.object_path.split("/").map(encodeURIComponent).join("/");
+    const expiresIn = Math.min(900, Math.max(300, Number(authorization.expires_in) || 600));
+    const response = await fetch(`${SUPABASE.url}/storage/v1/object/sign/${bucket}/${encodedPath}`, {
       method: "POST",
       headers: cloudHeaders({ "Content-Type": "application/json" }),
-      body: JSON.stringify({ expiresIn: 300 }),
+      body: JSON.stringify({ expiresIn }),
     });
-    if (!response.ok) throw new Error("signed_url_error");
+    if (!response.ok) throw new Error(await response.text() || "signed_url_error");
     const data = await response.json();
     const signedUrl = data.signedURL || data.signedUrl || data.url || "";
     if (signedUrl) {
-      addAdminLog("signed_url_generada", `${record.matricula} ${kind}`);
-      return signedUrl.startsWith("http") ? signedUrl : `${SUPABASE.url}${signedUrl}`;
+      record.evidenceLoadStatus[kind] = "available";
+      return resolveStorageSignedUrl(signedUrl);
     }
   } catch (error) {
-    addAdminLog("error_visualizar_evidencia", `${record.matricula} ${kind}`);
+    record.evidenceLoadStatus[kind] = "error";
   }
   return fallback;
+}
+
+function evidencePlaceholder(record, kind) {
+  const status = record.evidenceLoadStatus?.[kind] || "missing";
+  const messages = {
+    denied: "No tienes permiso para ver esta evidencia",
+    error: "Error al cargar foto. Vuelve a intentar",
+    missing: "Sin foto registrada",
+  };
+  return `<div class="photo-placeholder" data-evidence-state="${escapeHtml(status)}">${escapeHtml(messages[status] || messages.missing)}</div>`;
 }
 
 function evidenceField(label, value) {
@@ -4370,17 +4429,19 @@ async function showEvidenceDetail(id) {
   els.evidenceBody.innerHTML = `
     <div class="evidence-photo-grid">
       <figure>
-        ${entradaUrl ? `<img src="${entradaUrl}" alt="Evidencia de entrada" />` : `<div class="photo-placeholder">Sin foto de entrada</div>`}
+        ${entradaUrl ? `<img src="${entradaUrl}" alt="Evidencia de entrada" />` : evidencePlaceholder(record, "entrada")}
         <figcaption>Entrada</figcaption>
       </figure>
       <figure>
-        ${salidaUrl ? `<img src="${salidaUrl}" alt="Evidencia de salida" />` : `<div class="photo-placeholder">Sin foto de salida</div>`}
+        ${salidaUrl ? `<img src="${salidaUrl}" alt="Evidencia de salida" />` : evidencePlaceholder(record, "salida")}
         <figcaption>Salida</figcaption>
       </figure>
     </div>
     ${metadataBlock("Identificacion", [
     evidenceField("Nombre", record.nombre),
     evidenceField("Identificador", record.matricula),
+    evidenceField("Organizacion", record.organizacionNombre || state.organizationHubs.find((item) => String(item.id || "") === String(record.organizacionId || ""))?.nombre),
+    evidenceField("Sitio", recordSiteName(record)),
     evidenceField("Fecha", displayDate(record.fecha)),
     evidenceField("Estado", statusLabel(record.estado)),
   ])}
@@ -4590,8 +4651,8 @@ function renderRecords() {
     const adminClass = record.modificado_por_admin ? "admin" : "default";
 
     const commonColsHtml = `
-      <td>${imageCell(record.fotoEntrada, "Entrada")}</td>
-      <td>${imageCell(record.fotoSalida, "Salida")}</td>
+      <td>${imageCell(record, "entrada")}</td>
+      <td>${imageCell(record, "salida")}</td>
       <td>${escapeHtml(record.nombre)}</td>
       <td>${escapeHtml(record.matricula)}</td>
       <td>${escapeHtml(recordSiteName(record))}</td>
@@ -4917,10 +4978,53 @@ function attendanceControlStatus(record) {
 function attendanceControlStatusMeta(status) {
   return {
     missing: ["Sin registro", "missing"],
-    entry: ["Entrada registrada", "entry"],
+    entry: ["Pendiente de salida", "entry"],
     complete: ["Jornada completa", "complete"],
     review: ["Requiere revision", "review"],
   }[status] || ["Requiere revision", "review"];
+}
+
+function recordHasEntry(record) {
+  return Boolean(record?.horaEntrada && record.horaEntrada !== "Pendiente");
+}
+
+function recordHasExit(record) {
+  return Boolean(record?.horaSalida && record.horaSalida !== "Pendiente");
+}
+
+function attendanceControlMatchesStatus(row, status) {
+  if (status === "all") return true;
+  if (status === "with_entry") return recordHasEntry(row.record);
+  if (status === "entry") return recordHasEntry(row.record) && !recordHasExit(row.record);
+  if (status === "complete") return recordHasEntry(row.record) && recordHasExit(row.record);
+  return row.status === status;
+}
+
+function recordHasEvidence(record, kind = "any") {
+  if (!record) return false;
+  const hasEntry = Boolean(record.fotoEntradaStoragePath || record.fotoEntrada);
+  const hasExit = Boolean(record.fotoSalidaStoragePath || record.fotoSalida);
+  if (kind === "entrada") return hasEntry;
+  if (kind === "salida") return hasExit;
+  return hasEntry || hasExit;
+}
+
+function attendanceEvidenceLabel(record) {
+  if (!recordHasEvidence(record)) return "Sin foto";
+  if (recordHasEvidence(record, "entrada") && recordHasEvidence(record, "salida")) return "Entrada y salida";
+  return recordHasEvidence(record, "entrada") ? "Entrada disponible" : "Salida disponible";
+}
+
+function attendanceControlActions(row) {
+  if (!row.record) return "";
+  const recordId = escapeHtml(row.record.id);
+  const canOpen = canViewRecord(row.record) || hasPermission("view_evidence") || isDemoAdminUnlocked();
+  return `
+    <div class="attendance-control-actions">
+      <button class="ghost mini" type="button" data-action="view-evidence" data-id="${recordId}">Ver detalle</button>
+      ${recordHasEvidence(row.record) && canOpen ? `<button class="secondary mini" type="button" data-action="view-evidence" data-id="${recordId}">Ver foto</button>` : ""}
+    </div>
+  `;
 }
 
 function renderAttendanceControl() {
@@ -4937,7 +5041,7 @@ function renderAttendanceControl() {
 
   const records = getVisibleRecords();
   const query = normalizeMatricula(filters.query || "");
-  const rows = getAttendanceControlUsers().map((user) => {
+  const baseRows = getAttendanceControlUsers().map((user) => {
     const userSiteIds = getManagedUserSiteScopeIds(user);
     const filteredSiteIds = filters.site === "all" ? userSiteIds : [String(filters.site)];
     const record = findAttendanceControlRecord(user, records, filters.date, filteredSiteIds);
@@ -4960,30 +5064,82 @@ function renderAttendanceControl() {
   }).filter((row) => {
     if (filters.organization !== "all" && row.organizationId !== String(filters.organization)) return false;
     if (filters.site !== "all" && row.siteId !== String(filters.site)) return false;
-    if (filters.status !== "all" && row.status !== filters.status) return false;
-    if (!query) return true;
-    return normalizeMatricula(row.name).includes(query) || normalizeMatricula(row.identifier).includes(query) || normalizeMatricula(row.site).includes(query);
-  }).sort((a, b) => a.name.localeCompare(b.name, "es"));
+    return true;
+  });
 
-  const counts = rows.reduce((summary, row) => ({ ...summary, [row.status]: summary[row.status] + 1 }), { missing: 0, entry: 0, complete: 0, review: 0 });
-  if (els.attendanceExpectedCount) els.attendanceExpectedCount.textContent = rows.length;
+  const counts = baseRows.reduce((summary, row) => {
+    if (row.status === "missing") summary.missing += 1;
+    if (row.status === "review") summary.review += 1;
+    if (recordHasEntry(row.record)) summary.withEntry += 1;
+    if (recordHasEntry(row.record) && !recordHasExit(row.record)) summary.pending += 1;
+    if (recordHasEntry(row.record) && recordHasExit(row.record)) summary.complete += 1;
+    return summary;
+  }, { missing: 0, complete: 0, review: 0, withEntry: 0, pending: 0 });
+  if (els.attendanceExpectedCount) els.attendanceExpectedCount.textContent = baseRows.length;
   if (els.attendanceMissingCount) els.attendanceMissingCount.textContent = counts.missing;
-  if (els.attendanceEntryCount) els.attendanceEntryCount.textContent = counts.entry;
+  if (els.attendanceEntryCount) els.attendanceEntryCount.textContent = counts.withEntry;
+  if (els.attendancePendingCount) els.attendancePendingCount.textContent = counts.pending;
   if (els.attendanceCompleteCount) els.attendanceCompleteCount.textContent = counts.complete;
   if (els.attendanceReviewCount) els.attendanceReviewCount.textContent = counts.review;
 
-  const emptyMessage = state.managedUsers.length || rows.length
+  const tabCounts = {
+    all: baseRows.length,
+    missing: counts.missing,
+    with_entry: counts.withEntry,
+    entry: counts.pending,
+    complete: counts.complete,
+    review: counts.review,
+  };
+  const tabCountElements = {
+    all: $("#attendanceAllTabCount"),
+    missing: $("#attendanceMissingTabCount"),
+    with_entry: $("#attendanceEntryTabCount"),
+    entry: $("#attendancePendingTabCount"),
+    complete: $("#attendanceCompleteTabCount"),
+    review: $("#attendanceReviewTabCount"),
+  };
+  Object.entries(tabCountElements).forEach(([status, element]) => {
+    if (element) element.textContent = tabCounts[status];
+  });
+  els.attendanceControlTabs?.querySelectorAll("button[data-attendance-status]").forEach((button) => {
+    const selected = button.dataset.attendanceStatus === filters.status;
+    button.classList.toggle("is-active", selected);
+    button.setAttribute("aria-selected", String(selected));
+  });
+
+  const rows = baseRows.filter((row) => {
+    if (!attendanceControlMatchesStatus(row, filters.status)) return false;
+    if (!query) return true;
+    return normalizeMatricula(row.name).includes(query)
+      || normalizeMatricula(row.identifier).includes(query)
+      || normalizeMatricula(row.site).includes(query)
+      || normalizeMatricula(row.organization).includes(query);
+  }).sort((a, b) => a.name.localeCompare(b.name, "es"));
+
+  const emptyMessage = state.managedUsers.length || baseRows.length
     ? "No hay personas que coincidan con los filtros actuales."
     : "No hay directorio autorizado disponible para este alcance todavia.";
   els.attendanceControlEmpty.textContent = emptyMessage;
   els.attendanceControlEmpty.classList.toggle("is-hidden", rows.length > 0);
   els.attendanceControlCards.innerHTML = rows.map((row) => {
     const [label, tone] = attendanceControlStatusMeta(row.status);
-    return `<article class="attendance-control-card"><div><strong>${escapeHtml(row.name)}</strong><span>${escapeHtml(row.identifier)}</span></div><span class="attendance-control-status is-${tone}">${escapeHtml(label)}</span><dl><div><dt>Sitio</dt><dd>${escapeHtml(row.site)}</dd></div><div><dt>Entrada</dt><dd>${escapeHtml(row.record?.horaEntrada || "--:--")}</dd></div><div><dt>Salida</dt><dd>${escapeHtml(row.record?.horaSalida || "--:--")}</dd></div></dl></article>`;
+    return `
+      <article class="attendance-control-card">
+        <div class="attendance-control-person"><strong>${escapeHtml(row.name)}</strong><span>${escapeHtml(row.identifier)}</span></div>
+        <span class="attendance-control-status is-${tone}">${escapeHtml(label)}</span>
+        <div class="attendance-control-location"><span>${escapeHtml(row.organization)}</span><strong>${escapeHtml(row.site)}</strong></div>
+        <dl>
+          <div><dt>Entrada</dt><dd>${escapeHtml(row.record?.horaEntrada || "--:--")}</dd></div>
+          <div><dt>Salida</dt><dd>${escapeHtml(row.record?.horaSalida || "--:--")}</dd></div>
+          <div><dt>Evidencia</dt><dd>${escapeHtml(attendanceEvidenceLabel(row.record))}</dd></div>
+        </dl>
+        ${attendanceControlActions(row)}
+      </article>
+    `;
   }).join("");
   els.attendanceControlTableBody.innerHTML = rows.map((row) => {
     const [label, tone] = attendanceControlStatusMeta(row.status);
-    return `<tr><td><strong>${escapeHtml(row.name)}</strong><small>${escapeHtml(row.identifier)}</small></td><td>${escapeHtml(row.organization)}</td><td>${escapeHtml(row.site)}</td><td>${escapeHtml(row.record?.horaEntrada || "--:--")}</td><td>${escapeHtml(row.record?.horaSalida || "--:--")}</td><td><span class="attendance-control-status is-${tone}">${escapeHtml(label)}</span></td></tr>`;
+    return `<tr><td><strong>${escapeHtml(row.name)}</strong><small>${escapeHtml(row.identifier)}</small></td><td>${escapeHtml(row.organization)}</td><td>${escapeHtml(row.site)}</td><td>${escapeHtml(row.record?.horaEntrada || "--:--")}</td><td>${escapeHtml(row.record?.horaSalida || "--:--")}</td><td>${escapeHtml(attendanceEvidenceLabel(row.record))}</td><td><span class="attendance-control-status is-${tone}">${escapeHtml(label)}</span></td><td>${attendanceControlActions(row)}</td></tr>`;
   }).join("");
 }
 
@@ -5489,73 +5645,53 @@ async function assignUserScope() {
   }
 }
 
-function setOrganizationAdminStatus(message, tone = "warning") {
-  if (!els.organizationAdminStatus) return;
-  els.organizationAdminStatus.textContent = message;
-  els.organizationAdminStatus.dataset.tone = tone;
+function setOrganizationAdminInviteStatus(message, tone = "warning") {
+  if (!els.organizationAdminInviteStatus) return;
+  els.organizationAdminInviteStatus.textContent = message;
+  els.organizationAdminInviteStatus.dataset.tone = tone;
 }
 
-function populateOrganizationAdminAssignment() {
-  const card = els.organizationAdminCard;
-  if (!card) return;
-  const allowed = hasPermission("manage_organization");
-  card.classList.toggle("is-hidden", !allowed);
-  if (!allowed) return;
-
-  const organizations = getAssignableOrganizations();
-  const selectedOrganizationId = organizations.some((organization) => String(organization.id) === String(els.organizationAdminOrganization?.value || ""))
-    ? String(els.organizationAdminOrganization.value)
-    : String(getSelectedUserScopeOrganizationId() || organizations[0]?.id || "");
-  populateOrganizationSelect(els.organizationAdminOrganization, organizations, selectedOrganizationId);
-
-  const users = getAssignableUsers().filter((user) => String(user.organizacion_id || "") === selectedOrganizationId);
-  const previousUserId = els.organizationAdminUser?.value || "";
-  if (els.organizationAdminUser) {
-    els.organizationAdminUser.innerHTML = `<option value="">${selectedOrganizationId ? "Selecciona un usuario" : "Selecciona primero una organizacion"}</option>`;
-    users.forEach((user) => {
-      const option = document.createElement("option");
-      option.value = user.id;
-      option.textContent = `${user.nombre || user.email || user.matricula || "Usuario"} - ${getRoleDefinition(user.rol).label}`;
-      els.organizationAdminUser.appendChild(option);
-    });
-    els.organizationAdminUser.value = users.some((user) => user.id === previousUserId) ? previousUserId : "";
-    els.organizationAdminUser.disabled = !selectedOrganizationId || !users.length;
-  }
-  if (els.assignOrganizationAdminButton) {
-    els.assignOrganizationAdminButton.disabled = !selectedOrganizationId || !els.organizationAdminUser?.value;
-  }
-  setOrganizationAdminStatus(
-    users.length ? "El ascenso aplica el alcance de toda la organizacion, no de un solo sitio." : "No hay usuarios elegibles en esta organizacion.",
-    users.length ? "warning" : "danger",
-  );
-}
-
-async function assignOrganizationAdmin() {
-  if (!hasPermission("manage_organization")) {
-    showToast("Solo superadmin puede asignar administradores de organizacion.");
+async function createOrganizationAdminInvite() {
+  if (!isSuperadminSession()) {
+    showToast("Solo un superadmin autenticado puede invitar administradores.");
     return;
   }
-  const organizationId = els.organizationAdminOrganization?.value || "";
-  const userId = els.organizationAdminUser?.value || "";
-  if (!organizationId || !userId) {
-    setOrganizationAdminStatus("Selecciona una organizacion y un usuario.", "danger");
+  const email = String(els.organizationAdminInviteEmail?.value || "").trim().toLowerCase();
+  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
+    setOrganizationAdminInviteStatus("Captura un correo valido para generar la invitacion.", "danger");
+    els.organizationAdminInviteEmail?.focus();
     return;
   }
-  if (els.assignOrganizationAdminButton) els.assignOrganizationAdminButton.disabled = true;
+
+  if (els.createOrganizationAdminInvite) els.createOrganizationAdminInvite.disabled = true;
+  setOrganizationAdminInviteStatus("Generando invitacion segura...", "warning");
   try {
-    const result = getRpcFirstRow(await callAdminRpc("superadmin_assign_organization_admin", {
-      p_usuario_id: userId,
-      p_organizacion_id: organizationId,
+    const invite = getRpcFirstRow(await callAdminRpc("superadmin_create_organization_admin_invite", {
+      p_email: email,
+      p_expires_hours: 72,
     }));
-    addAdminLog("organization.admin_assigned", `${userId} / ${organizationId}`);
-    showToast("Administrador de organizacion asignado.");
-    await loadOrganizations({ silent: true });
-    await loadAdminDirectories({ silent: true });
-    setOrganizationAdminStatus(`Administracion otorgada a ${result?.nombre || "el usuario seleccionado"}.`, "success");
+    if (!invite?.invite_key) throw new Error("No se recibio una clave de invitacion.");
+    if (els.organizationAdminInviteKey) els.organizationAdminInviteKey.value = invite.invite_key;
+    setOrganizationAdminInviteStatus("Invitacion creada. Expira en 72 horas y solo puede usarse una vez.", "success");
+    addAdminLog("organization_admin_invite_created", email);
   } catch (error) {
-    setOrganizationAdminStatus(`No se pudo asignar: ${parseSupabaseError(error).slice(0, 140)}`, "danger");
+    setOrganizationAdminInviteStatus(`No se pudo crear: ${parseSupabaseError(error).slice(0, 140)}`, "danger");
   } finally {
-    populateOrganizationAdminAssignment();
+    if (els.createOrganizationAdminInvite) els.createOrganizationAdminInvite.disabled = false;
+  }
+}
+
+async function copyOrganizationAdminInvite() {
+  const key = String(els.organizationAdminInviteKey?.value || "").trim();
+  if (!key) {
+    showToast("Primero genera una invitacion de administrador.");
+    return;
+  }
+  try {
+    await navigator.clipboard.writeText(key);
+    showToast("Clave de administrador copiada.");
+  } catch {
+    showToast("No se pudo copiar la clave desde este navegador.");
   }
 }
 
@@ -5684,7 +5820,6 @@ async function reactivateManagedUser(userId) {
 function renderAdminUsersSection(records = getVisibleRecords()) {
   if (!els.adminUsersBySite) return;
   populateUserScopeAssignment();
-  populateOrganizationAdminAssignment();
   populateAdminInviteSites();
 
   const selectedOrganizationId = getSelectedUserScopeOrganizationId();
@@ -5849,6 +5984,29 @@ async function copySiteKey() {
 }
 
 function syncDashboardFiltersFromUi() {
+  const attendanceAdminVisible = state.activeAdminSection === "attendances"
+    && Boolean(document.querySelector('[data-view="admin"]:not(.is-hidden)'));
+  if (attendanceAdminVisible) {
+    const status = state.attendanceControlFilters.status || "all";
+    const statusMap = {
+      all: "all",
+      missing: "missing",
+      with_entry: "all",
+      entry: "entrada_registrada",
+      complete: "asistencia_completa",
+      review: "all",
+    };
+    state.recordFilters = {
+      date: state.attendanceControlFilters.date || todayIso(),
+      status: statusMap[status] || "all",
+      risk: status === "review" ? "revision" : "all",
+      organization: state.attendanceControlFilters.organization || "all",
+      site: state.attendanceControlFilters.site || "all",
+      user: "all",
+      query: state.attendanceControlFilters.query || "",
+    };
+    return;
+  }
   state.recordFilters.date = els.filterDate?.value || "";
   state.recordFilters.status = els.filterStatus?.value || "all";
   state.recordFilters.risk = els.filterRisk?.value || "all";
@@ -6128,9 +6286,11 @@ function updateSummary(records = getVisibleRecords()) {
   setProgressBar(els.completedProgress, total > 0 ? (completed / total) * 100 : 0);
   setProgressBar(els.pendingProgress, total > 0 ? (pending / total) * 100 : 0);
 }
-function imageCell(src, alt) {
-  if (!src) return `<span class="muted">Sin foto</span>`;
-  return `<span class="badge default">Foto protegida</span>`;
+function imageCell(record, kind) {
+  if (!recordHasEvidence(record, kind)) return `<span class="muted">Sin foto</span>`;
+  const canOpen = canViewRecord(record) || hasPermission("view_evidence") || isDemoAdminUnlocked();
+  if (!canOpen) return `<span class="badge default">Foto protegida</span>`;
+  return `<button class="secondary mini evidence-inline-action" type="button" data-action="view-evidence" data-id="${escapeHtml(record.id)}">Ver foto</button>`;
 }
 
 function escapeHtml(value) {
@@ -6248,6 +6408,12 @@ function updateAdminControls() {
   // Elementos de administración y roles adicionales
   document.querySelectorAll(".superadmin-only").forEach((element) => {
     element.classList.toggle("is-hidden", !canManageOrg);
+  });
+  document.querySelectorAll(".real-superadmin-only").forEach((element) => {
+    element.classList.toggle("is-hidden", !isSuperadminSession());
+  });
+  document.querySelectorAll(".organization-create-only").forEach((element) => {
+    element.classList.toggle("is-hidden", !canCreateOrganization());
   });
   document.querySelectorAll(".site-admin-panel").forEach((element) => {
     element.classList.toggle("is-hidden", !canManageSite);
@@ -6573,7 +6739,8 @@ async function deleteRecord(id) {
 function handleRecordAction(event) {
   // Al hacer clic en un nombre o matrícula en la tabla (columna 2 o 3), filtrar la vista por ese usuario
   const cell = event.target.closest("td");
-  if (cell) {
+  const isHistoricalRecordTable = cell && [els.recordsBody, els.adminRecordsBody].includes(cell.closest("tbody"));
+  if (isHistoricalRecordTable) {
     const row = cell.closest("tr");
     const matriculaCell = row?.querySelector("td:nth-child(4)"); // la matrícula está en la columna 4 (1-indexed)
     if (matriculaCell && (cell.cellIndex === 2 || cell.cellIndex === 3)) { // Columna de nombre (2) o matrícula (3) (0-indexed)
@@ -6644,6 +6811,7 @@ window.onLogoutSuccess = function () {
   state.currentPermissions = { ...ROLE_DEFINITIONS.usuario.permissions };
   state.isAdmin = false;
   state.manualAdminUnlocked = false;
+  state.attendanceControlFilters = { date: todayIso(), organization: "all", site: "all", status: "all", query: "" };
   if (els.loginView) els.loginView.classList.remove("is-hidden");
   if (els.appShell) els.appShell.classList.add("is-hidden");
 };
@@ -6662,6 +6830,7 @@ function showAppShell(user) {
   // Cada cuenta inicia con su propia identidad; finishInitialization carga después su rol remoto.
   if (!keepsPreparedGuest) {
     applyAppUserSession(null);
+    state.attendanceControlFilters = { date: todayIso(), organization: "all", site: "all", status: "all", query: "" };
   } else {
     renderCurrentUserProfile();
   }
@@ -7064,8 +7233,10 @@ function updateAuthUI() {
     els.authMatricula.required = true;
     if (els.authOrgKey) els.authOrgKey.required = false;
     if (els.authPhone) els.authPhone.required = false;
-    if (els.authOrgSelect) els.authOrgSelect.required = true;
-    if (els.authSiteSelect) els.authSiteSelect.required = true;
+    // La validacion se resuelve al enviar: una invitacion ORG-ADMIN no tiene
+    // organizacion ni sitio hasta que el nuevo admin cree su espacio.
+    if (els.authOrgSelect) els.authOrgSelect.required = false;
+    if (els.authSiteSelect) els.authSiteSelect.required = false;
     els.loginTitle.textContent = "Registrarse";
     els.loginSubtitle.textContent = "Crea tu cuenta para registrar asistencia.";
     els.authSubmitBtn.textContent = "Crear Cuenta";
@@ -7144,6 +7315,8 @@ async function handleAuthSubmit(event) {
       const matricula = els.authMatricula.value.trim();
       const phone = els.authPhone?.value.trim() || "";
       const registrationSite = selectedRegistrationSite();
+      const orgKey = els.authOrgKey?.value.trim() || "";
+      const isOrganizationAdminInvite = orgKey.toUpperCase().startsWith("ORG-ADMIN-");
 
       if (!nombre || !matricula) {
         showToast("Nombre e identificador son requeridos para el registro.");
@@ -7158,7 +7331,7 @@ async function handleAuthSubmit(event) {
         els.authSubmitBtn.textContent = originalText;
         return;
       }
-      if (!orgSlug || !registrationSite.value) {
+      if (!isOrganizationAdminInvite && (!orgSlug || !registrationSite.value)) {
         showToast("Selecciona primero tu organización y después tu sitio.");
         (!orgSlug ? els.authOrgSelect : els.authSiteSelect)?.focus();
         els.authSubmitBtn.disabled = false;
@@ -7166,9 +7339,8 @@ async function handleAuthSubmit(event) {
         return;
       }
 
-      const orgKey = els.authOrgKey?.value.trim() || "";
       if (orgKey) localStorage.setItem("registro_asistencia_org_key", orgKey);
-      localStorage.setItem("registro_asistencia_site_id", registrationSite.value);
+      if (registrationSite.value) localStorage.setItem("registro_asistencia_site_id", registrationSite.value);
       const data = await crearCuenta(email, password, nombre, matricula, orgKey, orgSlug, phone, registrationSite.id, registrationSite.name);
       accountCreated = Boolean(data?.user || data?.session || data?.access_token);
       const signupToken = data?.access_token || data?.session?.access_token;
@@ -7380,11 +7552,6 @@ function bindAdminPanelControls() {
       showAdminSection(sectionButton.dataset.adminSectionTarget);
       return;
     }
-    if (event.target.closest("#assignOrganizationAdminButton")) {
-      event.preventDefault();
-      assignOrganizationAdmin();
-      return;
-    }
     const userViewButton = event.target.closest("[data-admin-user-view]");
     if (userViewButton) {
       state.adminUserDirectoryView = userViewButton.dataset.adminUserView === "assigned" ? "assigned" : "unassigned";
@@ -7447,7 +7614,6 @@ function bindAdminPanelControls() {
       setSelectedUserScopeOrganization(target.value);
       setUserScopeStatus("Selecciona un usuario y su sitio de destino.", "warning");
       populateUserScopeAssignment();
-      populateOrganizationAdminAssignment();
       renderAdminUsersSection(getVisibleRecords());
       return;
     }
@@ -7455,9 +7621,6 @@ function bindAdminPanelControls() {
       setUserScopeStatus(getUserScopeActionCopy(getUserScopeAction()).status, "warning");
       populateUserScopeAssignment();
       return;
-    }
-    if (target === els.organizationAdminOrganization || target === els.organizationAdminUser) {
-      populateOrganizationAdminAssignment();
     }
   });
 }
@@ -7765,6 +7928,8 @@ async function init() {
   if (els.recordsBody) els.recordsBody.addEventListener("click", handleRecordAction);
   if (els.adminRecordsBody) els.adminRecordsBody.addEventListener("click", handleRecordAction);
   if (els.recordsMobileCards) els.recordsMobileCards.addEventListener("click", handleRecordAction);
+  if (els.attendanceControlCards) els.attendanceControlCards.addEventListener("click", handleRecordAction);
+  if (els.attendanceControlTableBody) els.attendanceControlTableBody.addEventListener("click", handleRecordAction);
   if (els.closeEvidence) els.closeEvidence.addEventListener("click", closeEvidenceDetail);
   if (els.evidenceModal) {
     els.evidenceModal.addEventListener("click", (event) => {
@@ -7791,6 +7956,8 @@ async function init() {
   if (els.copySiteKey) els.copySiteKey.addEventListener("click", copySiteKey);
   if (els.prepareAdminInvite) els.prepareAdminInvite.addEventListener("click", prepareAdminInviteKey);
   if (els.copyAdminInviteKey) els.copyAdminInviteKey.addEventListener("click", copyAdminInviteKey);
+  if (els.createOrganizationAdminInvite) els.createOrganizationAdminInvite.addEventListener("click", createOrganizationAdminInvite);
+  if (els.copyOrganizationAdminInvite) els.copyOrganizationAdminInvite.addEventListener("click", copyOrganizationAdminInvite);
   bindAdminPanelControls();
 
   document.querySelectorAll(".ops-filters").forEach((form) => {
@@ -7876,13 +8043,26 @@ async function init() {
       state.attendanceControlFilters.query = els.attendanceControlSearch?.value || "";
       if (input === els.attendanceControlOrganization) state.attendanceControlFilters.site = "all";
       renderAttendanceControl();
+      syncDashboardFiltersFromUi();
+      renderRecords();
     });
+  });
+  els.attendanceControlTabs?.addEventListener("click", (event) => {
+    const button = event.target.closest("button[data-attendance-status]");
+    if (!button) return;
+    state.attendanceControlFilters.status = button.dataset.attendanceStatus || "all";
+    if (els.attendanceControlStatus) els.attendanceControlStatus.value = state.attendanceControlFilters.status;
+    renderAttendanceControl();
+    syncDashboardFiltersFromUi();
+    renderRecords();
   });
   document.querySelector(".attendance-control-filters")?.addEventListener("submit", (event) => event.preventDefault());
   if (els.attendanceControlReset) els.attendanceControlReset.addEventListener("click", () => {
     const scope = attendanceControlScope();
     state.attendanceControlFilters = { date: todayIso(), organization: scope.canChooseOrganization ? "all" : (scope.organizationId || "all"), site: scope.siteIds.length === 1 ? scope.siteIds[0] : "all", status: "all", query: "" };
     renderAttendanceControl();
+    syncDashboardFiltersFromUi();
+    renderRecords();
   });
 
   if (window.location.hash.startsWith("#salida")) {

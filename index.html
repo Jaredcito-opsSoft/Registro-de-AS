@@ -16,7 +16,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="stylesheet"
     href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" />
-  <link rel="stylesheet" href="styles.css?v=2.60-password-recovery" />
+  <link rel="stylesheet" href="styles.css?v=2.62-admin-onboarding" />
 </head>
 
 <body>
@@ -101,7 +101,7 @@
                 <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6Z" /><circle cx="12" cy="12" r="2.5" /><path class="visibility-slash" d="M4 4 20 20" /></svg>
               </button>
             </span>
-            <span class="field-hint">Solo para una invitación personal de administrador o supervisor. Tu rol se valida en servidor.</span>
+            <span class="field-hint">Usa la clave personal que te entrego el superadmin o el administrador. Una invitacion ORG-ADMIN permite crear tu primera organizacion.</span>
           </label>
         </div>
 
@@ -861,9 +861,9 @@
             <section class="attendance-control-panel" aria-labelledby="attendanceControlTitle">
               <div class="attendance-control-head">
                 <div>
-                  <p class="section-kicker">Control operativo</p>
-                  <h3 id="attendanceControlTitle">Seguimiento de asistencia</h3>
-                  <p id="attendanceControlScope">Consulta el estado de las personas dentro de tu alcance.</p>
+                  <p class="section-kicker">Corte operativo</p>
+                  <h3 id="attendanceControlTitle">Corte de asistencia</h3>
+                  <p id="attendanceControlScope">Consulta el estado de usuarios y registros dentro de tu alcance.</p>
                 </div>
                 <span id="attendanceControlDateLabel" class="attendance-control-date">Hoy</span>
               </div>
@@ -871,14 +871,23 @@
                 <article class="attendance-control-metric is-expected"><small>Esperados</small><strong id="attendanceExpectedCount">0</strong></article>
                 <article class="attendance-control-metric is-missing"><small>Sin registro</small><strong id="attendanceMissingCount">0</strong></article>
                 <article class="attendance-control-metric is-entry"><small>Con entrada</small><strong id="attendanceEntryCount">0</strong></article>
+                <article class="attendance-control-metric is-pending"><small>Pendientes de salida</small><strong id="attendancePendingCount">0</strong></article>
                 <article class="attendance-control-metric is-complete"><small>Completos</small><strong id="attendanceCompleteCount">0</strong></article>
                 <article class="attendance-control-metric is-review"><small>Revision</small><strong id="attendanceReviewCount">0</strong></article>
+              </div>
+              <div id="attendanceControlTabs" class="attendance-control-tabs" role="tablist" aria-label="Filtrar corte por estado">
+                <button type="button" role="tab" data-attendance-status="all" aria-selected="true">Todos <span id="attendanceAllTabCount">0</span></button>
+                <button type="button" role="tab" data-attendance-status="missing" aria-selected="false">Sin registro <span id="attendanceMissingTabCount">0</span></button>
+                <button type="button" role="tab" data-attendance-status="with_entry" aria-selected="false">Con entrada <span id="attendanceEntryTabCount">0</span></button>
+                <button type="button" role="tab" data-attendance-status="entry" aria-selected="false">Pendientes <span id="attendancePendingTabCount">0</span></button>
+                <button type="button" role="tab" data-attendance-status="complete" aria-selected="false">Completos <span id="attendanceCompleteTabCount">0</span></button>
+                <button type="button" role="tab" data-attendance-status="review" aria-selected="false">Revision <span id="attendanceReviewTabCount">0</span></button>
               </div>
               <form class="attendance-control-filters" aria-label="Filtros del control operativo">
                 <label>Fecha<input id="attendanceControlDate" type="date" /></label>
                 <label>Organizacion<select id="attendanceControlOrganization"><option value="all">Todas las organizaciones</option></select></label>
                 <label>Sitio<select id="attendanceControlSite"><option value="all">Todos los sitios</option></select></label>
-                <label>Estado<select id="attendanceControlStatus"><option value="all">Todos los estados</option><option value="missing">Sin registro</option><option value="entry">Entrada registrada</option><option value="complete">Jornada completa</option><option value="review">Requiere revision</option></select></label>
+                <label>Estado<select id="attendanceControlStatus"><option value="all">Todos los estados</option><option value="missing">Sin registro</option><option value="with_entry">Con entrada</option><option value="entry">Pendiente de salida</option><option value="complete">Jornada completa</option><option value="review">Requiere revision</option></select></label>
                 <label class="attendance-control-search">Buscar<input id="attendanceControlSearch" type="search" autocomplete="off" placeholder="Nombre o identificador" /></label>
                 <button id="attendanceControlReset" class="ghost" type="button">Restablecer</button>
               </form>
@@ -886,66 +895,19 @@
               <div id="attendanceControlCards" class="attendance-control-cards" aria-live="polite"></div>
               <div class="attendance-control-table-wrap">
                 <table class="attendance-control-table">
-                  <thead><tr><th>Persona</th><th>Organizacion</th><th>Sitio</th><th>Entrada</th><th>Salida</th><th>Estado</th></tr></thead>
+                  <thead><tr><th>Persona</th><th>Organizacion</th><th>Sitio</th><th>Entrada</th><th>Salida</th><th>Evidencia</th><th>Estado</th><th>Acciones</th></tr></thead>
                   <tbody id="attendanceControlTableBody"></tbody>
                 </table>
               </div>
             </section>
 
-            <form class="ops-filters admin-filters" aria-label="Filtros de administracion">
-              <label>
-                Fecha
-                <input id="adminFilterDate" type="date" />
-              </label>
-              <label>
-                Estado
-                <select id="adminFilterStatus">
-                  <option value="all">Todos</option>
-                  <option value="entrada_registrada">Pendiente de salida</option>
-                  <option value="asistencia_completa">Asistencia completa</option>
-                  <option value="revision_requerida">Revision requerida</option>
-                  <option value="fallida">Fallida</option>
-                </select>
-              </label>
-              <label>
-                Organización
-                <select id="adminAttendanceOrganizationFilter">
-                  <option value="all">Todas las organizaciones</option>
-                </select>
-              </label>
-              <label>
-                Sitio
-                <select id="adminFilterSite">
-                  <option value="all">Todos los sitios</option>
-                </select>
-              </label>
-              <details class="admin-filter-more">
-                <summary>Mas filtros</summary>
-                <div>
-                  <label>
-                    Riesgo
-                    <select id="adminFilterRisk">
-                      <option value="all">Todos</option>
-                      <option value="normal">Normal</option>
-                      <option value="revision">Revision</option>
-                      <option value="sospechoso">Sospechoso</option>
-                    </select>
-                  </label>
-                  <label>
-                    Usuario
-                    <select id="adminFilterUser">
-                      <option value="all">Todos los usuarios</option>
-                    </select>
-                  </label>
-                  <label class="ops-search-field">
-                    Buscar
-                    <input id="adminFilterSearch" type="search" autocomplete="off" placeholder="Nombre o identificador" />
-                  </label>
-                </div>
-              </details>
-              <button id="adminClearDashboardFilters" class="ghost filter-clear" type="button">Limpiar filtros</button>
-            </form>
-
+            <div class="attendance-detail-head">
+              <div>
+                <p class="section-kicker">Detalle auditable</p>
+                <h3>Registros de la seleccion actual</h3>
+                <p>Esta tabla usa la misma fecha, organizacion, sitio, estado y busqueda del corte superior.</p>
+              </div>
+            </div>
             <table>
               <thead>
                 <tr>
@@ -990,7 +952,7 @@
                 <h3 id="orgFoundationTitle">Organizaciones y sitios</h3>
                 <p id="orgFoundationSummary">Administra cada empresa y sus ubicaciones desde un solo lugar.</p>
               </div>
-              <button id="newOrganizationButton" class="primary compact superadmin-only is-hidden" type="button">Nueva organizacion</button>
+              <button id="newOrganizationButton" class="primary compact organization-create-only is-hidden" type="button">Nueva organizacion</button>
             </div>
 
             <div id="organizationHubNotice" class="organization-hub-notice" role="status" aria-live="polite" hidden></div>
@@ -1028,7 +990,7 @@
               </div>
             </div>
 
-            <form id="organizationForm" class="organization-editor site-form-grid superadmin-only is-hidden" aria-label="Editar organizacion" hidden>
+            <form id="organizationForm" class="organization-editor site-form-grid organization-create-only is-hidden" aria-label="Editar organizacion" hidden>
               <input id="orgEditId" type="hidden" />
               <div class="form-section-heading">
                 <div><p class="section-kicker">Organizacion</p><h3 id="organizationFormTitle">Nueva organizacion</h3></div>
@@ -1203,32 +1165,25 @@
                 <p id="adminInviteStatus" class="site-test-result" data-tone="warning">La clave expira en 72 horas. Esta pantalla no envia correos automaticamente.</p>
               </aside>
 
-              <aside id="organizationAdminCard" class="admin-assignment-card superadmin-only is-hidden" aria-label="Asignar admin de organizacion">
+              <aside id="organizationAdminInviteCard" class="admin-assignment-card real-superadmin-only is-hidden" aria-label="Invitar admin de organizacion">
                 <div>
-                  <p class="section-kicker">Administracion de organizacion</p>
-                  <h3>Asignar admin de organizacion</h3>
-                  <p>El admin controla usuarios, sitios, asistencias y auditoria de una sola organizacion.</p>
+                  <p class="section-kicker">Incorporacion administrativa</p>
+                  <h3>Invitar admin de organizacion</h3>
+                  <p>Genera una clave personal y de un solo uso. El nuevo admin podra crear su primera organizacion y sus sitios.</p>
                 </div>
                 <label>
-                  Organizacion
-                  <select id="organizationAdminOrganization">
-                    <option value="">Selecciona una organizacion</option>
-                  </select>
+                  Correo del futuro administrador
+                  <input id="organizationAdminInviteEmail" type="email" autocomplete="email" placeholder="admin@organizacion.com" />
                 </label>
                 <label>
-                  Usuario de la organizacion
-                  <select id="organizationAdminUser">
-                    <option value="">Selecciona primero una organizacion</option>
-                  </select>
-                </label>
-                <label>
-                  Rol
-                  <input value="Administrador de organizacion" type="text" readonly />
+                  Clave de invitacion
+                  <span class="sensitive-input-wrap"><input id="organizationAdminInviteKey" type="password" autocomplete="off" readonly placeholder="Genera una clave segura" /><button class="password-visibility-toggle" type="button" data-password-toggle="organizationAdminInviteKey" aria-label="Mostrar clave de invitacion" aria-pressed="false" title="Mostrar clave"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6Z" /><circle cx="12" cy="12" r="2.5" /><path class="visibility-slash" d="M4 4 20 20" /></svg></button></span>
                 </label>
                 <div class="site-actions">
-                  <button id="assignOrganizationAdminButton" class="primary" type="button" disabled>Otorgar administracion</button>
+                  <button id="createOrganizationAdminInvite" class="primary" type="button">Generar invitacion</button>
+                  <button id="copyOrganizationAdminInvite" class="ghost" type="button">Copiar</button>
                 </div>
-                <p id="organizationAdminStatus" class="site-test-result" data-tone="warning">Selecciona una organizacion y un usuario para asignarle el alcance administrativo.</p>
+                <p id="organizationAdminInviteStatus" class="site-test-result" data-tone="warning">La clave expira en 72 horas y solo funciona con el correo indicado.</p>
               </aside>
             </div>
           </section>
@@ -1422,9 +1377,9 @@
 
   <script src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
   <script src="supabase-config.js?v=f0-mobile-shell"></script>
-  <script src="auth.js?v=2.60-password-recovery"></script>
+  <script src="auth.js?v=2.62-admin-onboarding"></script>
   <script src="notification-rules.js?v=1.0-attendance-reminders"></script>
-  <script src="app.js?v=2.60-password-recovery"></script>
+  <script src="app.js?v=2.62-admin-onboarding"></script>
 </body>
 
 </html>
