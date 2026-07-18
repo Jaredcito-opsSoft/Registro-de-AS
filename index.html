@@ -16,7 +16,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="stylesheet"
     href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" />
-  <link rel="stylesheet" href="styles.css?v=2.64-superadmin-global-records" />
+  <link rel="stylesheet" href="styles.css?v=2.68-optional-invite-key-help" />
 </head>
 
 <body>
@@ -88,20 +88,20 @@
         <!-- Solo en registro: clave colapsable -->
         <div id="label-org-key-wrap" class="auth-org-key-wrap is-hidden">
           <button id="authOrgKeyToggle" class="auth-org-key-toggle" type="button" aria-expanded="false">
-            <span>¿Tienes una clave de invitación?</span>
+            <span>¿Tienes una clave de invitación? (Opcional)</span>
             <svg class="chevron" viewBox="0 0 24 24" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
               <polyline points="6 9 12 15 18 9" />
             </svg>
           </button>
           <label id="label-org-key" class="is-hidden">
-            Clave de invitación
+            Clave de invitación (opcional)
             <span class="sensitive-input-wrap">
               <input id="authOrgKey" type="password" autocomplete="off" placeholder="Ej. SITE-INV-..." />
               <button class="password-visibility-toggle" type="button" data-password-toggle="authOrgKey" aria-label="Mostrar clave de invitación" aria-pressed="false" title="Mostrar clave">
                 <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6Z" /><circle cx="12" cy="12" r="2.5" /><path class="visibility-slash" d="M4 4 20 20" /></svg>
               </button>
             </span>
-            <span class="field-hint">Usa la clave personal que te entrego el superadmin o el administrador. Una invitacion ORG-ADMIN permite crear tu primera organizacion.</span>
+            <span class="field-hint">Ingresa una clave solo si tu superadmin o administrador te proporcionó una. No la necesitas para crear una cuenta normal.</span>
           </label>
         </div>
 
@@ -1378,7 +1378,7 @@
   <script src="supabase-config.js?v=f0-mobile-shell"></script>
   <script src="auth.js?v=2.63-simple-capture"></script>
   <script src="notification-rules.js?v=1.0-attendance-reminders"></script>
-  <script src="app.js?v=2.64-superadmin-global-records"></script>
+  <script src="app.js?v=2.68-optional-invite-key-help"></script>
 </body>
 
 </html>
