@@ -16,7 +16,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="stylesheet"
     href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" />
-  <link rel="stylesheet" href="styles.css?v=2.68-optional-invite-key-help" />
+  <link rel="stylesheet" href="styles.css?v=2.69-owner-deletion" />
 </head>
 
 <body>
@@ -973,7 +973,7 @@
                     </div>
                     <div class="organization-detail-actions superadmin-only is-hidden">
                       <button id="editOrganizationButton" class="ghost compact" type="button">Editar</button>
-                      <button id="deleteOrganizationButton" class="danger compact" type="button">Eliminar</button>
+                      <button id="deleteOrganizationButton" class="danger compact owner-only is-hidden" type="button">Eliminar</button>
                     </div>
                   </div>
                   <div class="organization-metrics" aria-label="Resumen de la organizacion">
@@ -1376,9 +1376,9 @@
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
 
   <script src="supabase-config.js?v=f0-mobile-shell"></script>
-  <script src="auth.js?v=2.63-simple-capture"></script>
+  <script src="auth.js?v=2.69-owner-deletion"></script>
   <script src="notification-rules.js?v=1.0-attendance-reminders"></script>
-  <script src="app.js?v=2.68-optional-invite-key-help"></script>
+  <script src="app.js?v=2.69-owner-deletion"></script>
 </body>
 
 </html>

@@ -14,7 +14,7 @@ const CLOUD_ENABLED = Boolean(SUPABASE.url && SUPABASE.publishableKey && SUPABAS
 const PHOTO_BUCKET = SUPABASE.bucket || "attendance-photos";
 const PROFILE_AVATAR_BUCKET = "profile-avatars";
 const GEO_PRECISION_MAX_METERS = 200;
-const LOCAL_ASSET_VERSION = "2.63-simple-capture";
+const LOCAL_ASSET_VERSION = "2.69-owner-deletion";
 const ATTENDANCE_STREAK_RPC_ENABLED = SUPABASE.enableAttendanceStreakRpc === true;
 const NOTIFICATION_PREFERENCE_PREFIX = "registro_asistencia_notifications_v1";
 const NOTIFICATION_SENT_PREFIX = "registro_asistencia_notification_sent_v1";
@@ -2015,8 +2015,9 @@ async function loadOrganizations({ silent = false } = {}) {
   try {
     const rows = await callAdminRpc("admin_list_organization_hubs", {});
     state.organizationHubs = Array.isArray(rows) ? rows : [];
-    if (!state.organizationHubs.some((org) => org.id === state.selectedOrganizationId)) {
-      state.selectedOrganizationId = state.organizationHubs[0]?.id || null;
+    const activeOrganizations = state.organizationHubs.filter((org) => org.activo !== false);
+    if (!activeOrganizations.some((org) => org.id === state.selectedOrganizationId)) {
+      state.selectedOrganizationId = activeOrganizations[0]?.id || null;
     }
     renderOrganizations();
   } catch (error) {
@@ -2047,9 +2048,10 @@ async function loadOrganizations({ silent = false } = {}) {
         ...org,
         sitios: (sites || []).filter((site) => site.organizacion_id === org.id),
       }));
-      state.selectedOrganizationId = state.organizationHubs.some((org) => org.id === state.selectedOrganizationId)
+      const activeOrganizations = state.organizationHubs.filter((org) => org.activo !== false);
+      state.selectedOrganizationId = activeOrganizations.some((org) => org.id === state.selectedOrganizationId)
         ? state.selectedOrganizationId
-        : state.organizationHubs[0]?.id || null;
+        : activeOrganizations[0]?.id || null;
       renderOrganizations();
       setOrganizationHubNotice("Vista compatible activa. Aplica la migracion Hito 14 para editar.", "warning");
     } catch (fallbackError) {
@@ -2073,13 +2075,16 @@ function setOrganizationHubNotice(message = "", tone = "warning") {
 
 function renderOrganizations() {
   if (!els.organizationList) return;
-  const rows = state.organizationHubs;
+  const rows = state.organizationHubs.filter((org) => org.activo !== false);
   const canManageOrg = hasPermission("manage_organization");
   document.querySelectorAll(".superadmin-only").forEach((element) => {
     element.classList.toggle("is-hidden", !canManageOrg);
   });
   document.querySelectorAll(".organization-create-only").forEach((element) => {
     element.classList.toggle("is-hidden", !canCreateOrganization());
+  });
+  document.querySelectorAll(".owner-only").forEach((element) => {
+    element.classList.toggle("is-hidden", !isKnownOwnerSession());
   });
   if (!rows.length) {
     els.organizationList.innerHTML = `<div class="organization-empty"><strong>Sin organizaciones</strong><span>Crea la primera para agregar sitios.</span></div>`;
@@ -2110,7 +2115,7 @@ function renderSelectedOrganization(org) {
   els.orgStatusBadge.className = `badge ${!org ? "default" : org.activo === false ? "danger" : "success"}`;
   els.orgStatusBadge.textContent = !org ? "Sin seleccion" : org.activo === false ? "Inactiva" : "Activa";
   if (els.newSiteButton) els.newSiteButton.disabled = !org || org.activo === false || isSupervisorSession();
-  renderManagedSites(org?.sitios || []);
+  renderManagedSites((org?.sitios || []).filter((site) => site.activo !== false));
 }
 
 function renderManagedSites(rows = []) {
@@ -2205,7 +2210,15 @@ async function deleteManagedSite(siteId) {
     showToast("No tienes permisos para modificar sitios.");
     return;
   }
-  if (!confirm("Este sitio se desactivara si tiene asistencias historicas. Continuar?")) return;
+  const site = state.managedSites.find((item) => String(item.id) === String(siteId));
+  const attendanceCount = Number(site?.asistencias_total || 0);
+  const userCount = Number(site?.usuarios_total || 0);
+  const actionMessage = attendanceCount > 0
+    ? "Este sitio tiene historial y se archivara sin borrar asistencias. Continuar?"
+    : userCount > 0 && isKnownOwnerSession()
+      ? `Se eliminara el sitio y ${userCount} usuario(s) quedaran sin sitio asignado. Continuar?`
+      : "Este sitio se eliminara permanentemente. Continuar?";
+  if (!confirm(actionMessage)) return;
   try {
     const result = await callAdminRpc("admin_delete_site", { p_site_id: siteId });
     const status = getRpcFirstRow(result);
@@ -2277,8 +2290,13 @@ function createOrganizationSlug(name, currentId = null) {
 
 async function deleteSelectedOrganization() {
   const org = getSelectedOrganization();
-  if (!org || !hasPermission("manage_organization")) return;
-  if (!confirm(`Eliminar ${org.nombre}? Si tiene historial se desactivara sin borrar registros.`)) return;
+  if (!org || !hasPermission("manage_organization") || !isKnownOwnerSession()) {
+    showToast("Solo Jared y David, como owners, pueden eliminar organizaciones.");
+    return;
+  }
+  const hasHistory = Number(org.usuarios_total || 0) > 0 || Number(org.asistencias_total || 0) > 0;
+  const action = hasHistory ? "archivar" : "eliminar permanentemente";
+  if (!confirm(`¿Deseas ${action} ${org.nombre}? Esta accion requiere permisos owner.`)) return;
   try {
     const result = await callAdminRpc("admin_delete_organization", { p_id: org.id });
     const status = getRpcFirstRow(result);
@@ -6432,6 +6450,9 @@ function updateAdminControls() {
   });
   document.querySelectorAll(".real-superadmin-only").forEach((element) => {
     element.classList.toggle("is-hidden", !isSuperadminSession());
+  });
+  document.querySelectorAll(".owner-only").forEach((element) => {
+    element.classList.toggle("is-hidden", !isKnownOwnerSession());
   });
   document.querySelectorAll(".organization-create-only").forEach((element) => {
     element.classList.toggle("is-hidden", !canCreateOrganization());
