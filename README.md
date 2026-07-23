@@ -1,7 +1,6 @@
 # Sistema Web de Asistencia con Foto, QR y Validacion Facial Ligera
 
-Prototipo web para registrar entrada y salida con evidencia fotografica, QR de
-salida por horario, historial global y acciones administrativas protegidas.
+Prototipo web para registrar entrada y salida con evidencia fotografica, historial global y acciones administrativas protegidas.
 
 Esta version agrega una validacion facial ligera: compara la foto de entrada con
 la foto de salida de la misma matricula y fecha. No es biometria empresarial ni
