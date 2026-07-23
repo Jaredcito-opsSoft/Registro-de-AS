@@ -69,13 +69,7 @@ Reglas principales:
 
 La vista de registros es de consulta para usuarios generales. Las acciones de
 exportar, limpiar datos, eliminar registros y editar observaciones requieren la
-clave administrativa del prototipo:
-
-```text
-[Tu contraseña]
-```
-
-Esta clave sigue siendo una proteccion del Proyecto. Para produccion real conviene, tú como usuario te conviene mover administracion a Supabase Auth, roles y funciones Edge.
+clave administrativa del prototipo.
 
 No se usa `service_role_key` en frontend. La app usa una publishable key y RLS
 con permisos por columnas para limitar inserciones de entrada y actualizaciones
